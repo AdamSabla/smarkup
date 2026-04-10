@@ -1,5 +1,6 @@
 import { create } from 'zustand'
-import type { FileEntry } from '../../../preload'
+// Type-only imports — erased at build time.
+import type { FileEntry, UpdateStatus } from '../../../preload'
 
 export type EditorMode = 'visual' | 'raw'
 
@@ -23,6 +24,7 @@ type WorkspaceState = {
   activeTabId: string | null
   editorMode: EditorMode
   sidebarVisible: boolean
+  updateStatus: UpdateStatus
 
   setRoot: (path: string) => Promise<void>
   refreshRoot: () => Promise<void>
@@ -34,6 +36,8 @@ type WorkspaceState = {
   saveActive: () => Promise<void>
   toggleSidebar: () => void
   setEditorMode: (mode: EditorMode) => void
+  setUpdateStatus: (status: UpdateStatus) => void
+  checkForUpdates: () => Promise<void>
 }
 
 export const useWorkspace = create<WorkspaceState>((set, get) => ({
@@ -43,6 +47,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   activeTabId: null,
   editorMode: 'visual',
   sidebarVisible: true,
+  updateStatus: { kind: 'idle' },
 
   setRoot: async (path) => {
     const entries = await window.api.readDirectory(path)
@@ -123,5 +128,12 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
 
   toggleSidebar: () => set((s) => ({ sidebarVisible: !s.sidebarVisible })),
 
-  setEditorMode: (mode) => set({ editorMode: mode })
+  setEditorMode: (mode) => set({ editorMode: mode }),
+
+  setUpdateStatus: (status) => set({ updateStatus: status }),
+
+  checkForUpdates: async () => {
+    const status = await window.api.checkForUpdates()
+    set({ updateStatus: status })
+  }
 }))

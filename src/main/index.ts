@@ -2,6 +2,7 @@ import { app, shell, BrowserWindow, ipcMain, nativeTheme, dialog } from 'electro
 import { join, dirname, basename } from 'path'
 import { promises as fs } from 'fs'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
+import { autoUpdater } from 'electron-updater'
 import icon from '../../resources/icon.png?asset'
 
 const isMac = process.platform === 'darwin'
@@ -124,6 +125,71 @@ const registerFileHandlers = (): void => {
   ipcMain.handle('fs:dirname', (_event, filePath: string) => dirname(filePath))
 }
 
+// --- Auto-updater --------------------------------------------------------
+
+type UpdateStatus =
+  | { kind: 'idle' }
+  | { kind: 'checking' }
+  | { kind: 'available'; version: string; releaseUrl: string }
+  | { kind: 'not-available' }
+  | { kind: 'error'; message: string }
+
+let latestUpdateStatus: UpdateStatus = { kind: 'idle' }
+
+const broadcastUpdateStatus = (status: UpdateStatus): void => {
+  latestUpdateStatus = status
+  for (const win of BrowserWindow.getAllWindows()) {
+    win.webContents.send('updater:status', status)
+  }
+}
+
+const registerUpdater = (): void => {
+  // Don't attempt auto-download — surface an "update available" banner and
+  // let the user click through to the GitHub Release to download manually.
+  // This avoids needing code signing for the initial release flow.
+  autoUpdater.autoDownload = false
+  autoUpdater.autoInstallOnAppQuit = false
+
+  autoUpdater.on('checking-for-update', () => {
+    broadcastUpdateStatus({ kind: 'checking' })
+  })
+
+  autoUpdater.on('update-available', (info) => {
+    const releaseUrl = `https://github.com/AdamSabla/smarkup/releases/tag/v${info.version}`
+    broadcastUpdateStatus({
+      kind: 'available',
+      version: info.version,
+      releaseUrl
+    })
+  })
+
+  autoUpdater.on('update-not-available', () => {
+    broadcastUpdateStatus({ kind: 'not-available' })
+  })
+
+  autoUpdater.on('error', (err) => {
+    broadcastUpdateStatus({ kind: 'error', message: err.message })
+  })
+
+  ipcMain.handle('updater:check', async () => {
+    try {
+      await autoUpdater.checkForUpdates()
+    } catch (err) {
+      broadcastUpdateStatus({
+        kind: 'error',
+        message: err instanceof Error ? err.message : String(err)
+      })
+    }
+    return latestUpdateStatus
+  })
+
+  ipcMain.handle('updater:getStatus', () => latestUpdateStatus)
+
+  ipcMain.handle('updater:openRelease', async (_event, url: string) => {
+    await shell.openExternal(url)
+  })
+}
+
 app.whenReady().then(() => {
   electronApp.setAppUserModelId('com.smarkup.app')
 
@@ -132,7 +198,20 @@ app.whenReady().then(() => {
   })
 
   registerFileHandlers()
+  registerUpdater()
   createWindow()
+
+  // Silent background check a few seconds after startup. Skips in dev.
+  if (!is.dev) {
+    setTimeout(() => {
+      autoUpdater.checkForUpdates().catch((err) => {
+        broadcastUpdateStatus({
+          kind: 'error',
+          message: err instanceof Error ? err.message : String(err)
+        })
+      })
+    }, 5000)
+  }
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
