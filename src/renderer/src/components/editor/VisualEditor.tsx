@@ -1,6 +1,8 @@
 import { useEffect } from 'react'
 import { useEditor, EditorContent, type Editor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
+import TaskList from '@tiptap/extension-task-list'
+import TaskItem from '@tiptap/extension-task-item'
 import { Markdown, type MarkdownStorage } from 'tiptap-markdown'
 import { cn } from '@/lib/utils'
 
@@ -20,6 +22,10 @@ const VisualEditor = ({ value, onChange }: Props): React.JSX.Element => {
       StarterKit.configure({
         heading: { levels: [1, 2, 3, 4] }
       }),
+      TaskList,
+      TaskItem.configure({
+        nested: true
+      }),
       Markdown.configure({
         html: false,
         tightLists: true,
@@ -36,10 +42,7 @@ const VisualEditor = ({ value, onChange }: Props): React.JSX.Element => {
     },
     editorProps: {
       attributes: {
-        class: cn(
-          'prose prose-neutral dark:prose-invert max-w-none',
-          'focus:outline-none min-h-full px-12 py-10'
-        )
+        class: cn('smarkup-editor focus:outline-none')
       }
     }
   })

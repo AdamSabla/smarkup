@@ -83,6 +83,20 @@ const mockApi: SmarkupApi = {
     return newPath
   },
 
+  move: async (oldPath, destDir) => {
+    const file = files.find((f) => f.path === oldPath)
+    if (!file) throw new Error(`File not found: ${oldPath}`)
+    const newPath = `${destDir.replace(/\/$/, '')}/${file.name}`
+    file.path = newPath
+    return newPath
+  },
+
+  createDirectory: async (parent, name) => `${parent.replace(/\/$/, '')}/${name}`,
+
+  listFoldersRecursive: async () => [],
+
+  revealInFolder: async () => true,
+
   deletePath: async (path) => {
     const idx = files.findIndex((f) => f.path === path)
     if (idx >= 0) files.splice(idx, 1)

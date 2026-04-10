@@ -5,6 +5,7 @@ import Sidebar from '@/components/Sidebar'
 import TabBar from '@/components/TabBar'
 import UpdateBanner from '@/components/UpdateBanner'
 import SettingsDialog from '@/components/SettingsDialog'
+import QuickOpen from '@/components/QuickOpen'
 import CommandPalette from '@/components/CommandPalette'
 import EditorPane from '@/components/editor/EditorPane'
 import { useShortcuts } from '@/hooks/useShortcuts'
@@ -53,6 +54,7 @@ const App = (): React.JSX.Element => {
         </ResizablePanelGroup>
       </div>
       <SettingsDialog />
+      <QuickOpen />
       <CommandPalette />
     </div>
   )

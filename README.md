@@ -102,17 +102,18 @@ electron-builder.yml            Packaging + GitHub publish config
 
 (⌘ on macOS, Ctrl on Windows/Linux)
 
-| Shortcut         | Action                                    |
-| ---------------- | ----------------------------------------- |
-| `⌘ N` / `⌘ T`    | New draft in the configured drafts folder |
-| `⌘ P`            | Fuzzy search files across all sections    |
-| `⌘ S`            | Save active tab                           |
-| `⌘ W`            | Close active tab                          |
-| `⌘ ,`            | Open Settings                             |
-| `⌘ .`            | Toggle sidebar                            |
-| `⌘ /`            | Toggle Visual / Raw editor mode           |
-| `Ctrl Tab`       | Next tab                                  |
-| `Ctrl Shift Tab` | Previous tab                              |
+| Shortcut         | Action                                              |
+| ---------------- | --------------------------------------------------- |
+| `⌘ N` / `⌘ T`    | New draft in the configured drafts folder           |
+| `⌘ P`            | Quick Open — fuzzy file finder                      |
+| `⌘ K`            | Command Palette — commands, move file, themes, etc. |
+| `⌘ S`            | Save active tab                                     |
+| `⌘ W`            | Close active tab                                    |
+| `⌘ ,`            | Open Settings                                       |
+| `⌘ .`            | Toggle sidebar                                      |
+| `⌘ /`            | Toggle Visual / Raw editor mode                     |
+| `Ctrl Tab`       | Next tab                                            |
+| `Ctrl Shift Tab` | Previous tab                                        |
 
 - Tabs are draggable — grab any tab in the tab bar to reorder.
 - Right-click (or double-click to rename) any file in the sidebar for rename / delete actions.

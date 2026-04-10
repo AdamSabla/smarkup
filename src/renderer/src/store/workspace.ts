@@ -44,6 +44,9 @@ type WorkspaceState = {
   activeTabId: string | null
   updateStatus: UpdateStatus
   settingsOpen: boolean
+  /** ⌘P file fuzzy finder */
+  quickOpenOpen: boolean
+  /** ⌘K command palette */
   commandPaletteOpen: boolean
   hydrated: boolean
 
@@ -61,9 +64,12 @@ type WorkspaceState = {
   createDraft: () => Promise<void>
   renameFile: (oldPath: string, newName: string) => Promise<void>
   deleteFile: (path: string) => Promise<void>
+  moveFile: (path: string, destDir: string) => Promise<void>
 
   setActiveTab: (id: string) => void
   closeTab: (id: string) => void
+  closeOtherTabs: (id: string) => void
+  closeAllTabs: () => void
   reorderTabs: (fromIndex: number, toIndex: number) => void
   updateActiveContent: (content: string) => void
   saveActive: () => Promise<void>
@@ -73,6 +79,8 @@ type WorkspaceState = {
   setTheme: (theme: Theme) => Promise<void>
   openSettings: () => void
   closeSettings: () => void
+  openQuickOpen: () => void
+  closeQuickOpen: () => void
   openCommandPalette: () => void
   closeCommandPalette: () => void
 
@@ -133,6 +141,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   activeTabId: null,
   updateStatus: { kind: 'idle' },
   settingsOpen: false,
+  quickOpenOpen: false,
   commandPaletteOpen: false,
   hydrated: false,
 
@@ -319,6 +328,19 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     await get().refreshAllSections()
   },
 
+  moveFile: async (path, destDir) => {
+    const newPath = await window.api.move(path, destDir)
+    set((s) => ({
+      tabs: s.tabs.map((t) =>
+        t.path === path
+          ? { ...t, id: newPath, path: newPath, name: newPath.split('/').pop() ?? t.name }
+          : t
+      ),
+      activeTabId: s.activeTabId === path ? newPath : s.activeTabId
+    }))
+    await get().refreshAllSections()
+  },
+
   setActiveTab: (id) => set({ activeTabId: id }),
 
   closeTab: (id) =>
@@ -337,6 +359,15 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       }
       return { tabs: nextTabs, activeTabId: nextActive }
     }),
+
+  closeOtherTabs: (id) =>
+    set((s) => {
+      const keep = s.tabs.find((t) => t.id === id)
+      if (!keep) return s
+      return { tabs: [keep], activeTabId: keep.id }
+    }),
+
+  closeAllTabs: () => set({ tabs: [], activeTabId: null }),
 
   reorderTabs: (fromIndex, toIndex) =>
     set((s) => {
@@ -396,6 +427,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
 
   openSettings: () => set({ settingsOpen: true }),
   closeSettings: () => set({ settingsOpen: false }),
+  openQuickOpen: () => set({ quickOpenOpen: true }),
+  closeQuickOpen: () => set({ quickOpenOpen: false }),
   openCommandPalette: () => set({ commandPaletteOpen: true }),
   closeCommandPalette: () => set({ commandPaletteOpen: false }),
 

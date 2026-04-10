@@ -49,6 +49,14 @@ const api = {
     ipcRenderer.invoke('fs:createFile', parentDir, name),
   rename: (oldPath: string, newName: string): Promise<string> =>
     ipcRenderer.invoke('fs:rename', oldPath, newName),
+  move: (oldPath: string, destDir: string): Promise<string> =>
+    ipcRenderer.invoke('fs:move', oldPath, destDir),
+  createDirectory: (parent: string, name: string): Promise<string> =>
+    ipcRenderer.invoke('fs:createDirectory', parent, name),
+  listFoldersRecursive: (root: string): Promise<string[]> =>
+    ipcRenderer.invoke('fs:listFoldersRecursive', root),
+  revealInFolder: (filePath: string): Promise<boolean> =>
+    ipcRenderer.invoke('fs:revealInFolder', filePath),
   deletePath: (path: string): Promise<boolean> => ipcRenderer.invoke('fs:delete', path),
   basename: (path: string): Promise<string> => ipcRenderer.invoke('fs:basename', path),
   dirname: (path: string): Promise<string> => ipcRenderer.invoke('fs:dirname', path),

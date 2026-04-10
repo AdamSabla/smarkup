@@ -1,6 +1,6 @@
 import { app, shell, BrowserWindow, ipcMain, nativeTheme, dialog } from 'electron'
 import { join, dirname, basename } from 'path'
-import { promises as fs } from 'fs'
+import { promises as fs, type Dirent } from 'fs'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { autoUpdater } from 'electron-updater'
 import { loadSettings, saveSettings, type Settings } from './settings'
@@ -129,6 +129,45 @@ const registerFileHandlers = (): void => {
     const newPath = join(dirname(oldPath), newName)
     await fs.rename(oldPath, newPath)
     return newPath
+  })
+
+  ipcMain.handle('fs:move', async (_event, oldPath: string, destDir: string) => {
+    const name = basename(oldPath)
+    const newPath = join(destDir, name)
+    await fs.rename(oldPath, newPath)
+    return newPath
+  })
+
+  ipcMain.handle('fs:createDirectory', async (_event, parent: string, name: string) => {
+    const newDir = join(parent, name)
+    await fs.mkdir(newDir, { recursive: false })
+    return newDir
+  })
+
+  ipcMain.handle('fs:listFoldersRecursive', async (_event, root: string) => {
+    const results: string[] = []
+    const walk = async (dir: string, depth: number): Promise<void> => {
+      if (depth > 6) return
+      let dirents: Dirent[] = []
+      try {
+        dirents = await fs.readdir(dir, { withFileTypes: true })
+      } catch {
+        return
+      }
+      for (const d of dirents) {
+        if (!d.isDirectory() || d.name.startsWith('.') || d.name === 'node_modules') continue
+        const full = join(dir, d.name)
+        results.push(full)
+        await walk(full, depth + 1)
+      }
+    }
+    await walk(root, 0)
+    return results
+  })
+
+  ipcMain.handle('fs:revealInFolder', async (_event, filePath: string) => {
+    shell.showItemInFolder(filePath)
+    return true
   })
 
   ipcMain.handle('fs:delete', async (_event, filePath: string) => {

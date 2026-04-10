@@ -16,6 +16,7 @@ export const useShortcuts = (): void => {
     tabs,
     setActiveTab,
     openSettings,
+    openQuickOpen,
     openCommandPalette
   } = useWorkspace()
 
@@ -39,8 +40,15 @@ export const useShortcuts = (): void => {
         return
       }
 
-      // Command palette / fuzzy search: cmd/ctrl+p
+      // Quick open / fuzzy file finder: cmd/ctrl+p
       if (key === 'p' && !e.shiftKey && !e.altKey) {
+        e.preventDefault()
+        openQuickOpen()
+        return
+      }
+
+      // Command palette: cmd/ctrl+k
+      if (key === 'k' && !e.shiftKey && !e.altKey) {
         e.preventDefault()
         openCommandPalette()
         return
@@ -101,6 +109,7 @@ export const useShortcuts = (): void => {
     tabs,
     setActiveTab,
     openSettings,
+    openQuickOpen,
     openCommandPalette
   ])
 }
