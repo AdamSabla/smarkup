@@ -14,17 +14,17 @@ A native-feeling Electron markdown editor with Tiptap (visual) + CodeMirror 6 (r
 
 ## Scripts
 
-| Command | What it does |
-|---|---|
-| `npm run dev` | Start Electron in dev mode with HMR. This is the primary development loop — the Electron window is Chromium under the hood and behaves like a live browser preview. |
-| `npm run dev:browser` | Start a **plain browser** dev server (Vite only, no Electron) at `http://localhost:5174`. Uses an in-memory mock of `window.api`. Useful for fast UI iteration when you don't need real file I/O. |
-| `npm run typecheck` | TypeScript check for main, preload, and renderer. |
-| `npm run lint` | ESLint with the electron-toolkit config. |
-| `npm run format` | Prettier on everything. |
-| `npm run build` | Typecheck + Electron production build (no packaging). |
-| `npm run build:browser` | Production build of the renderer as a standalone web app. |
-| `npm run build:unpack` | Build unpacked app bundle for quick local testing. |
-| `npm run build:mac` / `build:win` / `build:linux` | Platform-specific installer builds via electron-builder. |
+| Command                                           | What it does                                                                                                                                                                                      |
+| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `npm run dev`                                     | Start Electron in dev mode with HMR. This is the primary development loop — the Electron window is Chromium under the hood and behaves like a live browser preview.                               |
+| `npm run dev:browser`                             | Start a **plain browser** dev server (Vite only, no Electron) at `http://localhost:5174`. Uses an in-memory mock of `window.api`. Useful for fast UI iteration when you don't need real file I/O. |
+| `npm run typecheck`                               | TypeScript check for main, preload, and renderer.                                                                                                                                                 |
+| `npm run lint`                                    | ESLint with the electron-toolkit config.                                                                                                                                                          |
+| `npm run format`                                  | Prettier on everything.                                                                                                                                                                           |
+| `npm run build`                                   | Typecheck + Electron production build (no packaging).                                                                                                                                             |
+| `npm run build:browser`                           | Production build of the renderer as a standalone web app.                                                                                                                                         |
+| `npm run build:unpack`                            | Build unpacked app bundle for quick local testing.                                                                                                                                                |
+| `npm run build:mac` / `build:win` / `build:linux` | Platform-specific installer builds via electron-builder.                                                                                                                                          |
 
 ## Development workflow
 
@@ -45,11 +45,13 @@ npm run dev:browser
 Opens `http://localhost:5174` in your default browser. The renderer runs in a plain browser tab with no Electron shell. `window.api` is replaced with an **in-memory mock** that serves two seed files (`welcome.md`, `notes.md`).
 
 **Use this when:**
+
 - You're iterating on a component's styling and don't care about file I/O
 - You want to compare rendering across Chrome / Firefox / Safari
 - The Electron dev window feels slow to restart
 
 **Don't use this when:**
+
 - Testing anything that writes to disk
 - Testing window chrome (the browser tab has no title bar / traffic lights)
 - Testing auto-updates
@@ -100,15 +102,18 @@ electron-builder.yml            Packaging + GitHub publish config
 
 (⌘ on macOS, Ctrl on Windows/Linux)
 
-| Shortcut | Action |
-|---|---|
-| `⌘ N` | New file in current folder |
-| `⌘ S` | Save active tab |
-| `⌘ W` | Close active tab |
-| `⌘ .` | Toggle sidebar |
-| `⌘ /` | Toggle Visual / Raw editor mode |
-| `Ctrl Tab` | Next tab |
-| `Ctrl Shift Tab` | Previous tab |
+| Shortcut         | Action                                    |
+| ---------------- | ----------------------------------------- |
+| `⌘ N` / `⌘ T`    | New draft in the configured drafts folder |
+| `⌘ S`            | Save active tab                           |
+| `⌘ W`            | Close active tab                          |
+| `⌘ ,`            | Open Settings                             |
+| `⌘ .`            | Toggle sidebar                            |
+| `⌘ /`            | Toggle Visual / Raw editor mode           |
+| `Ctrl Tab`       | Next tab                                  |
+| `Ctrl Shift Tab` | Previous tab                              |
+
+Tabs are draggable — grab any tab in the tab bar to reorder.
 
 ## Releasing
 
@@ -121,6 +126,7 @@ git push origin v0.1.0
 ```
 
 This triggers `.github/workflows/release.yml`, which:
+
 1. Runs a build on macOS, Windows, and Linux runners in parallel.
 2. Runs `electron-builder --publish always` on each, which uploads `.dmg`, `.exe`, `.AppImage`, `.deb` and the matching `latest*.yml` update manifests to a **draft** GitHub Release.
 3. Also uploads the installers as workflow artifacts (fallback).
@@ -149,6 +155,7 @@ Once you have signing in place, flip `autoUpdater.autoDownload = true` in `src/m
 Uncomment the signing env vars in `.github/workflows/release.yml` and add these repository secrets:
 
 **macOS:**
+
 - `MAC_CERT_P12_BASE64` — Developer ID cert exported as .p12, base64-encoded
 - `MAC_CERT_PASSWORD` — password for the .p12
 - `APPLE_ID` — your Apple ID
@@ -156,6 +163,7 @@ Uncomment the signing env vars in `.github/workflows/release.yml` and add these 
 - `APPLE_TEAM_ID` — from https://developer.apple.com/account/#/membership
 
 **Windows:**
+
 - `WIN_CSC_LINK` — EV cert .pfx base64-encoded (or a URL)
 - `WIN_CSC_KEY_PASSWORD` — cert password
 

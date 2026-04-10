@@ -25,7 +25,7 @@ const TitleBar = (): React.JSX.Element => {
           variant="ghost"
           size="icon"
           className="size-7"
-          onClick={toggleSidebar}
+          onClick={() => void toggleSidebar()}
           aria-label="Toggle sidebar"
         >
           {sidebarVisible ? (

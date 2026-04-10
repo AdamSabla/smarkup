@@ -19,7 +19,7 @@ const ModeSwitcher = (): React.JSX.Element => {
       <Button
         variant="ghost"
         size="sm"
-        onClick={() => setEditorMode('visual')}
+        onClick={() => void setEditorMode('visual')}
         className={cn(
           'h-6 px-2 text-xs',
           editorMode === 'visual' && 'bg-accent text-accent-foreground'
@@ -31,7 +31,7 @@ const ModeSwitcher = (): React.JSX.Element => {
       <Button
         variant="ghost"
         size="sm"
-        onClick={() => setEditorMode('raw')}
+        onClick={() => void setEditorMode('raw')}
         className={cn(
           'h-6 px-2 text-xs',
           editorMode === 'raw' && 'bg-accent text-accent-foreground'

@@ -6,7 +6,7 @@ const mod = (e: KeyboardEvent): boolean => (isMac ? e.metaKey : e.ctrlKey)
 
 export const useShortcuts = (): void => {
   const {
-    createFileInRoot,
+    createDraft,
     saveActive,
     closeTab,
     activeTabId,
@@ -14,29 +14,32 @@ export const useShortcuts = (): void => {
     setEditorMode,
     editorMode,
     tabs,
-    setActiveTab
+    setActiveTab,
+    openSettings
   } = useWorkspace()
 
   useEffect(() => {
     const handler = (e: KeyboardEvent): void => {
       if (!mod(e)) return
 
-      // New file: cmd/ctrl+n
-      if (e.key.toLowerCase() === 'n' && !e.shiftKey && !e.altKey) {
+      const key = e.key.toLowerCase()
+
+      // New draft: cmd/ctrl+n  OR  cmd/ctrl+t
+      if ((key === 'n' || key === 't') && !e.shiftKey && !e.altKey) {
         e.preventDefault()
-        void createFileInRoot()
+        void createDraft()
         return
       }
 
       // Save: cmd/ctrl+s
-      if (e.key.toLowerCase() === 's' && !e.shiftKey && !e.altKey) {
+      if (key === 's' && !e.shiftKey && !e.altKey) {
         e.preventDefault()
         void saveActive()
         return
       }
 
       // Close tab: cmd/ctrl+w
-      if (e.key.toLowerCase() === 'w' && !e.shiftKey && !e.altKey) {
+      if (key === 'w' && !e.shiftKey && !e.altKey) {
         if (activeTabId) {
           e.preventDefault()
           closeTab(activeTabId)
@@ -44,17 +47,24 @@ export const useShortcuts = (): void => {
         return
       }
 
+      // Settings: cmd/ctrl+,
+      if (e.key === ',' && !e.shiftKey && !e.altKey) {
+        e.preventDefault()
+        openSettings()
+        return
+      }
+
       // Toggle sidebar: cmd/ctrl+.
       if (e.key === '.' && !e.shiftKey && !e.altKey) {
         e.preventDefault()
-        toggleSidebar()
+        void toggleSidebar()
         return
       }
 
       // Toggle editor mode: cmd/ctrl+/
       if (e.key === '/' && !e.shiftKey && !e.altKey) {
         e.preventDefault()
-        setEditorMode(editorMode === 'visual' ? 'raw' : 'visual')
+        void setEditorMode(editorMode === 'visual' ? 'raw' : 'visual')
         return
       }
 
@@ -73,7 +83,7 @@ export const useShortcuts = (): void => {
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
   }, [
-    createFileInRoot,
+    createDraft,
     saveActive,
     closeTab,
     activeTabId,
@@ -81,6 +91,7 @@ export const useShortcuts = (): void => {
     setEditorMode,
     editorMode,
     tabs,
-    setActiveTab
+    setActiveTab,
+    openSettings
   ])
 }

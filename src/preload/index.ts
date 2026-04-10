@@ -5,6 +5,7 @@ export type FileEntry = {
   name: string
   path: string
   isDirectory: boolean
+  mtimeMs: number
 }
 
 export type UpdateStatus =
@@ -13,6 +14,17 @@ export type UpdateStatus =
   | { kind: 'available'; version: string; releaseUrl: string }
   | { kind: 'not-available' }
   | { kind: 'error'; message: string }
+
+export type Theme = 'light' | 'dark' | 'system'
+
+export type Settings = {
+  draftsFolder: string | null
+  additionalFolders: string[]
+  theme: Theme
+  sidebarVisible: boolean
+  editorMode: 'visual' | 'raw'
+  tabOrder: string[]
+}
 
 const api = {
   openDirectory: (): Promise<string | null> => ipcRenderer.invoke('dialog:openDirectory'),
@@ -28,6 +40,11 @@ const api = {
   deletePath: (path: string): Promise<boolean> => ipcRenderer.invoke('fs:delete', path),
   basename: (path: string): Promise<string> => ipcRenderer.invoke('fs:basename', path),
   dirname: (path: string): Promise<string> => ipcRenderer.invoke('fs:dirname', path),
+
+  // --- Settings ---------------------------------------------------------
+  loadSettings: (): Promise<Settings> => ipcRenderer.invoke('settings:load'),
+  saveSettings: (patch: Partial<Settings>): Promise<Settings> =>
+    ipcRenderer.invoke('settings:save', patch),
 
   // --- Updater ----------------------------------------------------------
   checkForUpdates: (): Promise<UpdateStatus> => ipcRenderer.invoke('updater:check'),

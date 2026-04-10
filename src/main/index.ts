@@ -3,6 +3,7 @@ import { join, dirname, basename } from 'path'
 import { promises as fs } from 'fs'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { autoUpdater } from 'electron-updater'
+import { loadSettings, saveSettings, type Settings } from './settings'
 import icon from '../../resources/icon.png?asset'
 
 const isMac = process.platform === 'darwin'
@@ -58,21 +59,35 @@ type FileEntry = {
   name: string
   path: string
   isDirectory: boolean
+  mtimeMs: number
 }
 
 const readDirectoryEntries = async (dirPath: string): Promise<FileEntry[]> => {
   const dirents = await fs.readdir(dirPath, { withFileTypes: true })
-  return dirents
-    .filter((d) => !d.name.startsWith('.'))
-    .map((d) => ({
-      name: d.name,
-      path: join(dirPath, d.name),
-      isDirectory: d.isDirectory()
-    }))
-    .sort((a, b) => {
-      if (a.isDirectory !== b.isDirectory) return a.isDirectory ? -1 : 1
-      return a.name.localeCompare(b.name)
-    })
+  const entries = await Promise.all(
+    dirents
+      .filter((d) => !d.name.startsWith('.'))
+      .map(async (d) => {
+        const fullPath = join(dirPath, d.name)
+        let mtimeMs = 0
+        try {
+          const stat = await fs.stat(fullPath)
+          mtimeMs = stat.mtimeMs
+        } catch {
+          // File may have been removed between readdir and stat
+        }
+        return {
+          name: d.name,
+          path: fullPath,
+          isDirectory: d.isDirectory(),
+          mtimeMs
+        }
+      })
+  )
+  return entries.sort((a, b) => {
+    if (a.isDirectory !== b.isDirectory) return a.isDirectory ? -1 : 1
+    return a.name.localeCompare(b.name)
+  })
 }
 
 const registerFileHandlers = (): void => {
@@ -123,6 +138,13 @@ const registerFileHandlers = (): void => {
   ipcMain.handle('fs:basename', (_event, filePath: string) => basename(filePath))
 
   ipcMain.handle('fs:dirname', (_event, filePath: string) => dirname(filePath))
+}
+
+// --- Settings IPC --------------------------------------------------------
+
+const registerSettingsHandlers = (): void => {
+  ipcMain.handle('settings:load', () => loadSettings())
+  ipcMain.handle('settings:save', (_event, patch: Partial<Settings>) => saveSettings(patch))
 }
 
 // --- Auto-updater --------------------------------------------------------
@@ -198,6 +220,7 @@ app.whenReady().then(() => {
   })
 
   registerFileHandlers()
+  registerSettingsHandlers()
   registerUpdater()
   createWindow()
 
