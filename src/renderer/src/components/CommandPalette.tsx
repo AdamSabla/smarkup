@@ -3,6 +3,7 @@ import {
   ArrowLeftIcon,
   ClipboardIcon,
   EyeIcon,
+  FileClockIcon,
   FilePlusIcon,
   FolderIcon,
   FolderPlusIcon,
@@ -12,6 +13,7 @@ import {
   PencilIcon,
   RefreshCwIcon,
   SaveIcon,
+  SaveAllIcon,
   SearchIcon,
   SettingsIcon,
   SidebarIcon,
@@ -62,7 +64,11 @@ const CommandPaletteBody = (): React.JSX.Element => {
     sidebarVisible,
     deleteFile,
     moveFile,
-    checkForUpdates
+    checkForUpdates,
+    recentFiles,
+    openFile,
+    autoSave,
+    setAutoSave
   } = store
 
   const [page, setPage] = useState<Page>('commands')
@@ -141,6 +147,31 @@ const CommandPaletteBody = (): React.JSX.Element => {
         <CommandInput placeholder="Type a command…" value={query} onValueChange={setQuery} />
         <CommandList>
           <CommandEmpty>No commands match.</CommandEmpty>
+
+          {recentFiles.length > 0 && (
+            <>
+              <CommandGroup heading="Recent files">
+                {recentFiles.slice(0, 5).map((path) => {
+                  const name = path.split('/').pop() ?? path
+                  const displayName = name.replace(/\.md$/i, '')
+                  return (
+                    <CommandItem
+                      key={path}
+                      value={`recent ${displayName} ${path}`}
+                      onSelect={() => {
+                        void openFile(path)
+                        dismiss()
+                      }}
+                    >
+                      <FileClockIcon />
+                      <span className="truncate">{displayName}</span>
+                    </CommandItem>
+                  )
+                })}
+              </CommandGroup>
+              <CommandSeparator />
+            </>
+          )}
 
           <CommandGroup heading="File">
             <CommandItem
@@ -254,6 +285,18 @@ const CommandPaletteBody = (): React.JSX.Element => {
               }}
             >
               <EyeIcon /> Switch to {editorMode === 'visual' ? 'Raw' : 'Visual'} mode
+            </CommandItem>
+          </CommandGroup>
+
+          <CommandSeparator />
+          <CommandGroup heading="Editor">
+            <CommandItem
+              onSelect={() => {
+                void setAutoSave(!autoSave)
+                dismiss()
+              }}
+            >
+              <SaveAllIcon /> {autoSave ? 'Disable auto-save' : 'Enable auto-save'}
             </CommandItem>
           </CommandGroup>
 

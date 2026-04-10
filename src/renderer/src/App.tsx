@@ -1,8 +1,7 @@
 import { useEffect } from 'react'
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable'
-import TitleBar from '@/components/TitleBar'
+import TopBar from '@/components/TopBar'
 import Sidebar from '@/components/Sidebar'
-import TabBar from '@/components/TabBar'
 import UpdateBanner from '@/components/UpdateBanner'
 import SettingsDialog from '@/components/SettingsDialog'
 import QuickOpen from '@/components/QuickOpen'
@@ -13,6 +12,7 @@ import { useUpdateSubscription } from '@/hooks/useUpdateSubscription'
 import { useTheme } from '@/hooks/useTheme'
 import { useFileWatcher } from '@/hooks/useFileWatcher'
 import { usePersistOpenTabs } from '@/hooks/usePersistOpenTabs'
+import { useAutoSave } from '@/hooks/useAutoSave'
 import { useWorkspace } from '@/store/workspace'
 
 const App = (): React.JSX.Element => {
@@ -28,10 +28,11 @@ const App = (): React.JSX.Element => {
   useTheme()
   useFileWatcher()
   usePersistOpenTabs()
+  useAutoSave()
 
   return (
     <div className="flex h-full w-full flex-col bg-background text-foreground">
-      <TitleBar />
+      <TopBar />
       <UpdateBanner />
       <div className="flex min-h-0 flex-1">
         <ResizablePanelGroup direction="horizontal">
@@ -45,7 +46,6 @@ const App = (): React.JSX.Element => {
           )}
           <ResizablePanel defaultSize={80}>
             <div className="flex h-full flex-col">
-              <TabBar />
               <div className="min-h-0 flex-1">
                 <EditorPane />
               </div>

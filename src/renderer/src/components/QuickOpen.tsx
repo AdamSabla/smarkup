@@ -10,6 +10,7 @@ type PaletteItem = {
   name: string
   displayName: string
   folder: string
+  isRecent?: boolean
 }
 
 /**
@@ -17,7 +18,7 @@ type PaletteItem = {
  * re-initializes each time and we don't need a reset-on-open effect.
  */
 const QuickOpenBody = (): React.JSX.Element => {
-  const { closeQuickOpen, sections, openFile } = useWorkspace()
+  const { closeQuickOpen, sections, openFile, recentFiles } = useWorkspace()
 
   const [query, setQuery] = useState('')
   const [activeIndex, setActiveIndex] = useState(0)
@@ -27,18 +28,44 @@ const QuickOpenBody = (): React.JSX.Element => {
   // Flatten all files from all sections into one searchable list
   const items = useMemo<PaletteItem[]>(() => {
     const result: PaletteItem[] = []
+    const byPath = new Map<string, PaletteItem>()
     for (const section of sections) {
       for (const file of section.files) {
-        result.push({
+        const item: PaletteItem = {
           path: file.path,
           name: file.name,
           displayName: file.name.replace(/\.md$/i, ''),
           folder: section.label
+        }
+        byPath.set(file.path, item)
+        result.push(item)
+      }
+    }
+    // Attach any recent files that aren't in the sidebar so they are still searchable
+    for (const recent of recentFiles) {
+      if (!byPath.has(recent)) {
+        const name = recent.split('/').pop() ?? recent
+        result.push({
+          path: recent,
+          name,
+          displayName: name.replace(/\.md$/i, ''),
+          folder: 'Recent'
         })
       }
     }
     return result
-  }, [sections])
+  }, [sections, recentFiles])
+
+  // Recent-first list used when the query is empty
+  const recentItems = useMemo<PaletteItem[]>(() => {
+    const byPath = new Map(items.map((i) => [i.path, i]))
+    const recent: PaletteItem[] = []
+    for (const path of recentFiles) {
+      const match = byPath.get(path)
+      if (match) recent.push({ ...match, isRecent: true })
+    }
+    return recent
+  }, [items, recentFiles])
 
   const fuse = useMemo(
     () =>
@@ -52,12 +79,17 @@ const QuickOpenBody = (): React.JSX.Element => {
   )
 
   const results = useMemo<PaletteItem[]>(() => {
-    if (!query.trim()) return items.slice(0, 50)
+    if (!query.trim()) {
+      // Empty query → show recent files first, then the rest of the file list
+      const recentPaths = new Set(recentItems.map((r) => r.path))
+      const rest = items.filter((i) => !recentPaths.has(i.path)).slice(0, 50 - recentItems.length)
+      return [...recentItems, ...rest]
+    }
     return fuse
       .search(query)
       .map((r) => r.item)
       .slice(0, 50)
-  }, [query, items, fuse])
+  }, [query, items, fuse, recentItems])
 
   // Derived: active index clamped to current result length — no effect needed
   const clampedIndex = Math.min(activeIndex, Math.max(0, results.length - 1))
@@ -108,28 +140,41 @@ const QuickOpenBody = (): React.JSX.Element => {
         {results.length === 0 && (
           <div className="px-4 py-6 text-center text-sm text-muted-foreground">No files match</div>
         )}
+        {!query.trim() && recentItems.length > 0 && (
+          <div className="px-4 pt-2 pb-1 text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
+            Recent
+          </div>
+        )}
         {results.map((item, idx) => {
           const active = idx === clampedIndex
+          const firstNonRecent =
+            !query.trim() && recentItems.length > 0 && idx === recentItems.length && !item.isRecent
           return (
-            <button
-              key={item.path}
-              data-index={idx}
-              onClick={() => {
-                void openFile(item.path)
-                closeQuickOpen()
-              }}
-              onMouseMove={() => setActiveIndex(idx)}
-              className={cn(
-                'flex w-full items-center gap-3 px-4 py-2 text-left text-sm',
-                active && 'bg-accent text-accent-foreground'
+            <div key={item.path}>
+              {firstNonRecent && (
+                <div className="px-4 pt-2 pb-1 text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
+                  All files
+                </div>
               )}
-            >
-              <FileTextIcon className="size-4 shrink-0 text-muted-foreground" />
-              <div className="min-w-0 flex-1">
-                <div className="truncate">{item.displayName}</div>
-                <div className="truncate text-xs text-muted-foreground">{item.folder}</div>
-              </div>
-            </button>
+              <button
+                data-index={idx}
+                onClick={() => {
+                  void openFile(item.path)
+                  closeQuickOpen()
+                }}
+                onMouseMove={() => setActiveIndex(idx)}
+                className={cn(
+                  'flex w-full items-center gap-3 px-4 py-2 text-left text-sm',
+                  active && 'bg-accent text-accent-foreground'
+                )}
+              >
+                <FileTextIcon className="size-4 shrink-0 text-muted-foreground" />
+                <div className="min-w-0 flex-1">
+                  <div className="truncate">{item.displayName}</div>
+                  <div className="truncate text-xs text-muted-foreground">{item.folder}</div>
+                </div>
+              </button>
+            </div>
           )
         })}
       </div>

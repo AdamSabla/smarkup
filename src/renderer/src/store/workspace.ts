@@ -37,6 +37,9 @@ type WorkspaceState = {
   theme: Theme
   sidebarVisible: boolean
   editorMode: EditorMode
+  recentFiles: string[]
+  autoSave: boolean
+  autoSaveDelayMs: number
 
   // --- Volatile UI state ---
   sections: SidebarSection[]
@@ -77,6 +80,7 @@ type WorkspaceState = {
   toggleSidebar: () => Promise<void>
   setEditorMode: (mode: EditorMode) => Promise<void>
   setTheme: (theme: Theme) => Promise<void>
+  setAutoSave: (enabled: boolean) => Promise<void>
   openSettings: () => void
   closeSettings: () => void
   openQuickOpen: () => void
@@ -87,6 +91,8 @@ type WorkspaceState = {
   setUpdateStatus: (status: UpdateStatus) => void
   checkForUpdates: () => Promise<void>
 }
+
+const MAX_RECENT_FILES = 20
 
 const DRAFTS_ID = 'drafts'
 
@@ -135,6 +141,9 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   theme: 'system',
   sidebarVisible: true,
   editorMode: 'visual',
+  recentFiles: [],
+  autoSave: false,
+  autoSaveDelayMs: 1500,
 
   sections: [],
   tabs: [],
@@ -152,7 +161,10 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       additionalFolders: settings.additionalFolders,
       theme: settings.theme,
       sidebarVisible: settings.sidebarVisible,
-      editorMode: settings.editorMode
+      editorMode: settings.editorMode,
+      recentFiles: settings.recentFiles ?? [],
+      autoSave: settings.autoSave ?? false,
+      autoSaveDelayMs: settings.autoSaveDelayMs ?? 1500
     })
     await get().refreshAllSections()
 
@@ -272,6 +284,14 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   },
 
   openFile: async (path) => {
+    // Track recent file regardless of whether it's already open
+    const prevRecent = get().recentFiles
+    const nextRecent = [path, ...prevRecent.filter((p) => p !== path)].slice(0, MAX_RECENT_FILES)
+    if (nextRecent[0] !== prevRecent[0] || nextRecent.length !== prevRecent.length) {
+      set({ recentFiles: nextRecent })
+      void persistSettings({ recentFiles: nextRecent })
+    }
+
     const existing = get().tabs.find((t) => t.path === path)
     if (existing) {
       set({ activeTabId: existing.id })
@@ -423,6 +443,11 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   setTheme: async (theme) => {
     set({ theme })
     await persistSettings({ theme })
+  },
+
+  setAutoSave: async (enabled) => {
+    set({ autoSave: enabled })
+    await persistSettings({ autoSave: enabled })
   },
 
   openSettings: () => set({ settingsOpen: true }),

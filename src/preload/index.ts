@@ -25,6 +25,9 @@ export type Settings = {
   editorMode: 'visual' | 'raw'
   openTabs: string[]
   activeTabPath: string | null
+  recentFiles: string[]
+  autoSave: boolean
+  autoSaveDelayMs: number
 }
 
 export type WatchEvent = {

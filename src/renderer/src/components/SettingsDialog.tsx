@@ -20,8 +20,16 @@ const THEME_OPTIONS: ThemeOption[] = [
 ]
 
 const SettingsDialog = (): React.JSX.Element => {
-  const { settingsOpen, closeSettings, draftsFolder, setDraftsFolder, theme, setTheme } =
-    useWorkspace()
+  const {
+    settingsOpen,
+    closeSettings,
+    draftsFolder,
+    setDraftsFolder,
+    theme,
+    setTheme,
+    autoSave,
+    setAutoSave
+  } = useWorkspace()
 
   const handlePickDraftsFolder = async (): Promise<void> => {
     const chosen = await window.api.openDirectory()
@@ -75,6 +83,35 @@ const SettingsDialog = (): React.JSX.Element => {
                   {label}
                 </Button>
               ))}
+            </div>
+          </div>
+
+          {/* Auto-save */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <label className="text-sm font-medium">Auto-save</label>
+                <p className="text-xs text-muted-foreground">
+                  Save the active file automatically after 1.5 s of inactivity.
+                </p>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={autoSave}
+                onClick={() => void setAutoSave(!autoSave)}
+                className={cn(
+                  'relative inline-flex h-5 w-9 shrink-0 items-center rounded-full border transition-colors',
+                  autoSave ? 'bg-primary border-primary' : 'bg-muted border-border'
+                )}
+              >
+                <span
+                  className={cn(
+                    'inline-block size-3.5 rounded-full bg-background shadow transition-transform',
+                    autoSave ? 'translate-x-[18px]' : 'translate-x-[2px]'
+                  )}
+                />
+              </button>
             </div>
           </div>
         </div>

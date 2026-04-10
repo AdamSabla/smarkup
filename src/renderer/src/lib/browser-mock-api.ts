@@ -33,7 +33,10 @@ let mockSettings: Settings = {
   sidebarVisible: true,
   editorMode: 'visual',
   openTabs: [],
-  activeTabPath: null
+  activeTabPath: null,
+  recentFiles: [],
+  autoSave: false,
+  autoSaveDelayMs: 1500
 }
 
 const listEntries = (): FileEntry[] =>

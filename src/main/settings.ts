@@ -18,6 +18,9 @@ export type Settings = {
   editorMode: 'visual' | 'raw'
   openTabs: string[]
   activeTabPath: string | null
+  recentFiles: string[]
+  autoSave: boolean
+  autoSaveDelayMs: number
 }
 
 const DEFAULT_SETTINGS: Settings = {
@@ -27,7 +30,10 @@ const DEFAULT_SETTINGS: Settings = {
   sidebarVisible: true,
   editorMode: 'visual',
   openTabs: [],
-  activeTabPath: null
+  activeTabPath: null,
+  recentFiles: [],
+  autoSave: false,
+  autoSaveDelayMs: 1500
 }
 
 let cached: Settings | null = null
