@@ -38,13 +38,13 @@ const App = (): React.JSX.Element => {
         <ResizablePanelGroup direction="horizontal">
           {sidebarVisible && (
             <>
-              <ResizablePanel defaultSize={20} minSize={12} maxSize={40}>
+              <ResizablePanel defaultSize="240px" minSize="180px" maxSize="500px">
                 <Sidebar />
               </ResizablePanel>
               <ResizableHandle />
             </>
           )}
-          <ResizablePanel defaultSize={80}>
+          <ResizablePanel>
             <div className="flex h-full flex-col">
               <div className="min-h-0 flex-1">
                 <EditorPane />
