@@ -5,10 +5,13 @@ import Sidebar from '@/components/Sidebar'
 import TabBar from '@/components/TabBar'
 import UpdateBanner from '@/components/UpdateBanner'
 import SettingsDialog from '@/components/SettingsDialog'
+import CommandPalette from '@/components/CommandPalette'
 import EditorPane from '@/components/editor/EditorPane'
 import { useShortcuts } from '@/hooks/useShortcuts'
 import { useUpdateSubscription } from '@/hooks/useUpdateSubscription'
 import { useTheme } from '@/hooks/useTheme'
+import { useFileWatcher } from '@/hooks/useFileWatcher'
+import { usePersistOpenTabs } from '@/hooks/usePersistOpenTabs'
 import { useWorkspace } from '@/store/workspace'
 
 const App = (): React.JSX.Element => {
@@ -22,6 +25,8 @@ const App = (): React.JSX.Element => {
   useShortcuts()
   useUpdateSubscription()
   useTheme()
+  useFileWatcher()
+  usePersistOpenTabs()
 
   return (
     <div className="flex h-full w-full flex-col bg-background text-foreground">
@@ -48,6 +53,7 @@ const App = (): React.JSX.Element => {
         </ResizablePanelGroup>
       </div>
       <SettingsDialog />
+      <CommandPalette />
     </div>
   )
 }

@@ -32,7 +32,8 @@ let mockSettings: Settings = {
   theme: 'system',
   sidebarVisible: true,
   editorMode: 'visual',
-  tabOrder: []
+  openTabs: [],
+  activeTabPath: null
 }
 
 const listEntries = (): FileEntry[] =>
@@ -101,6 +102,10 @@ const mockApi: SmarkupApi = {
     mockSettings = { ...mockSettings, ...patch }
     return mockSettings
   },
+
+  // Watcher: no-op in browser mode
+  syncWatchedFolders: async () => true,
+  onWatchEvent: () => () => undefined,
 
   // Updater: no-op in browser mode
   checkForUpdates: async () => ({ kind: 'not-available' }) as UpdateStatus,

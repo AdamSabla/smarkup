@@ -16,7 +16,8 @@ export type Settings = {
   theme: Theme
   sidebarVisible: boolean
   editorMode: 'visual' | 'raw'
-  tabOrder: string[]
+  openTabs: string[]
+  activeTabPath: string | null
 }
 
 const DEFAULT_SETTINGS: Settings = {
@@ -25,7 +26,8 @@ const DEFAULT_SETTINGS: Settings = {
   theme: 'system',
   sidebarVisible: true,
   editorMode: 'visual',
-  tabOrder: []
+  openTabs: [],
+  activeTabPath: null
 }
 
 let cached: Settings | null = null

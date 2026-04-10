@@ -1,14 +1,22 @@
+import { useMemo } from 'react'
 import { PanelLeftIcon, PanelLeftOpenIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { useWorkspace } from '@/store/workspace'
+import { countWords, readingMinutes } from '@/lib/text-stats'
 
 const isMac = navigator.userAgent.toLowerCase().includes('mac')
 
 const TitleBar = (): React.JSX.Element => {
   const { sidebarVisible, toggleSidebar, tabs, activeTabId } = useWorkspace()
   const activeTab = tabs.find((t) => t.id === activeTabId)
-  const title = activeTab ? activeTab.name : 'smarkup'
+  const title = activeTab ? activeTab.name.replace(/\.md$/i, '') : 'smarkup'
+
+  const stats = useMemo(() => {
+    if (!activeTab) return null
+    const words = countWords(activeTab.content)
+    return { words, minutes: readingMinutes(words) }
+  }, [activeTab])
 
   return (
     <div
@@ -40,8 +48,20 @@ const TitleBar = (): React.JSX.Element => {
         {title}
       </div>
 
-      {/* Right side: reserved for window controls on non-mac */}
-      <div className={cn('flex items-center', !isMac && 'w-[140px]')} />
+      <div
+        className={cn(
+          'flex items-center gap-2 pr-3 text-[11px] tabular-nums text-muted-foreground',
+          !isMac && 'mr-[140px]'
+        )}
+      >
+        {stats && stats.words > 0 && (
+          <>
+            <span>{stats.words.toLocaleString()} words</span>
+            <span className="text-border">·</span>
+            <span>{stats.minutes} min read</span>
+          </>
+        )}
+      </div>
     </div>
   )
 }

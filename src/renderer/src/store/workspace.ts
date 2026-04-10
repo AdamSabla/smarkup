@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 // Type-only imports — erased at build time.
-import type { FileEntry, Settings, Theme, UpdateStatus } from '../../../preload'
+import type { FileEntry, Settings, Theme, UpdateStatus, WatchPayload } from '../../../preload'
 
 export type EditorMode = 'visual' | 'raw'
 
@@ -44,11 +44,14 @@ type WorkspaceState = {
   activeTabId: string | null
   updateStatus: UpdateStatus
   settingsOpen: boolean
+  commandPaletteOpen: boolean
+  hydrated: boolean
 
   // --- Actions ---
   hydrate: () => Promise<void>
   refreshAllSections: () => Promise<void>
   refreshSection: (sectionId: string) => Promise<void>
+  handleWatchEvent: (payload: WatchPayload) => Promise<void>
 
   setDraftsFolder: (path: string | null) => Promise<void>
   addFolder: (path: string) => Promise<void>
@@ -56,6 +59,9 @@ type WorkspaceState = {
 
   openFile: (path: string) => Promise<void>
   createDraft: () => Promise<void>
+  renameFile: (oldPath: string, newName: string) => Promise<void>
+  deleteFile: (path: string) => Promise<void>
+
   setActiveTab: (id: string) => void
   closeTab: (id: string) => void
   reorderTabs: (fromIndex: number, toIndex: number) => void
@@ -67,6 +73,8 @@ type WorkspaceState = {
   setTheme: (theme: Theme) => Promise<void>
   openSettings: () => void
   closeSettings: () => void
+  openCommandPalette: () => void
+  closeCommandPalette: () => void
 
   setUpdateStatus: (status: UpdateStatus) => void
   checkForUpdates: () => Promise<void>
@@ -103,6 +111,16 @@ const buildFolderSection = async (path: string): Promise<SidebarSection> => {
 const persistSettings = (patch: Partial<Settings>): Promise<Settings> =>
   window.api.saveSettings(patch)
 
+const collectWatchedFolders = (
+  draftsFolder: string | null,
+  additionalFolders: string[]
+): string[] => {
+  const set = new Set<string>()
+  if (draftsFolder) set.add(draftsFolder)
+  for (const f of additionalFolders) set.add(f)
+  return Array.from(set)
+}
+
 export const useWorkspace = create<WorkspaceState>((set, get) => ({
   draftsFolder: null,
   additionalFolders: [],
@@ -115,6 +133,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   activeTabId: null,
   updateStatus: { kind: 'idle' },
   settingsOpen: false,
+  commandPaletteOpen: false,
+  hydrated: false,
 
   hydrate: async () => {
     const settings = await window.api.loadSettings()
@@ -126,6 +146,27 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       editorMode: settings.editorMode
     })
     await get().refreshAllSections()
+
+    // Restore open tabs
+    const restoredTabs: OpenFile[] = []
+    for (const path of settings.openTabs) {
+      try {
+        const content = await window.api.readFile(path)
+        const name = await window.api.basename(path)
+        restoredTabs.push({ id: path, path, name, content, savedContent: content })
+      } catch {
+        // File is gone — silently skip
+      }
+    }
+    const activeTabId =
+      settings.activeTabPath && restoredTabs.some((t) => t.id === settings.activeTabPath)
+        ? settings.activeTabPath
+        : (restoredTabs[restoredTabs.length - 1]?.id ?? null)
+    set({ tabs: restoredTabs, activeTabId, hydrated: true })
+
+    // Start file watchers
+    const { draftsFolder, additionalFolders } = get()
+    await window.api.syncWatchedFolders(collectWatchedFolders(draftsFolder, additionalFolders))
   },
 
   refreshAllSections: async () => {
@@ -151,10 +192,51 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     }))
   },
 
+  handleWatchEvent: async (payload) => {
+    const { sections, tabs, activeTabId } = get()
+    const parent =
+      sections.find((sec) => sec.path === payload.folder) ??
+      sections.find((sec) => sec.isDrafts && sec.path === payload.folder)
+    if (parent) {
+      await get().refreshSection(parent.id)
+    }
+
+    // If any unlinked file is currently open in a tab, close it silently
+    for (const evt of payload.events) {
+      if (evt.type === 'unlink') {
+        const tab = tabs.find((t) => t.path === evt.path)
+        if (tab) {
+          set((s) => {
+            const nextTabs = s.tabs.filter((t) => t.id !== tab.id)
+            const nextActive = activeTabId === tab.id ? (nextTabs[0]?.id ?? null) : s.activeTabId
+            return { tabs: nextTabs, activeTabId: nextActive }
+          })
+        }
+      } else if (evt.type === 'change') {
+        // External edit — reload the file's content if it's open and clean
+        const tab = tabs.find((t) => t.path === evt.path)
+        if (tab && tab.content === tab.savedContent) {
+          try {
+            const content = await window.api.readFile(evt.path)
+            set((s) => ({
+              tabs: s.tabs.map((t) =>
+                t.id === tab.id ? { ...t, content, savedContent: content } : t
+              )
+            }))
+          } catch {
+            // ignore
+          }
+        }
+      }
+    }
+  },
+
   setDraftsFolder: async (path) => {
     await persistSettings({ draftsFolder: path })
     set({ draftsFolder: path })
     await get().refreshSection(DRAFTS_ID)
+    const { additionalFolders } = get()
+    await window.api.syncWatchedFolders(collectWatchedFolders(path, additionalFolders))
   },
 
   addFolder: async (path) => {
@@ -165,6 +247,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     set({ additionalFolders: next })
     const section = await buildFolderSection(path)
     set((s) => ({ sections: [...s.sections, section] }))
+    const { draftsFolder } = get()
+    await window.api.syncWatchedFolders(collectWatchedFolders(draftsFolder, next))
   },
 
   removeFolder: async (path) => {
@@ -174,6 +258,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       additionalFolders: next,
       sections: s.sections.filter((sec) => sec.id !== path)
     }))
+    const { draftsFolder } = get()
+    await window.api.syncWatchedFolders(collectWatchedFolders(draftsFolder, next))
   },
 
   openFile: async (path) => {
@@ -204,6 +290,33 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     const newPath = await window.api.createFile(draftsFolder, `untitled-${timestamp}.md`)
     await get().refreshSection(DRAFTS_ID)
     await get().openFile(newPath)
+  },
+
+  renameFile: async (oldPath, newName) => {
+    const safeName = newName.endsWith('.md') ? newName : `${newName}.md`
+    const newPath = await window.api.rename(oldPath, safeName)
+    set((s) => ({
+      tabs: s.tabs.map((t) =>
+        t.path === oldPath ? { ...t, id: newPath, path: newPath, name: safeName } : t
+      ),
+      activeTabId: s.activeTabId === oldPath ? newPath : s.activeTabId
+    }))
+    await get().refreshAllSections()
+  },
+
+  deleteFile: async (path) => {
+    await window.api.deletePath(path)
+    set((s) => {
+      const idx = s.tabs.findIndex((t) => t.path === path)
+      if (idx === -1) return s
+      const nextTabs = s.tabs.filter((t) => t.path !== path)
+      const nextActive =
+        s.activeTabId === path
+          ? (nextTabs[Math.min(idx, nextTabs.length - 1)]?.id ?? null)
+          : s.activeTabId
+      return { tabs: nextTabs, activeTabId: nextActive }
+    })
+    await get().refreshAllSections()
   },
 
   setActiveTab: (id) => set({ activeTabId: id }),
@@ -283,6 +396,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
 
   openSettings: () => set({ settingsOpen: true }),
   closeSettings: () => set({ settingsOpen: false }),
+  openCommandPalette: () => set({ commandPaletteOpen: true }),
+  closeCommandPalette: () => set({ commandPaletteOpen: false }),
 
   setUpdateStatus: (status) => set({ updateStatus: status }),
 

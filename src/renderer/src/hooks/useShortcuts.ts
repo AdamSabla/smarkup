@@ -15,7 +15,8 @@ export const useShortcuts = (): void => {
     editorMode,
     tabs,
     setActiveTab,
-    openSettings
+    openSettings,
+    openCommandPalette
   } = useWorkspace()
 
   useEffect(() => {
@@ -35,6 +36,13 @@ export const useShortcuts = (): void => {
       if (key === 's' && !e.shiftKey && !e.altKey) {
         e.preventDefault()
         void saveActive()
+        return
+      }
+
+      // Command palette / fuzzy search: cmd/ctrl+p
+      if (key === 'p' && !e.shiftKey && !e.altKey) {
+        e.preventDefault()
+        openCommandPalette()
         return
       }
 
@@ -92,6 +100,7 @@ export const useShortcuts = (): void => {
     editorMode,
     tabs,
     setActiveTab,
-    openSettings
+    openSettings,
+    openCommandPalette
   ])
 }

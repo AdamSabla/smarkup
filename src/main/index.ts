@@ -4,6 +4,7 @@ import { promises as fs } from 'fs'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { autoUpdater } from 'electron-updater'
 import { loadSettings, saveSettings, type Settings } from './settings'
+import { syncWatchedFolders, stopAllWatchers } from './watcher'
 import icon from '../../resources/icon.png?asset'
 
 const isMac = process.platform === 'darwin'
@@ -147,6 +148,15 @@ const registerSettingsHandlers = (): void => {
   ipcMain.handle('settings:save', (_event, patch: Partial<Settings>) => saveSettings(patch))
 }
 
+// --- File watcher IPC ----------------------------------------------------
+
+const registerWatcherHandlers = (): void => {
+  ipcMain.handle('fs:syncWatchedFolders', (_event, folders: string[]) => {
+    syncWatchedFolders(folders)
+    return true
+  })
+}
+
 // --- Auto-updater --------------------------------------------------------
 
 type UpdateStatus =
@@ -221,6 +231,7 @@ app.whenReady().then(() => {
 
   registerFileHandlers()
   registerSettingsHandlers()
+  registerWatcherHandlers()
   registerUpdater()
   createWindow()
 
@@ -245,4 +256,8 @@ app.on('window-all-closed', () => {
   if (!isMac) {
     app.quit()
   }
+})
+
+app.on('before-quit', () => {
+  stopAllWatchers()
 })

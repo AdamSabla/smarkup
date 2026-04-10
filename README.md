@@ -105,6 +105,7 @@ electron-builder.yml            Packaging + GitHub publish config
 | Shortcut         | Action                                    |
 | ---------------- | ----------------------------------------- |
 | `⌘ N` / `⌘ T`    | New draft in the configured drafts folder |
+| `⌘ P`            | Fuzzy search files across all sections    |
 | `⌘ S`            | Save active tab                           |
 | `⌘ W`            | Close active tab                          |
 | `⌘ ,`            | Open Settings                             |
@@ -113,7 +114,10 @@ electron-builder.yml            Packaging + GitHub publish config
 | `Ctrl Tab`       | Next tab                                  |
 | `Ctrl Shift Tab` | Previous tab                              |
 
-Tabs are draggable — grab any tab in the tab bar to reorder.
+- Tabs are draggable — grab any tab in the tab bar to reorder.
+- Right-click (or double-click to rename) any file in the sidebar for rename / delete actions.
+- Open tabs and the active tab are persisted across restarts.
+- External edits to open files are detected by the file watcher and re-loaded automatically if the tab is clean.
 
 ## Releasing
 

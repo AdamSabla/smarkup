@@ -23,7 +23,19 @@ export type Settings = {
   theme: Theme
   sidebarVisible: boolean
   editorMode: 'visual' | 'raw'
-  tabOrder: string[]
+  openTabs: string[]
+  activeTabPath: string | null
+}
+
+export type WatchEvent = {
+  folder: string
+  path: string
+  type: 'add' | 'unlink' | 'change' | 'rename'
+}
+
+export type WatchPayload = {
+  folder: string
+  events: WatchEvent[]
 }
 
 const api = {
@@ -45,6 +57,17 @@ const api = {
   loadSettings: (): Promise<Settings> => ipcRenderer.invoke('settings:load'),
   saveSettings: (patch: Partial<Settings>): Promise<Settings> =>
     ipcRenderer.invoke('settings:save', patch),
+
+  // --- Watcher ----------------------------------------------------------
+  syncWatchedFolders: (folders: string[]): Promise<boolean> =>
+    ipcRenderer.invoke('fs:syncWatchedFolders', folders),
+  onWatchEvent: (callback: (payload: WatchPayload) => void): (() => void) => {
+    const handler = (_event: unknown, payload: WatchPayload): void => callback(payload)
+    ipcRenderer.on('fs:watchEvent', handler)
+    return () => {
+      ipcRenderer.off('fs:watchEvent', handler)
+    }
+  },
 
   // --- Updater ----------------------------------------------------------
   checkForUpdates: (): Promise<UpdateStatus> => ipcRenderer.invoke('updater:check'),
