@@ -23,22 +23,19 @@ const RawEditor = ({ tabId, value, onChange }: Props): React.JSX.Element => {
   const initialScroll = useRef(useWorkspace.getState().scrollPositions[tabId] ?? 0)
   const saveScrollPosition = useWorkspace((s) => s.saveScrollPosition)
 
-  const onCreateEditor = useCallback(
-    (view: EditorView) => {
-      if (initialScroll.current) {
-        requestAnimationFrame(() => {
-          view.scrollDOM.scrollTop = initialScroll.current
-          lastScrollTop.current = initialScroll.current
-        })
-      }
+  const onCreateEditor = useCallback((view: EditorView) => {
+    if (initialScroll.current) {
+      requestAnimationFrame(() => {
+        view.scrollDOM.scrollTop = initialScroll.current
+        lastScrollTop.current = initialScroll.current
+      })
+    }
 
-      const onScroll = (): void => {
-        lastScrollTop.current = view.scrollDOM.scrollTop
-      }
-      view.scrollDOM.addEventListener('scroll', onScroll, { passive: true })
-    },
-    []
-  )
+    const onScroll = (): void => {
+      lastScrollTop.current = view.scrollDOM.scrollTop
+    }
+    view.scrollDOM.addEventListener('scroll', onScroll, { passive: true })
+  }, [])
 
   useEffect(() => {
     return () => {
@@ -158,7 +155,7 @@ const RawEditor = ({ tabId, value, onChange }: Props): React.JSX.Element => {
         }
       })
     ],
-    []
+    [checklistKeymap]
   )
 
   return (

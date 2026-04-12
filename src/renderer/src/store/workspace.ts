@@ -122,7 +122,14 @@ const readFolderTree = async (dirPath: string): Promise<FolderNode> => {
     .sort((a, b) => b.mtimeMs - a.mtimeMs)
   const dirs = entries.filter((e) => e.isDirectory).sort((a, b) => a.name.localeCompare(b.name))
   const allSubs = await Promise.all(
-    dirs.map((d) => readFolderTree(d.path).catch(() => ({ name: d.name, path: d.path, files: [] as FileEntry[], subfolders: [] as FolderNode[] })))
+    dirs.map((d) =>
+      readFolderTree(d.path).catch(() => ({
+        name: d.name,
+        path: d.path,
+        files: [] as FileEntry[],
+        subfolders: [] as FolderNode[]
+      }))
+    )
   )
   return {
     name: dirPath.split('/').pop() || dirPath,
@@ -133,14 +140,32 @@ const readFolderTree = async (dirPath: string): Promise<FolderNode> => {
 }
 
 const buildDraftsSection = async (path: string | null): Promise<SidebarSection> => {
-  if (!path) return { id: DRAFTS_ID, label: 'Drafts', path, files: [], subfolders: [], isDrafts: true }
-  const tree = await readFolderTree(path).catch(() => ({ name: 'Drafts', path, files: [] as FileEntry[], subfolders: [] as FolderNode[] }))
-  return { id: DRAFTS_ID, label: 'Drafts', path, files: tree.files, subfolders: tree.subfolders, isDrafts: true }
+  if (!path)
+    return { id: DRAFTS_ID, label: 'Drafts', path, files: [], subfolders: [], isDrafts: true }
+  const tree = await readFolderTree(path).catch(() => ({
+    name: 'Drafts',
+    path,
+    files: [] as FileEntry[],
+    subfolders: [] as FolderNode[]
+  }))
+  return {
+    id: DRAFTS_ID,
+    label: 'Drafts',
+    path,
+    files: tree.files,
+    subfolders: tree.subfolders,
+    isDrafts: true
+  }
 }
 
 const buildFolderSection = async (path: string): Promise<SidebarSection> => {
   const label = path.split('/').pop() || path
-  const tree = await readFolderTree(path).catch(() => ({ name: label, path, files: [] as FileEntry[], subfolders: [] as FolderNode[] }))
+  const tree = await readFolderTree(path).catch(() => ({
+    name: label,
+    path,
+    files: [] as FileEntry[],
+    subfolders: [] as FolderNode[]
+  }))
   return { id: path, label, path, files: tree.files, subfolders: tree.subfolders, isDrafts: false }
 }
 
@@ -408,6 +433,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
           nextActive = neighbor.id
         }
       }
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { [id]: _, ...restScroll } = s.scrollPositions
       return { tabs: nextTabs, activeTabId: nextActive, scrollPositions: restScroll }
     }),

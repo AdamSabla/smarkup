@@ -170,11 +170,7 @@ const FileRow = ({
 
   if (renaming) {
     return (
-      <RenameInput
-        initialValue={displayName}
-        onCommit={onCommitRename}
-        onCancel={onCancelRename}
-      />
+      <RenameInput initialValue={displayName} onCommit={onCommitRename} onCancel={onCancelRename} />
     )
   }
 
@@ -489,9 +485,7 @@ const SectionView = ({
               </DropdownMenuItem>
             )}
             {section.path && (
-              <DropdownMenuItem
-                onSelect={() => void window.api.revealInFolder(section.path!)}
-              >
+              <DropdownMenuItem onSelect={() => void window.api.revealInFolder(section.path!)}>
                 <FolderOpenIcon className="size-3.5" />
                 {revealLabel}
               </DropdownMenuItem>
@@ -573,27 +567,25 @@ const Sidebar = (): React.JSX.Element => {
   const [focusedItem, setFocusedItem] = useState<string | null>(null)
   const sidebarRef = useRef<HTMLDivElement>(null)
 
-  const [expandedPaths, setExpandedPaths] = useState<Set<string>>(
-    () => new Set(sections.map((s) => s.id))
-  )
+  const [collapsedPaths, setCollapsedPaths] = useState<Set<string>>(new Set())
   const [showAllSections, setShowAllSections] = useState<Set<string>>(new Set())
 
-  useEffect(() => {
-    setExpandedPaths((prev) => {
-      const next = new Set(prev)
-      let changed = false
-      for (const s of sections) {
-        if (!next.has(s.id)) {
-          next.add(s.id)
-          changed = true
-        }
-      }
-      return changed ? next : prev
-    })
-  }, [sections])
+  const expandedPaths = useMemo(() => {
+    const all = new Set<string>()
+    const walk = (node: FolderNode): void => {
+      all.add(node.path)
+      for (const sub of node.subfolders) walk(sub)
+    }
+    for (const s of sections) {
+      all.add(s.id)
+      for (const sub of s.subfolders) walk(sub)
+    }
+    for (const p of collapsedPaths) all.delete(p)
+    return all
+  }, [sections, collapsedPaths])
 
   const toggleExpanded = useCallback((path: string) => {
-    setExpandedPaths((prev) => {
+    setCollapsedPaths((prev) => {
       const next = new Set(prev)
       if (next.has(path)) next.delete(path)
       else next.add(path)
@@ -615,19 +607,18 @@ const Sidebar = (): React.JSX.Element => {
     [sections, expandedPaths, showAllSections]
   )
 
-  useEffect(() => {
-    if (focusedItem && !flatItems.some((i) => i.path === focusedItem)) {
-      setFocusedItem(null)
-    }
-  }, [flatItems, focusedItem])
+  const activeFocusedItem = useMemo(
+    () => (focusedItem && flatItems.some((i) => i.path === focusedItem) ? focusedItem : null),
+    [focusedItem, flatItems]
+  )
 
   useEffect(() => {
-    if (!focusedItem) return
+    if (!activeFocusedItem) return
     const el = sidebarRef.current?.querySelector(
-      `[data-sidebar-path="${CSS.escape(focusedItem)}"]`
+      `[data-sidebar-path="${CSS.escape(activeFocusedItem)}"]`
     )
     ;(el as HTMLElement)?.scrollIntoView({ block: 'nearest' })
-  }, [focusedItem])
+  }, [activeFocusedItem])
 
   const handleFocusItem = useCallback((path: string) => {
     setFocusedItem(path)
@@ -642,9 +633,9 @@ const Sidebar = (): React.JSX.Element => {
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
-      if (!focusedItem || renamingPath) return
+      if (!activeFocusedItem || renamingPath) return
 
-      const idx = flatItems.findIndex((i) => i.path === focusedItem)
+      const idx = flatItems.findIndex((i) => i.path === activeFocusedItem)
       if (idx === -1) return
       const item = flatItems[idx]
 
@@ -663,7 +654,11 @@ const Sidebar = (): React.JSX.Element => {
           e.preventDefault()
           if (item.type === 'section' || item.type === 'folder') {
             if (!expandedPaths.has(item.path)) {
-              setExpandedPaths((prev) => new Set([...prev, item.path]))
+              setCollapsedPaths((prev) => {
+                const next = new Set(prev)
+                next.delete(item.path)
+                return next
+              })
             } else {
               const next = flatItems[idx + 1]
               if (next && next.parentPath === item.path) {
@@ -675,15 +670,8 @@ const Sidebar = (): React.JSX.Element => {
         }
         case 'ArrowLeft': {
           e.preventDefault()
-          if (
-            (item.type === 'section' || item.type === 'folder') &&
-            expandedPaths.has(item.path)
-          ) {
-            setExpandedPaths((prev) => {
-              const next = new Set(prev)
-              next.delete(item.path)
-              return next
-            })
+          if ((item.type === 'section' || item.type === 'folder') && expandedPaths.has(item.path)) {
+            setCollapsedPaths((prev) => new Set([...prev, item.path]))
           } else if (item.parentPath) {
             setFocusedItem(item.parentPath)
           }
@@ -708,7 +696,7 @@ const Sidebar = (): React.JSX.Element => {
         }
       }
     },
-    [focusedItem, flatItems, expandedPaths, toggleExpanded, openFile, renamingPath]
+    [activeFocusedItem, flatItems, expandedPaths, toggleExpanded, openFile, renamingPath]
   )
 
   const handleAddFolder = async (): Promise<void> => {
@@ -731,7 +719,7 @@ const Sidebar = (): React.JSX.Element => {
             section={section}
             renamingPath={renamingPath}
             expandedPaths={expandedPaths}
-            focusedItem={focusedItem}
+            focusedItem={activeFocusedItem}
             showAll={showAllSections.has(section.id)}
             onToggleExpanded={toggleExpanded}
             onStartRename={setRenamingPath}

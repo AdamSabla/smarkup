@@ -54,8 +54,8 @@ const Tab = ({
 
   useEffect(() => {
     if (renaming) {
-      setRenameValue(displayName)
       requestAnimationFrame(() => {
+        setRenameValue(displayName)
         inputRef.current?.focus()
         inputRef.current?.select()
       })
