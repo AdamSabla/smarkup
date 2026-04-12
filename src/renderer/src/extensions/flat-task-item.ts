@@ -6,6 +6,8 @@ import taskListPlugin from 'markdown-it-task-lists'
 
 export const MAX_INDENT_LEVEL = 8
 
+const taskListPluginRegistered = new WeakSet<object>()
+
 function clampIndent(n: number): number {
   const v = isNaN(n) ? 0 : n
   return Math.max(0, Math.min(v, MAX_INDENT_LEVEL))
@@ -72,6 +74,7 @@ function collectFlatItems(
     div.setAttribute('data-indent', String(indent))
     div.setAttribute('data-checked', String(checked))
 
+    let isFirstTextNode = true
     for (const node of [...child.childNodes]) {
       if (node instanceof Element && (node.tagName === 'UL' || node.tagName === 'OL')) continue
       if (
@@ -80,7 +83,13 @@ function collectFlatItems(
         (node as HTMLInputElement).type === 'checkbox'
       )
         continue
-      div.appendChild(node.cloneNode(true))
+      const clone = node.cloneNode(true)
+      if (isFirstTextNode && clone.nodeType === 3 && clone.textContent) {
+        clone.textContent = clone.textContent.replace(/^\s+/, '')
+      }
+      if (clone.nodeType === 3 && clone.textContent === '') continue
+      div.appendChild(clone)
+      if (clone.nodeType === 3) isFirstTextNode = false
     }
 
     items.push(div)
@@ -171,7 +180,16 @@ export const FlatTaskItem = Node.create({
   },
 
   parseHTML() {
-    return [{ tag: 'div[data-type="flatTaskItem"]', priority: 100 }]
+    return [
+      {
+        tag: 'div[data-type="flatTaskItem"]',
+        priority: 100,
+        contentElement: (dom: HTMLElement) => {
+          const inner = dom.querySelector(':scope > div:not([data-type])')
+          return inner ?? dom
+        }
+      }
+    ]
   },
 
   renderHTML({ node, HTMLAttributes }) {
@@ -419,7 +437,10 @@ export const FlatTaskItem = Node.create({
         },
         parse: {
           setup(markdownit: { use: (plugin: unknown) => void }) {
-            markdownit.use(taskListPlugin)
+            if (!taskListPluginRegistered.has(markdownit)) {
+              markdownit.use(taskListPlugin)
+              taskListPluginRegistered.add(markdownit)
+            }
           },
           updateDOM(element: HTMLElement) {
             flattenTaskListDOM(element)

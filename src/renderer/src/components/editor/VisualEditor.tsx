@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { useEditor, EditorContent, type Editor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import { Markdown, type MarkdownStorage } from 'tiptap-markdown'
@@ -23,6 +23,7 @@ const VisualEditor = ({ tabId, value, onChange }: Props): React.JSX.Element => {
   const lastScrollTop = useRef(0)
   const initialScroll = useRef(useWorkspace.getState().scrollPositions[tabId] ?? 0)
   const saveScrollPosition = useWorkspace((s) => s.saveScrollPosition)
+  const lastEmittedMarkdown = useRef(value)
 
   useEffect(() => {
     const el = scrollRef.current
@@ -46,8 +47,8 @@ const VisualEditor = ({ tabId, value, onChange }: Props): React.JSX.Element => {
     }
   }, [tabId, saveScrollPosition])
 
-  const editor = useEditor({
-    extensions: [
+  const extensions = useMemo(
+    () => [
       StarterKit.configure({
         heading: { levels: [1, 2, 3, 4] }
       }),
@@ -63,10 +64,17 @@ const VisualEditor = ({ tabId, value, onChange }: Props): React.JSX.Element => {
         transformCopiedText: true
       })
     ],
+    []
+  )
+
+  const editor = useEditor({
+    extensions,
     autofocus: 'end',
     content: value,
     onUpdate: ({ editor: e }) => {
-      onChange(getMarkdown(e))
+      const md = getMarkdown(e)
+      lastEmittedMarkdown.current = md
+      onChange(md)
     },
     editorProps: {
       attributes: {
@@ -75,12 +83,14 @@ const VisualEditor = ({ tabId, value, onChange }: Props): React.JSX.Element => {
     }
   })
 
-  // Reconcile external value changes (e.g. switching tabs or raw-edit changes)
+  // Reconcile external value changes (e.g. file reload from watcher or raw-edit)
   useEffect(() => {
     if (!editor) return
+    if (value === lastEmittedMarkdown.current) return
     const current = getMarkdown(editor)
     if (current !== value) {
       editor.commands.setContent(value, { emitUpdate: false })
+      lastEmittedMarkdown.current = value
     }
   }, [value, editor])
 
