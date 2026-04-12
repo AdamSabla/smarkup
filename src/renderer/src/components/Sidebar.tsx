@@ -10,10 +10,12 @@ import {
   FolderMinusIcon,
   FolderIcon,
   FolderOpenIcon,
-  ChevronRightIcon
+  ChevronRightIcon,
+  PlusIcon
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 import {
   ContextMenu,
   ContextMenuContent,
@@ -43,6 +45,37 @@ const revealLabel = navigator.platform.startsWith('Win')
     : 'Show in file manager'
 
 const isModClick = (e: React.MouseEvent): boolean => (isMac ? e.metaKey : e.ctrlKey)
+
+const TruncatedName = ({
+  children,
+  className
+}: {
+  children: string
+  className?: string
+}): React.JSX.Element => {
+  const ref = useRef<HTMLSpanElement>(null)
+  const [overflowing, setOverflowing] = useState(false)
+
+  const check = useCallback(() => {
+    const el = ref.current
+    if (el) setOverflowing(el.scrollWidth > el.clientWidth)
+  }, [])
+
+  const label = (
+    <span ref={ref} onMouseEnter={check} className={cn('min-w-0 flex-1 truncate', className)}>
+      {children}
+    </span>
+  )
+
+  if (!overflowing) return label
+
+  return (
+    <Tooltip delayDuration={400}>
+      <TooltipTrigger asChild>{label}</TooltipTrigger>
+      <TooltipContent side="right">{children}</TooltipContent>
+    </Tooltip>
+  )
+}
 
 type FlatItem = {
   path: string
@@ -140,6 +173,67 @@ const RenameInput = ({ initialValue, onCommit, onCancel }: RenameInputProps): Re
   )
 }
 
+type FolderRenameInputProps = {
+  initialValue: string
+  depth: number
+  onCommit: (value: string) => void
+  onCancel: () => void
+}
+
+const FolderRenameInput = ({
+  initialValue,
+  depth,
+  onCommit,
+  onCancel
+}: FolderRenameInputProps): React.JSX.Element => {
+  const [value, setValue] = useState(initialValue)
+  const ref = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    ref.current?.focus()
+    ref.current?.select()
+  }, [])
+
+  const commit = (): void => {
+    const trimmed = value.trim()
+    if (!trimmed || trimmed === initialValue) {
+      onCancel()
+      return
+    }
+    onCommit(trimmed)
+  }
+
+  return (
+    <div
+      style={{ paddingLeft: 8 + depth * 12 }}
+      className={cn(
+        'flex w-full items-center gap-1.5 rounded-md pr-2 py-1',
+        'bg-sidebar-accent text-sidebar-accent-foreground'
+      )}
+    >
+      <ChevronRightIcon className="size-3 shrink-0" />
+      <FolderIcon className="size-3.5 shrink-0" />
+      <input
+        ref={ref}
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault()
+            commit()
+          } else if (e.key === 'Escape') {
+            e.preventDefault()
+            onCancel()
+          }
+          e.stopPropagation()
+        }}
+        className="flex-1 bg-transparent text-sm outline-none"
+      />
+    </div>
+  )
+}
+
 type FileRowProps = {
   file: FileEntry
   active: boolean
@@ -196,7 +290,7 @@ const FileRow = ({
           )}
         >
           <FileTextIcon className="size-3.5 shrink-0 text-muted-foreground" />
-          <span className="min-w-0 flex-1 truncate">{displayName}</span>
+          <TruncatedName>{displayName}</TruncatedName>
 
           <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
             <DropdownMenuTrigger asChild>
@@ -299,63 +393,96 @@ type SubfolderViewProps = {
   folder: FolderNode
   depth: number
   renamingPath: string | null
+  renamingFolderPath: string | null
   expandedPaths: Set<string>
   focusedItem: string | null
   onToggleExpanded: (path: string) => void
   onStartRename: (path: string) => void
   onCancelRename: () => void
   onFocusItem: (path: string) => void
+  onCreateSubfolder: (parentPath: string) => void
+  onCommitFolderRename: (oldPath: string, newName: string) => void
+  onCancelFolderRename: () => void
 }
 
 const SubfolderView = ({
   folder,
   depth,
   renamingPath,
+  renamingFolderPath,
   expandedPaths,
   focusedItem,
   onToggleExpanded,
   onStartRename,
   onCancelRename,
-  onFocusItem
+  onFocusItem,
+  onCreateSubfolder,
+  onCommitFolderRename,
+  onCancelFolderRename
 }: SubfolderViewProps): React.JSX.Element => {
   const expanded = expandedPaths.has(folder.path)
   const focused = focusedItem === folder.path
   const paddingLeft = 8 + depth * 12
   const isEmpty = folder.files.length === 0 && folder.subfolders.length === 0
+  const isRenaming = renamingFolderPath === folder.path
+
+  if (isRenaming) {
+    return (
+      <FolderRenameInput
+        initialValue={folder.name}
+        depth={depth}
+        onCommit={(newName) => onCommitFolderRename(folder.path, newName)}
+        onCancel={onCancelFolderRename}
+      />
+    )
+  }
 
   return (
     <div>
-      <button
-        data-sidebar-path={folder.path}
-        onClick={(e) => {
-          if (isModClick(e)) {
-            e.preventDefault()
-            onFocusItem(folder.path)
-          } else {
-            onToggleExpanded(folder.path)
-          }
-        }}
-        style={{ paddingLeft }}
-        className={cn(
-          'flex w-full items-center gap-1.5 rounded-md pr-2 py-1 text-left text-sm',
-          'hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
-          'text-muted-foreground',
-          focused && 'ring-1 ring-inset ring-ring'
-        )}
-      >
-        <ChevronRightIcon
+      <div className="group/folder relative flex items-center">
+        <button
+          data-sidebar-path={folder.path}
+          onClick={(e) => {
+            if (isModClick(e)) {
+              e.preventDefault()
+              onFocusItem(folder.path)
+            } else {
+              onToggleExpanded(folder.path)
+            }
+          }}
+          style={{ paddingLeft }}
           className={cn(
-            'size-3 shrink-0 transition-transform duration-150',
-            expanded && 'rotate-90'
+            'flex w-full items-center gap-1.5 rounded-md pr-7 py-1 text-left text-sm',
+            'hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
+            'text-muted-foreground',
+            focused && 'ring-1 ring-inset ring-ring'
           )}
-        />
-        {expanded ? (
-          <FolderOpenIcon className="size-3.5 shrink-0" />
-        ) : (
-          <FolderIcon className="size-3.5 shrink-0" />
-        )}
-        <span className="min-w-0 flex-1 truncate">{folder.name}</span>
-      </button>
+        >
+          <ChevronRightIcon
+            className={cn(
+              'size-3 shrink-0 transition-transform duration-150',
+              expanded && 'rotate-90'
+            )}
+          />
+          {expanded ? (
+            <FolderOpenIcon className="size-3.5 shrink-0" />
+          ) : (
+            <FolderIcon className="size-3.5 shrink-0" />
+          )}
+          <TruncatedName>{folder.name}</TruncatedName>
+        </button>
+        <span
+          role="button"
+          tabIndex={-1}
+          onClick={(e) => {
+            e.stopPropagation()
+            onCreateSubfolder(folder.path)
+          }}
+          className="absolute right-1 inline-flex shrink-0 items-center justify-center rounded-sm size-5 opacity-0 group-hover/folder:opacity-100 hover:bg-sidebar-accent"
+        >
+          <PlusIcon className="size-3 text-muted-foreground" />
+        </span>
+      </div>
 
       {expanded && (
         <div>
@@ -374,16 +501,20 @@ const SubfolderView = ({
               folder={sub}
               depth={depth + 1}
               renamingPath={renamingPath}
+              renamingFolderPath={renamingFolderPath}
               expandedPaths={expandedPaths}
               focusedItem={focusedItem}
               onToggleExpanded={onToggleExpanded}
               onStartRename={onStartRename}
               onCancelRename={onCancelRename}
               onFocusItem={onFocusItem}
+              onCreateSubfolder={onCreateSubfolder}
+              onCommitFolderRename={onCommitFolderRename}
+              onCancelFolderRename={onCancelFolderRename}
             />
           ))}
 
-          <div style={{ paddingLeft: depth * 12 }}>
+          <div style={{ paddingLeft: 20 + (depth + 1) * 12 }}>
             <FileList
               files={folder.files}
               renamingPath={renamingPath}
@@ -403,6 +534,7 @@ type SectionViewProps = {
   section: SidebarSection
   onRemove?: () => void
   renamingPath: string | null
+  renamingFolderPath: string | null
   expandedPaths: Set<string>
   focusedItem: string | null
   showAll: boolean
@@ -411,12 +543,16 @@ type SectionViewProps = {
   onCancelRename: () => void
   onFocusItem: (path: string) => void
   onToggleShowAll: () => void
+  onCreateSubfolder: (parentPath: string) => void
+  onCommitFolderRename: (oldPath: string, newName: string) => void
+  onCancelFolderRename: () => void
 }
 
 const SectionView = ({
   section,
   onRemove,
   renamingPath,
+  renamingFolderPath,
   expandedPaths,
   focusedItem,
   showAll,
@@ -424,7 +560,10 @@ const SectionView = ({
   onStartRename,
   onCancelRename,
   onFocusItem,
-  onToggleShowAll
+  onToggleShowAll,
+  onCreateSubfolder,
+  onCommitFolderRename,
+  onCancelFolderRename
 }: SectionViewProps): React.JSX.Element => {
   const expanded = expandedPaths.has(section.id)
   const focused = focusedItem === section.id
@@ -460,8 +599,20 @@ const SectionView = ({
               expanded && 'rotate-90'
             )}
           />
-          {section.label}
+          <TruncatedName>{section.label}</TruncatedName>
         </button>
+
+        {section.path && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className={cn('size-5 opacity-0 group-hover:opacity-100')}
+            aria-label={`New folder in ${section.label}`}
+            onClick={() => onCreateSubfolder(section.path!)}
+          >
+            <PlusIcon className="size-3" />
+          </Button>
+        )}
 
         <DropdownMenu open={sectionMenuOpen} onOpenChange={setSectionMenuOpen}>
           <DropdownMenuTrigger asChild>
@@ -521,12 +672,16 @@ const SectionView = ({
               folder={sub}
               depth={1}
               renamingPath={renamingPath}
+              renamingFolderPath={renamingFolderPath}
               expandedPaths={expandedPaths}
               focusedItem={focusedItem}
               onToggleExpanded={onToggleExpanded}
               onStartRename={onStartRename}
               onCancelRename={onCancelRename}
               onFocusItem={onFocusItem}
+              onCreateSubfolder={onCreateSubfolder}
+              onCommitFolderRename={onCommitFolderRename}
+              onCancelFolderRename={onCancelFolderRename}
             />
           ))}
 
@@ -562,8 +717,10 @@ const SectionView = ({
 }
 
 const Sidebar = (): React.JSX.Element => {
-  const { sections, addFolder, removeFolder, openSettings, openFile } = useWorkspace()
+  const { sections, addFolder, removeFolder, openSettings, openFile, createSubfolder, renameFolder } =
+    useWorkspace()
   const [renamingPath, setRenamingPath] = useState<string | null>(null)
+  const [renamingFolderPath, setRenamingFolderPath] = useState<string | null>(null)
   const [focusedItem, setFocusedItem] = useState<string | null>(null)
   const sidebarRef = useRef<HTMLDivElement>(null)
 
@@ -699,6 +856,46 @@ const Sidebar = (): React.JSX.Element => {
     [activeFocusedItem, flatItems, expandedPaths, toggleExpanded, openFile, renamingPath]
   )
 
+  const handleCreateSubfolder = useCallback(
+    async (parentPath: string): Promise<void> => {
+      setCollapsedPaths((prev) => {
+        const next = new Set(prev)
+        next.delete(parentPath)
+        // Also ensure the owning section is expanded
+        for (const s of sections) {
+          if (s.path && (parentPath === s.path || parentPath.startsWith(s.path + '/'))) {
+            next.delete(s.id)
+            break
+          }
+        }
+        return next
+      })
+      try {
+        const newPath = await createSubfolder(parentPath)
+        setRenamingFolderPath(newPath)
+      } catch {
+        // Directory may already exist or other FS error
+      }
+    },
+    [createSubfolder, sections]
+  )
+
+  const handleCommitFolderRename = useCallback(
+    async (oldPath: string, newName: string): Promise<void> => {
+      setRenamingFolderPath(null)
+      try {
+        await renameFolder(oldPath, newName)
+      } catch {
+        // Name conflict or FS error — section will refresh and show original name
+      }
+    },
+    [renameFolder]
+  )
+
+  const handleCancelFolderRename = useCallback(() => {
+    setRenamingFolderPath(null)
+  }, [])
+
   const handleAddFolder = async (): Promise<void> => {
     const chosen = await window.api.openDirectory()
     if (chosen) await addFolder(chosen)
@@ -718,6 +915,7 @@ const Sidebar = (): React.JSX.Element => {
             key={section.id}
             section={section}
             renamingPath={renamingPath}
+            renamingFolderPath={renamingFolderPath}
             expandedPaths={expandedPaths}
             focusedItem={activeFocusedItem}
             showAll={showAllSections.has(section.id)}
@@ -726,6 +924,9 @@ const Sidebar = (): React.JSX.Element => {
             onCancelRename={() => setRenamingPath(null)}
             onFocusItem={handleFocusItem}
             onToggleShowAll={() => toggleShowAll(section.id)}
+            onCreateSubfolder={handleCreateSubfolder}
+            onCommitFolderRename={handleCommitFolderRename}
+            onCancelFolderRename={handleCancelFolderRename}
             onRemove={
               section.isDrafts ? undefined : () => void removeFolder(section.path ?? section.id)
             }

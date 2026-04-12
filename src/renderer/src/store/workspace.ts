@@ -77,6 +77,9 @@ type WorkspaceState = {
   addFolder: (path: string) => Promise<void>
   removeFolder: (path: string) => Promise<void>
 
+  createSubfolder: (parentPath: string) => Promise<string>
+  renameFolder: (oldPath: string, newName: string) => Promise<string>
+
   openFile: (path: string) => Promise<void>
   createDraft: () => Promise<void>
   renameFile: (oldPath: string, newName: string) => Promise<void>
@@ -114,9 +117,6 @@ const MAX_RECENT_FILES = 20
 
 const DRAFTS_ID = 'drafts'
 
-const hasContent = (node: FolderNode): boolean =>
-  node.files.length > 0 || node.subfolders.some(hasContent)
-
 const readFolderTree = async (dirPath: string): Promise<FolderNode> => {
   const entries = await window.api.readDirectory(dirPath)
   const files = entries
@@ -137,7 +137,7 @@ const readFolderTree = async (dirPath: string): Promise<FolderNode> => {
     name: dirPath.split('/').pop() || dirPath,
     path: dirPath,
     files,
-    subfolders: allSubs.filter(hasContent)
+    subfolders: allSubs
   }
 }
 
@@ -340,6 +340,21 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     }))
     const { draftsFolder } = get()
     await window.api.syncWatchedFolders(collectWatchedFolders(draftsFolder, next))
+  },
+
+  createSubfolder: async (parentPath) => {
+    const newPath = await window.api.createDirectory(parentPath, 'untitled')
+    const section = get().sections.find(
+      (s) => s.path && (parentPath === s.path || parentPath.startsWith(s.path + '/'))
+    )
+    if (section) await get().refreshSection(section.id)
+    return newPath
+  },
+
+  renameFolder: async (oldPath, newName) => {
+    const newPath = await window.api.rename(oldPath, newName)
+    await get().refreshAllSections()
+    return newPath
   },
 
   openFile: async (path) => {
