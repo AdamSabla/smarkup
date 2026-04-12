@@ -35,7 +35,6 @@ linux:
   icon: build/icon.png
   target:
     - AppImage
-    - snap
     - deb
   maintainer: electronjs.org
   category: Utility
