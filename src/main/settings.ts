@@ -21,6 +21,7 @@ export type Settings = {
   recentFiles: string[]
   autoSave: boolean
   autoSaveDelayMs: number
+  showWordCount: boolean
 }
 
 const DEFAULT_SETTINGS: Settings = {
@@ -33,7 +34,8 @@ const DEFAULT_SETTINGS: Settings = {
   activeTabPath: null,
   recentFiles: [],
   autoSave: false,
-  autoSaveDelayMs: 1500
+  autoSaveDelayMs: 1500,
+  showWordCount: false
 }
 
 let cached: Settings | null = null

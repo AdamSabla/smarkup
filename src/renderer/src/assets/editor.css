@@ -131,27 +131,24 @@
   margin: 0;
 }
 
-/* --- Task lists (checkboxes) ----------------------------------------- */
+/* --- Task items (flat checklist) ------------------------------------- */
 /*
- * Tiptap's TaskList/TaskItem emits:
- *   <ul data-type="taskList">
- *     <li data-type="taskItem" data-checked="true|false">
- *       <label><input type="checkbox" /><span></span></label>
- *       <div><p>text</p></div>
- *     </li>
- *   </ul>
+ * Flat task items render as:
+ *   <div data-type="flatTaskItem" data-checked="true|false"
+ *        style="--indent-level: N">
+ *     <label><input type="checkbox" /><span></span></label>
+ *     <div>inline text…</div>
+ *   </div>
  */
-.smarkup-editor ul[data-type='taskList'] {
-  list-style: none;
-  padding-left: 0;
-}
-.smarkup-editor ul[data-type='taskList'] li {
+.smarkup-editor div[data-type='flatTaskItem'] {
   display: flex;
   align-items: flex-start;
   gap: 10px;
-  padding-left: 0;
+  padding-left: calc(var(--indent-level, 0) * 28px);
+  margin-top: 1px;
+  margin-bottom: 1px;
 }
-.smarkup-editor ul[data-type='taskList'] li > label {
+.smarkup-editor div[data-type='flatTaskItem'] > label {
   flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
@@ -160,7 +157,7 @@
   user-select: none;
   cursor: pointer;
 }
-.smarkup-editor ul[data-type='taskList'] li > label > input {
+.smarkup-editor div[data-type='flatTaskItem'] > label > input {
   appearance: none;
   -webkit-appearance: none;
   width: 16px;
@@ -176,24 +173,27 @@
     background 120ms,
     border-color 120ms;
 }
-.smarkup-editor ul[data-type='taskList'] li > label > input:hover {
+.smarkup-editor div[data-type='flatTaskItem'] > label > input:hover {
   border-color: #1eabeb;
 }
-.smarkup-editor ul[data-type='taskList'] li > label > input:checked {
+.smarkup-editor div[data-type='flatTaskItem'] > label > input:checked {
   background: #1eabeb;
   border-color: #1eabeb;
   background-image: url("data:image/svg+xml;charset=utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 14 14' fill='none'><path fill-rule='evenodd' clip-rule='evenodd' d='M4.52827 9.2999L5.36398 10.1357C5.75451 10.5263 6.38767 10.5263 6.7782 10.1357L11.6639 5.24999C12.0545 4.85947 12.0545 4.2263 11.6639 3.83578L11.5353 3.70711C11.1448 3.31658 10.5116 3.31659 10.1211 3.70711L6.11721 7.71096L4.715 6.30875C4.32448 5.91822 3.69131 5.91822 3.30079 6.30875L3.12606 6.48348C2.73553 6.874 2.73553 7.50717 3.12606 7.89769L4.52827 9.2999Z' fill='white'/></svg>");
   background-position: center;
   background-repeat: no-repeat;
 }
-.smarkup-editor ul[data-type='taskList'] li > div {
+.smarkup-editor div[data-type='flatTaskItem'] > label > span {
+  display: none;
+}
+.smarkup-editor div[data-type='flatTaskItem'] > div {
   flex: 1;
   min-width: 0;
 }
-.smarkup-editor ul[data-type='taskList'] li > div > p {
+.smarkup-editor div[data-type='flatTaskItem'] > div > p {
   margin: 0;
 }
-.smarkup-editor ul[data-type='taskList'] li[data-checked='true'] > div {
+.smarkup-editor div[data-type='flatTaskItem'][data-checked='true'] > div {
   color: var(--muted-foreground);
 }
 

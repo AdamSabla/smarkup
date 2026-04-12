@@ -1,4 +1,4 @@
-import { useEffect, useRef, useMemo, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   DndContext,
   type DragEndEvent,
@@ -9,10 +9,10 @@ import {
 } from '@dnd-kit/core'
 import { SortableContext, horizontalListSortingStrategy, useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { PanelLeftIcon, PanelLeftOpenIcon, PlusIcon, XIcon } from 'lucide-react'
+import { PanelLeftIcon, PanelLeftOpenIcon, PlusIcon, XIcon, EyeIcon, CodeIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useWorkspace, type OpenFile } from '@/store/workspace'
-import { countWords, readingMinutes } from '@/lib/text-stats'
+
 
 const isMac = navigator.userAgent.toLowerCase().includes('mac')
 
@@ -88,14 +88,33 @@ const Tab = ({
       {...listeners}
       onClick={renaming ? undefined : onActivate}
       className={cn(
-        'group flex h-8 min-w-[100px] max-w-[180px] cursor-pointer items-center gap-1 rounded-t-[5px]',
+        'group relative flex h-8 min-w-[100px] max-w-[180px] cursor-pointer items-center gap-1 rounded-t-[6px]',
         'pl-[10px] pr-[5px] select-none',
-        'text-[12.5px] font-medium transition-colors duration-200',
+        'text-[12.5px] font-medium transition-colors duration-150',
         active
           ? 'bg-background text-foreground'
-          : 'text-muted-foreground hover:bg-background/60 dark:hover:bg-card/50'
+          : 'text-muted-foreground hover:bg-foreground/[0.04]'
       )}
     >
+      {/* Chrome-style curved edge connectors for active tab */}
+      {active && (
+        <>
+          <div
+            className="pointer-events-none absolute -left-2 bottom-0 size-2"
+            style={{
+              background:
+                'radial-gradient(circle at 0 0, transparent 7.5px, var(--background) 8px)'
+            }}
+          />
+          <div
+            className="pointer-events-none absolute -right-2 bottom-0 size-2"
+            style={{
+              background:
+                'radial-gradient(circle at 100% 0, transparent 7.5px, var(--background) 8px)'
+            }}
+          />
+        </>
+      )}
       {renaming ? (
         <input
           ref={inputRef}
@@ -157,6 +176,41 @@ const EmptyLabel = (): React.JSX.Element => (
   </div>
 )
 
+const ModeSwitcher = (): React.JSX.Element => {
+  const { editorMode, setEditorMode } = useWorkspace()
+  return (
+    <div
+      className="flex items-center gap-0.5"
+      style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+    >
+      <button
+        onClick={() => void setEditorMode('visual')}
+        className={cn(
+          'flex size-[26px] items-center justify-center rounded-[5px] transition-colors',
+          editorMode === 'visual'
+            ? 'bg-foreground/10 text-foreground'
+            : 'text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground'
+        )}
+        aria-label="Visual mode"
+      >
+        <EyeIcon className="size-3.5" />
+      </button>
+      <button
+        onClick={() => void setEditorMode('raw')}
+        className={cn(
+          'flex size-[26px] items-center justify-center rounded-[5px] transition-colors',
+          editorMode === 'raw'
+            ? 'bg-foreground/10 text-foreground'
+            : 'text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground'
+        )}
+        aria-label="Raw mode"
+      >
+        <CodeIcon className="size-3.5" />
+      </button>
+    </div>
+  )
+}
+
 const TopBar = (): React.JSX.Element => {
   const {
     tabs,
@@ -172,14 +226,6 @@ const TopBar = (): React.JSX.Element => {
     cancelRenamingTab
   } = useWorkspace()
 
-  const activeTab = tabs.find((t) => t.id === activeTabId)
-
-  const stats = useMemo(() => {
-    if (!activeTab) return null
-    const words = countWords(activeTab.content)
-    return { words, minutes: readingMinutes(words) }
-  }, [activeTab])
-
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }))
 
   const handleDragEnd = (event: DragEndEvent): void => {
@@ -194,8 +240,8 @@ const TopBar = (): React.JSX.Element => {
   return (
     <div
       className={cn(
-        'drag-region flex h-9 w-full shrink-0 items-end gap-1 border-b border-border/50',
-        'bg-sidebar/40 backdrop-blur-xl pt-1 pl-1 select-none'
+        'drag-region flex h-9 w-full shrink-0 items-end gap-1',
+        'bg-tab-bar pt-1 pl-1 select-none'
       )}
     >
       {/* macOS traffic light spacer */}
@@ -222,7 +268,7 @@ const TopBar = (): React.JSX.Element => {
       {tabs.length === 0 ? (
         <EmptyLabel />
       ) : (
-        <div className="flex min-w-0 flex-1 items-end gap-[2px] overflow-hidden">
+        <div className="flex min-w-0 flex-1 items-end gap-[2px] overflow-hidden px-2">
           <DndContext
             sensors={sensors}
             collisionDetection={closestCenter}
@@ -252,8 +298,8 @@ const TopBar = (): React.JSX.Element => {
             onClick={() => void createDraft()}
             style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
             className={cn(
-              'mb-[2px] ml-1 flex size-6 shrink-0 items-center justify-center rounded-full',
-              'text-muted-foreground hover:bg-accent hover:text-foreground transition-colors'
+              'ml-1 flex size-6 shrink-0 self-center items-center justify-center rounded-full',
+              'text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground transition-colors'
             )}
             aria-label="New tab"
           >
@@ -262,21 +308,14 @@ const TopBar = (): React.JSX.Element => {
         </div>
       )}
 
-      {/* Right side — word count / reading time, and room for Win/Linux
-         titleBarOverlay controls */}
+      {/* Right side — mode switcher, and room for Win/Linux titleBarOverlay controls */}
       <div
         className={cn(
-          'mb-[4px] flex shrink-0 items-center gap-2 pr-3 text-[11px] tabular-nums text-muted-foreground',
+          'flex shrink-0 items-center self-center pr-3',
           !isMac && 'mr-[140px]'
         )}
       >
-        {stats && stats.words > 0 && (
-          <>
-            <span>{stats.words.toLocaleString()} words</span>
-            <span className="text-border">·</span>
-            <span>{stats.minutes} min</span>
-          </>
-        )}
+        <ModeSwitcher />
       </div>
     </div>
   )

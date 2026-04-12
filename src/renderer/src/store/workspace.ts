@@ -49,6 +49,7 @@ type WorkspaceState = {
   recentFiles: string[]
   autoSave: boolean
   autoSaveDelayMs: number
+  showWordCount: boolean
 
   // --- Volatile UI state ---
   sections: SidebarSection[]
@@ -94,6 +95,7 @@ type WorkspaceState = {
   setEditorMode: (mode: EditorMode) => Promise<void>
   setTheme: (theme: Theme) => Promise<void>
   setAutoSave: (enabled: boolean) => Promise<void>
+  setShowWordCount: (enabled: boolean) => Promise<void>
   openSettings: () => void
   closeSettings: () => void
   openQuickOpen: () => void
@@ -197,6 +199,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   recentFiles: [],
   autoSave: false,
   autoSaveDelayMs: 1500,
+  showWordCount: false,
 
   sections: [],
   tabs: [],
@@ -219,7 +222,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       editorMode: settings.editorMode,
       recentFiles: settings.recentFiles ?? [],
       autoSave: settings.autoSave ?? false,
-      autoSaveDelayMs: settings.autoSaveDelayMs ?? 1500
+      autoSaveDelayMs: settings.autoSaveDelayMs ?? 1500,
+      showWordCount: settings.showWordCount ?? false
     })
     await get().refreshAllSections()
 
@@ -510,6 +514,11 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   setAutoSave: async (enabled) => {
     set({ autoSave: enabled })
     await persistSettings({ autoSave: enabled })
+  },
+
+  setShowWordCount: async (enabled) => {
+    set({ showWordCount: enabled })
+    await persistSettings({ showWordCount: enabled })
   },
 
   openSettings: () => set({ settingsOpen: true }),

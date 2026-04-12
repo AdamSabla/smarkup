@@ -28,7 +28,9 @@ const SettingsDialog = (): React.JSX.Element => {
     theme,
     setTheme,
     autoSave,
-    setAutoSave
+    setAutoSave,
+    showWordCount,
+    setShowWordCount
   } = useWorkspace()
 
   const handlePickDraftsFolder = async (): Promise<void> => {
@@ -109,6 +111,35 @@ const SettingsDialog = (): React.JSX.Element => {
                   className={cn(
                     'inline-block size-3.5 rounded-full bg-background shadow transition-transform',
                     autoSave ? 'translate-x-[18px]' : 'translate-x-[2px]'
+                  )}
+                />
+              </button>
+            </div>
+          </div>
+
+          {/* Word count */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <label className="text-sm font-medium">Word count</label>
+                <p className="text-xs text-muted-foreground">
+                  Show the word count at the bottom-right of the editor.
+                </p>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={showWordCount}
+                onClick={() => void setShowWordCount(!showWordCount)}
+                className={cn(
+                  'relative inline-flex h-5 w-9 shrink-0 items-center rounded-full border transition-colors',
+                  showWordCount ? 'bg-primary border-primary' : 'bg-muted border-border'
+                )}
+              >
+                <span
+                  className={cn(
+                    'inline-block size-3.5 rounded-full bg-background shadow transition-transform',
+                    showWordCount ? 'translate-x-[18px]' : 'translate-x-[2px]'
                   )}
                 />
               </button>

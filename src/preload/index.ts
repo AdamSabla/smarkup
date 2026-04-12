@@ -28,6 +28,7 @@ export type Settings = {
   recentFiles: string[]
   autoSave: boolean
   autoSaveDelayMs: number
+  showWordCount: boolean
 }
 
 export type WatchEvent = {

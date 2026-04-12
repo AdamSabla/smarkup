@@ -1,53 +1,11 @@
 import { useEffect, useRef } from 'react'
 import { useEditor, EditorContent, type Editor } from '@tiptap/react'
-import { Extension } from '@tiptap/core'
 import StarterKit from '@tiptap/starter-kit'
-import TaskList from '@tiptap/extension-task-list'
-import TaskItem from '@tiptap/extension-task-item'
 import { Markdown, type MarkdownStorage } from 'tiptap-markdown'
 import { cn } from '@/lib/utils'
 import { useWorkspace } from '@/store/workspace'
-
-const ChecklistShortcuts = Extension.create({
-  name: 'checklistShortcuts',
-  addKeyboardShortcuts() {
-    return {
-      'Mod-Shift-l': () => this.editor.chain().focus().toggleTaskList().run(),
-      'Mod-Enter': () => {
-        const { editor } = this
-        const { from, to } = editor.state.selection
-        const taskItems: Array<{ pos: number; node: typeof editor.state.doc }> = []
-
-        editor.state.doc.nodesBetween(from, to, (node, pos) => {
-          if (node.type.name === 'taskItem') {
-            taskItems.push({ pos, node })
-          }
-        })
-
-        if (taskItems.length === 0) return false
-
-        const allChecked = taskItems.every((item) => item.node.attrs.checked)
-        const newChecked = !allChecked
-
-        editor
-          .chain()
-          .focus()
-          .command(({ tr }) => {
-            for (const { pos, node } of taskItems) {
-              tr.setNodeMarkup(pos, undefined, {
-                ...node.attrs,
-                checked: newChecked
-              })
-            }
-            return true
-          })
-          .run()
-
-        return true
-      }
-    }
-  }
-})
+import { FlatTaskItem } from '@/extensions/flat-task-item'
+import { Tab } from '@/extensions/tab'
 
 const getMarkdown = (editor: Editor): string => {
   const storage = editor.storage as unknown as { markdown: MarkdownStorage }
@@ -93,11 +51,8 @@ const VisualEditor = ({ tabId, value, onChange }: Props): React.JSX.Element => {
       StarterKit.configure({
         heading: { levels: [1, 2, 3, 4] }
       }),
-      TaskList,
-      TaskItem.configure({
-        nested: true
-      }),
-      ChecklistShortcuts,
+      FlatTaskItem,
+      Tab,
       Markdown.configure({
         html: false,
         tightLists: true,
