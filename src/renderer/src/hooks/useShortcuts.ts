@@ -17,7 +17,8 @@ export const useShortcuts = (): void => {
     setActiveTab,
     openSettings,
     openQuickOpen,
-    openCommandPalette
+    openCommandPalette,
+    startRenamingTab
   } = useWorkspace()
 
   useEffect(() => {
@@ -54,6 +55,15 @@ export const useShortcuts = (): void => {
         return
       }
 
+      // Rename active file: cmd/ctrl+r
+      if (key === 'r' && !e.shiftKey && !e.altKey) {
+        if (activeTabId) {
+          e.preventDefault()
+          startRenamingTab()
+        }
+        return
+      }
+
       // Close tab: cmd/ctrl+w
       if (key === 'w' && !e.shiftKey && !e.altKey) {
         if (activeTabId) {
@@ -84,12 +94,15 @@ export const useShortcuts = (): void => {
         return
       }
 
-      // Next/prev tab: ctrl+tab / ctrl+shift+tab
-      if (e.key === 'Tab' && e.ctrlKey) {
+      // Next/prev tab: ctrl+tab / ctrl+shift+tab  OR  cmd+opt+→ / cmd+opt+←
+      if (
+        (e.key === 'Tab' && e.ctrlKey) ||
+        (e.altKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight'))
+      ) {
         e.preventDefault()
         if (tabs.length === 0) return
         const idx = tabs.findIndex((t) => t.id === activeTabId)
-        const dir = e.shiftKey ? -1 : 1
+        const dir = e.key === 'ArrowLeft' || e.shiftKey ? -1 : 1
         const next = tabs[(idx + dir + tabs.length) % tabs.length]
         setActiveTab(next.id)
         return
@@ -110,6 +123,7 @@ export const useShortcuts = (): void => {
     setActiveTab,
     openSettings,
     openQuickOpen,
-    openCommandPalette
+    openCommandPalette,
+    startRenamingTab
   ])
 }

@@ -48,7 +48,6 @@ const schedule = (folder: string, event: WatchEvent): void => {
 export const startWatching = (folder: string): void => {
   if (watchers.has(folder)) return
   const watcher = chokidar.watch(folder, {
-    depth: 0,
     ignoreInitial: true,
     ignored: (path) => /(^|[\\/])\../.test(path),
     awaitWriteFinish: { stabilityThreshold: 120, pollInterval: 60 }
@@ -65,6 +64,12 @@ export const startWatching = (folder: string): void => {
     })
     .on('change', (path) => {
       if (isMarkdown(path)) schedule(folder, { folder, path, type: 'change' })
+    })
+    .on('addDir', (path) => {
+      schedule(folder, { folder, path, type: 'add' })
+    })
+    .on('unlinkDir', (path) => {
+      schedule(folder, { folder, path, type: 'unlink' })
     })
 
   watchers.set(folder, watcher)

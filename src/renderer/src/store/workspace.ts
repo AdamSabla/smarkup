@@ -17,6 +17,13 @@ export type OpenFile = {
   savedContent: string
 }
 
+export type FolderNode = {
+  name: string
+  path: string
+  files: FileEntry[]
+  subfolders: FolderNode[]
+}
+
 export type SidebarSection = {
   /** Absolute folder path, or the sentinel `"drafts"` for the drafts section */
   id: string
@@ -24,8 +31,10 @@ export type SidebarSection = {
   label: string
   /** Actual path on disk (null for a missing drafts folder) */
   path: string | null
-  /** Direct .md children, sorted by mtime desc (most-recent first) */
+  /** Direct .md children at the section root, sorted by mtime desc */
   files: FileEntry[]
+  /** Nested subfolders (each with their own files and subfolders) */
+  subfolders: FolderNode[]
   /** Whether it's the user's drafts section */
   isDrafts: boolean
 }
@@ -51,6 +60,10 @@ type WorkspaceState = {
   quickOpenOpen: boolean
   /** ⌘K command palette */
   commandPaletteOpen: boolean
+  /** Tab id currently being renamed inline (⌘R) */
+  renamingTabId: string | null
+  /** Remembered scroll-top per tab id (volatile, not persisted to disk) */
+  scrollPositions: Record<string, number>
   hydrated: boolean
 
   // --- Actions ---
@@ -87,6 +100,9 @@ type WorkspaceState = {
   closeQuickOpen: () => void
   openCommandPalette: () => void
   closeCommandPalette: () => void
+  saveScrollPosition: (tabId: string, scrollTop: number) => void
+  startRenamingTab: () => void
+  cancelRenamingTab: () => void
 
   setUpdateStatus: (status: UpdateStatus) => void
   checkForUpdates: () => Promise<void>
@@ -96,30 +112,42 @@ const MAX_RECENT_FILES = 20
 
 const DRAFTS_ID = 'drafts'
 
-const readMarkdownFiles = async (path: string): Promise<FileEntry[]> => {
-  const entries = await window.api.readDirectory(path)
-  return entries
+const hasContent = (node: FolderNode): boolean =>
+  node.files.length > 0 || node.subfolders.some(hasContent)
+
+const readFolderTree = async (dirPath: string): Promise<FolderNode> => {
+  const entries = await window.api.readDirectory(dirPath)
+  const files = entries
     .filter((e) => !e.isDirectory && e.name.toLowerCase().endsWith('.md'))
     .sort((a, b) => b.mtimeMs - a.mtimeMs)
+  const dirs = entries.filter((e) => e.isDirectory).sort((a, b) => a.name.localeCompare(b.name))
+  const allSubs = await Promise.all(
+    dirs.map((d) => readFolderTree(d.path).catch(() => ({ name: d.name, path: d.path, files: [] as FileEntry[], subfolders: [] as FolderNode[] })))
+  )
+  return {
+    name: dirPath.split('/').pop() || dirPath,
+    path: dirPath,
+    files,
+    subfolders: allSubs.filter(hasContent)
+  }
 }
 
-const buildDraftsSection = async (path: string | null): Promise<SidebarSection> => ({
-  id: DRAFTS_ID,
-  label: 'Drafts',
-  path,
-  files: path ? await readMarkdownFiles(path).catch(() => []) : [],
-  isDrafts: true
-})
+const buildDraftsSection = async (path: string | null): Promise<SidebarSection> => {
+  if (!path) return { id: DRAFTS_ID, label: 'Drafts', path, files: [], subfolders: [], isDrafts: true }
+  const tree = await readFolderTree(path).catch(() => ({ name: 'Drafts', path, files: [] as FileEntry[], subfolders: [] as FolderNode[] }))
+  return { id: DRAFTS_ID, label: 'Drafts', path, files: tree.files, subfolders: tree.subfolders, isDrafts: true }
+}
 
 const buildFolderSection = async (path: string): Promise<SidebarSection> => {
   const label = path.split('/').pop() || path
-  return {
-    id: path,
-    label,
-    path,
-    files: await readMarkdownFiles(path).catch(() => []),
-    isDrafts: false
-  }
+  const tree = await readFolderTree(path).catch(() => ({ name: label, path, files: [] as FileEntry[], subfolders: [] as FolderNode[] }))
+  return { id: path, label, path, files: tree.files, subfolders: tree.subfolders, isDrafts: false }
+}
+
+const sectionContainsFile = (section: SidebarSection, filePath: string): boolean => {
+  const searchNode = (node: FolderNode): boolean =>
+    node.files.some((f) => f.path === filePath) || node.subfolders.some(searchNode)
+  return section.files.some((f) => f.path === filePath) || section.subfolders.some(searchNode)
 }
 
 const persistSettings = (patch: Partial<Settings>): Promise<Settings> =>
@@ -152,6 +180,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   settingsOpen: false,
   quickOpenOpen: false,
   commandPaletteOpen: false,
+  renamingTabId: null,
+  scrollPositions: {},
   hydrated: false,
 
   hydrate: async () => {
@@ -328,7 +358,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       tabs: s.tabs.map((t) =>
         t.path === oldPath ? { ...t, id: newPath, path: newPath, name: safeName } : t
       ),
-      activeTabId: s.activeTabId === oldPath ? newPath : s.activeTabId
+      activeTabId: s.activeTabId === oldPath ? newPath : s.activeTabId,
+      renamingTabId: s.renamingTabId === oldPath ? null : s.renamingTabId
     }))
     await get().refreshAllSections()
   },
@@ -377,17 +408,23 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
           nextActive = neighbor.id
         }
       }
-      return { tabs: nextTabs, activeTabId: nextActive }
+      const { [id]: _, ...restScroll } = s.scrollPositions
+      return { tabs: nextTabs, activeTabId: nextActive, scrollPositions: restScroll }
     }),
 
   closeOtherTabs: (id) =>
     set((s) => {
       const keep = s.tabs.find((t) => t.id === id)
       if (!keep) return s
-      return { tabs: [keep], activeTabId: keep.id }
+      const keptScroll = s.scrollPositions[id]
+      return {
+        tabs: [keep],
+        activeTabId: keep.id,
+        scrollPositions: keptScroll !== undefined ? { [id]: keptScroll } : {}
+      }
     }),
 
-  closeAllTabs: () => set({ tabs: [], activeTabId: null }),
+  closeAllTabs: () => set({ tabs: [], activeTabId: null, scrollPositions: {} }),
 
   reorderTabs: (fromIndex, toIndex) =>
     set((s) => {
@@ -423,9 +460,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     set((s) => ({
       tabs: s.tabs.map((t) => (t.id === tab.id ? { ...t, savedContent: tab.content } : t))
     }))
-    // Refresh the section that contains this file so MRU order updates
     const sections = get().sections
-    const parent = sections.find((sec) => sec.files.some((f) => f.path === tab.path))
+    const parent = sections.find((sec) => sectionContainsFile(sec, tab.path))
     if (parent) await get().refreshSection(parent.id)
   },
 
@@ -456,6 +492,15 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   closeQuickOpen: () => set({ quickOpenOpen: false }),
   openCommandPalette: () => set({ commandPaletteOpen: true }),
   closeCommandPalette: () => set({ commandPaletteOpen: false }),
+  saveScrollPosition: (tabId, scrollTop) =>
+    set((s) => ({
+      scrollPositions: { ...s.scrollPositions, [tabId]: scrollTop }
+    })),
+  startRenamingTab: () => {
+    const { activeTabId } = get()
+    if (activeTabId) set({ renamingTabId: activeTabId })
+  },
+  cancelRenamingTab: () => set({ renamingTabId: null }),
 
   setUpdateStatus: (status) => set({ updateStatus: status }),
 

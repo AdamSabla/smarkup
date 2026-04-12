@@ -8,7 +8,7 @@ import tailwindcss from '@tailwindcss/vite'
  * Lets you iterate on UI/styling without bundling the Electron shell.
  *
  * Run with: `npm run dev:browser`
- * Opens at: http://localhost:5174
+ * Opens at: http://localhost:51740
  *
  * Note: `window.api` is mocked in-memory (see `browser-mock-api.ts`),
  * so file operations are non-persistent. Use `npm run dev` for real I/O.
@@ -23,7 +23,7 @@ export default defineConfig({
   },
   plugins: [react(), tailwindcss()],
   server: {
-    port: 5174,
+    port: 51740,
     strictPort: false,
     open: true
   },

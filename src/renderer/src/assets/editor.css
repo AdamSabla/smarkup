@@ -195,7 +195,6 @@
 }
 .smarkup-editor ul[data-type='taskList'] li[data-checked='true'] > div {
   color: var(--muted-foreground);
-  text-decoration: line-through;
 }
 
 /* --- Blockquotes ------------------------------------------------------ */

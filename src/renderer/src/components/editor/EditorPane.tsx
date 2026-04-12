@@ -57,9 +57,9 @@ const EditorPane = (): React.JSX.Element => {
       </div>
       <div className="flex-1 overflow-hidden">
         {editorMode === 'visual' ? (
-          <VisualEditor key={active.id} value={active.content} onChange={updateActiveContent} />
+          <VisualEditor key={active.id} tabId={active.id} value={active.content} onChange={updateActiveContent} />
         ) : (
-          <RawEditor key={active.id} value={active.content} onChange={updateActiveContent} />
+          <RawEditor key={active.id} tabId={active.id} value={active.content} onChange={updateActiveContent} />
         )}
       </div>
     </div>

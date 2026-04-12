@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useEffect, useRef, useMemo, useState } from 'react'
 import {
   DndContext,
   type DragEndEvent,
@@ -26,17 +26,50 @@ const isMac = navigator.userAgent.toLowerCase().includes('mac')
 type TabProps = {
   tab: OpenFile
   active: boolean
+  renaming: boolean
   onActivate: () => void
   onClose: () => void
+  onCommitRename: (newName: string) => void
+  onCancelRename: () => void
 }
 
-const Tab = ({ tab, active, onActivate, onClose }: TabProps): React.JSX.Element => {
+const Tab = ({
+  tab,
+  active,
+  renaming,
+  onActivate,
+  onClose,
+  onCommitRename,
+  onCancelRename
+}: TabProps): React.JSX.Element => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: tab.id
   })
 
   const dirty = tab.content !== tab.savedContent
   const displayName = tab.name.replace(/\.md$/i, '')
+
+  const [renameValue, setRenameValue] = useState(displayName)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (renaming) {
+      setRenameValue(displayName)
+      requestAnimationFrame(() => {
+        inputRef.current?.focus()
+        inputRef.current?.select()
+      })
+    }
+  }, [renaming, displayName])
+
+  const commitRename = (): void => {
+    const trimmed = renameValue.trim()
+    if (!trimmed || trimmed === displayName) {
+      onCancelRename()
+      return
+    }
+    onCommitRename(trimmed)
+  }
 
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
@@ -53,9 +86,9 @@ const Tab = ({ tab, active, onActivate, onClose }: TabProps): React.JSX.Element 
       style={style}
       {...attributes}
       {...listeners}
-      onClick={onActivate}
+      onClick={renaming ? undefined : onActivate}
       className={cn(
-        'group flex h-8 min-w-0 max-w-[180px] cursor-pointer items-center gap-1 rounded-t-[5px]',
+        'group flex h-8 min-w-[100px] max-w-[180px] cursor-pointer items-center gap-1 rounded-t-[5px]',
         'pl-[10px] pr-[5px] select-none',
         'text-[12.5px] font-medium transition-colors duration-200',
         active
@@ -63,16 +96,36 @@ const Tab = ({ tab, active, onActivate, onClose }: TabProps): React.JSX.Element 
           : 'text-muted-foreground hover:bg-background/60 dark:hover:bg-card/50'
       )}
     >
-      <span
-        className="flex-1 overflow-hidden whitespace-nowrap"
-        style={{
-          // Fade the last 24px of the label so long names trail off cleanly
-          maskImage: 'linear-gradient(90deg, black calc(100% - 24px), transparent)',
-          WebkitMaskImage: 'linear-gradient(90deg, black calc(100% - 24px), transparent)'
-        }}
-      >
-        {displayName}
-      </span>
+      {renaming ? (
+        <input
+          ref={inputRef}
+          value={renameValue}
+          onChange={(e) => setRenameValue(e.target.value)}
+          onBlur={commitRename}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault()
+              commitRename()
+            } else if (e.key === 'Escape') {
+              e.preventDefault()
+              onCancelRename()
+            }
+            e.stopPropagation()
+          }}
+          onPointerDown={(e) => e.stopPropagation()}
+          className="flex-1 min-w-0 bg-transparent text-[12.5px] font-medium outline-none selection:bg-primary/30"
+        />
+      ) : (
+        <span
+          className="flex-1 overflow-hidden whitespace-nowrap"
+          style={{
+            maskImage: 'linear-gradient(90deg, black calc(100% - 24px), transparent)',
+            WebkitMaskImage: 'linear-gradient(90deg, black calc(100% - 24px), transparent)'
+          }}
+        >
+          {displayName}
+        </span>
+      )}
       <button
         onClick={(e) => {
           e.stopPropagation()
@@ -113,7 +166,10 @@ const TopBar = (): React.JSX.Element => {
     reorderTabs,
     createDraft,
     sidebarVisible,
-    toggleSidebar
+    toggleSidebar,
+    renamingTabId,
+    renameFile,
+    cancelRenamingTab
   } = useWorkspace()
 
   const activeTab = tabs.find((t) => t.id === activeTabId)
@@ -178,8 +234,14 @@ const TopBar = (): React.JSX.Element => {
                   key={tab.id}
                   tab={tab}
                   active={tab.id === activeTabId}
+                  renaming={tab.id === renamingTabId}
                   onActivate={() => setActiveTab(tab.id)}
                   onClose={() => closeTab(tab.id)}
+                  onCommitRename={async (newName) => {
+                    cancelRenamingTab()
+                    await renameFile(tab.path, newName)
+                  }}
+                  onCancelRename={cancelRenamingTab}
                 />
               ))}
             </SortableContext>

@@ -3,7 +3,7 @@ import Fuse from 'fuse.js'
 import { FileTextIcon, SearchIcon } from 'lucide-react'
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
-import { useWorkspace } from '@/store/workspace'
+import { useWorkspace, type FolderNode } from '@/store/workspace'
 
 type PaletteItem = {
   path: string
@@ -25,21 +25,29 @@ const QuickOpenBody = (): React.JSX.Element => {
   const inputRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLDivElement>(null)
 
-  // Flatten all files from all sections into one searchable list
+  // Flatten all files from all sections (including subfolders) into one searchable list
   const items = useMemo<PaletteItem[]>(() => {
     const result: PaletteItem[] = []
     const byPath = new Map<string, PaletteItem>()
-    for (const section of sections) {
-      for (const file of section.files) {
+    const collectFiles = (files: { name: string; path: string }[], folder: string): void => {
+      for (const file of files) {
         const item: PaletteItem = {
           path: file.path,
           name: file.name,
           displayName: file.name.replace(/\.md$/i, ''),
-          folder: section.label
+          folder
         }
         byPath.set(file.path, item)
         result.push(item)
       }
+    }
+    const collectFromNode = (node: FolderNode, rootLabel: string): void => {
+      collectFiles(node.files, rootLabel)
+      for (const sub of node.subfolders) collectFromNode(sub, rootLabel)
+    }
+    for (const section of sections) {
+      collectFiles(section.files, section.label)
+      for (const sub of section.subfolders) collectFromNode(sub, section.label)
     }
     // Attach any recent files that aren't in the sidebar so they are still searchable
     for (const recent of recentFiles) {

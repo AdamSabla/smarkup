@@ -82,6 +82,14 @@ const CommandPaletteBody = (): React.JSX.Element => {
     setQuery('')
   }
 
+  // Re-focus the cmdk input after page transitions
+  useEffect(() => {
+    requestAnimationFrame(() => {
+      const input = document.querySelector<HTMLInputElement>('[data-slot="command-input"]')
+      input?.focus()
+    })
+  }, [page])
+
   const dismiss = (): void => {
     closeCommandPalette()
   }
