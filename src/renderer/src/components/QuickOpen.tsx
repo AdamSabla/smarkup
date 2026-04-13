@@ -216,11 +216,7 @@ const QuickOpen = (): React.JSX.Element => {
 
   return (
     <Dialog open={quickOpenOpen} onOpenChange={(open) => !open && closeQuickOpen()}>
-      {/*
-       * `forceMount` keeps the quick-open body alive between opens so the
-       * Fuse index is already built by the time the user presses Cmd+P.
-       */}
-      <DialogContent forceMount className="max-w-xl gap-0 overflow-hidden p-0 sm:max-w-xl">
+      <DialogContent className="top-[15%] translate-y-0 max-w-xl gap-0 overflow-hidden p-0 sm:max-w-xl">
         <DialogTitle className="sr-only">Search files</DialogTitle>
         <DialogDescription className="sr-only">
           Fuzzy search across all files in your sidebar.

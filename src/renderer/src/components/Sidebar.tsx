@@ -283,7 +283,7 @@ const FileRow = ({
           }}
           onDoubleClick={onStartRename}
           className={cn(
-            'group/row flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-sm',
+            'group/row relative flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-sm',
             'hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
             active && 'bg-sidebar-accent text-sidebar-accent-foreground font-medium',
             focused && 'ring-1 ring-inset ring-ring'
@@ -302,8 +302,8 @@ const FileRow = ({
                   setMenuOpen(true)
                 }}
                 className={cn(
-                  'inline-flex shrink-0 items-center justify-center rounded-sm size-5',
-                  'opacity-0 group-hover/row:opacity-100 hover:bg-sidebar-accent',
+                  'absolute right-1 inline-flex items-center justify-center rounded-sm size-5',
+                  'opacity-0 group-hover/row:opacity-100 bg-sidebar-accent',
                   menuOpen && 'opacity-100'
                 )}
               >
@@ -452,7 +452,7 @@ const SubfolderView = ({
           }}
           style={{ paddingLeft }}
           className={cn(
-            'flex w-full items-center gap-1.5 rounded-md pr-7 py-1 text-left text-sm',
+            'flex w-full items-center gap-1.5 rounded-md pr-2 py-1 text-left text-sm',
             'hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
             'text-muted-foreground',
             focused && 'ring-1 ring-inset ring-ring'
@@ -478,7 +478,7 @@ const SubfolderView = ({
             e.stopPropagation()
             onCreateSubfolder(folder.path)
           }}
-          className="absolute right-1 inline-flex shrink-0 items-center justify-center rounded-sm size-5 opacity-0 group-hover/folder:opacity-100 hover:bg-sidebar-accent"
+          className="absolute right-1 inline-flex items-center justify-center rounded-sm size-5 opacity-0 group-hover/folder:opacity-100 bg-sidebar-accent"
         >
           <PlusIcon className="size-3 text-muted-foreground" />
         </span>

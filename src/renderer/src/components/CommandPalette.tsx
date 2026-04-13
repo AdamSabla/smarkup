@@ -544,12 +544,7 @@ const CommandPalette = (): React.JSX.Element => {
 
   return (
     <Dialog open={commandPaletteOpen} onOpenChange={(open) => !open && closeCommandPalette()}>
-      {/*
-       * `forceMount` keeps the palette's React tree alive between opens,
-       * so the first Cmd+K press doesn't pay the cold-mount cost of
-       * Radix Dialog + cmdk + all the CommandItems.
-       */}
-      <DialogContent forceMount className="max-w-xl gap-0 overflow-hidden p-0 sm:max-w-xl">
+      <DialogContent className="top-[15%] translate-y-0 max-w-xl gap-0 overflow-hidden p-0 sm:max-w-xl">
         <DialogTitle className="sr-only">Command palette</DialogTitle>
         <DialogDescription className="sr-only">
           Run commands or move the active file to another folder.

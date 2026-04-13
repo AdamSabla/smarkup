@@ -426,11 +426,6 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       sections.find((sec) => sec.isDrafts && sec.path === payload.folder)
     if (parent) {
       await get().refreshSection(parent.id)
-      // Filesystem tree may have changed — rebuild the move-target cache so
-      // the command palette is immediately up to date.
-      if (payload.events.some((e) => e.type === 'add' || e.type === 'unlink')) {
-        void get().refreshMoveTargets()
-      }
     }
 
     // If any unlinked file is currently open in a tab, close it silently
