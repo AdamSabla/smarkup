@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import {
   ArrowLeftIcon,
   ClipboardIcon,
+  ColumnsIcon,
   EyeIcon,
   FileClockIcon,
   FilePlusIcon,
@@ -68,7 +69,9 @@ const CommandPaletteBody = (): React.JSX.Element => {
     recentFiles,
     openFile,
     autoSave,
-    setAutoSave
+    setAutoSave,
+    splitPane,
+    activePaneId
   } = store
 
   const [page, setPage] = useState<Page>('commands')
@@ -286,6 +289,16 @@ const CommandPaletteBody = (): React.JSX.Element => {
             >
               <SidebarIcon /> {sidebarVisible ? 'Hide sidebar' : 'Show sidebar'}
             </CommandItem>
+            {activeTabId && (
+              <CommandItem
+                onSelect={() => {
+                  splitPane(activePaneId, 'horizontal', activeTabId)
+                  dismiss()
+                }}
+              >
+                <ColumnsIcon /> Split editor
+              </CommandItem>
+            )}
             <CommandItem
               onSelect={() => {
                 void setEditorMode(editorMode === 'visual' ? 'raw' : 'visual')
