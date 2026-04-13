@@ -92,6 +92,12 @@ export type SidebarSection = {
   isDrafts: boolean
 }
 
+/** Destination option for moving a file between folders. */
+export type MoveTarget = {
+  path: string
+  label: string
+}
+
 type WorkspaceState = {
   // --- Persistent settings (mirrored from disk) ---
   draftsFolder: string | null
@@ -106,6 +112,10 @@ type WorkspaceState = {
 
   // --- Volatile UI state ---
   sections: SidebarSection[]
+  /** Pre-computed destination folders for the "Move file" command (cached). */
+  moveTargets: MoveTarget[]
+  /** True while moveTargets are being rebuilt in the background. */
+  moveTargetsLoading: boolean
   tabs: OpenFile[]
   activeTabId: string | null
   paneRoot: PaneNode
@@ -126,6 +136,8 @@ type WorkspaceState = {
   hydrate: () => Promise<void>
   refreshAllSections: () => Promise<void>
   refreshSection: (sectionId: string) => Promise<void>
+  /** Rebuild the cached move-file destination list from disk. */
+  refreshMoveTargets: () => Promise<void>
   handleWatchEvent: (payload: WatchPayload) => Promise<void>
 
   setDraftsFolder: (path: string | null) => Promise<void>
@@ -265,6 +277,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   showWordCount: false,
 
   sections: [],
+  moveTargets: [],
+  moveTargetsLoading: false,
   tabs: [],
   activeTabId: null,
   paneRoot: { type: 'leaf', id: 'root', tabId: null },
@@ -340,6 +354,10 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     // Start file watchers
     const { draftsFolder, additionalFolders } = get()
     await window.api.syncWatchedFolders(collectWatchedFolders(draftsFolder, additionalFolders))
+
+    // Pre-compute the move-file destination list so the command palette
+    // has it ready the first time the user opens "Move file…".
+    void get().refreshMoveTargets()
   },
 
   refreshAllSections: async () => {
@@ -347,6 +365,36 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     const drafts = await buildDraftsSection(draftsFolder)
     const folders = await Promise.all(additionalFolders.map(buildFolderSection))
     set({ sections: [drafts, ...folders] })
+  },
+
+  refreshMoveTargets: async () => {
+    set({ moveTargetsLoading: true })
+    const { draftsFolder, additionalFolders } = get()
+    const roots: string[] = []
+    if (draftsFolder) roots.push(draftsFolder)
+    for (const f of additionalFolders) roots.push(f)
+
+    const allPaths = new Set<string>(roots)
+    await Promise.all(
+      roots.map(async (root) => {
+        try {
+          const subs = await window.api.listFoldersRecursive(root)
+          subs.forEach((s) => allPaths.add(s))
+        } catch {
+          // unreachable root — ignore
+        }
+      })
+    )
+    const targets: MoveTarget[] = Array.from(allPaths)
+      .sort()
+      .map((p) => {
+        const matchingRoot = roots.find((r) => p === r || p.startsWith(r + '/'))
+        const rootLabel = matchingRoot ? matchingRoot.split('/').pop() || matchingRoot : ''
+        const rest = matchingRoot && p !== matchingRoot ? p.slice(matchingRoot.length + 1) : ''
+        const label = rest ? `${rootLabel}/${rest}` : rootLabel
+        return { path: p, label }
+      })
+    set({ moveTargets: targets, moveTargetsLoading: false })
   },
 
   refreshSection: async (sectionId) => {
@@ -372,6 +420,11 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       sections.find((sec) => sec.isDrafts && sec.path === payload.folder)
     if (parent) {
       await get().refreshSection(parent.id)
+      // Filesystem tree may have changed — rebuild the move-target cache so
+      // the command palette is immediately up to date.
+      if (payload.events.some((e) => e.type === 'add' || e.type === 'unlink')) {
+        void get().refreshMoveTargets()
+      }
     }
 
     // If any unlinked file is currently open in a tab, close it silently
@@ -410,6 +463,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     await get().refreshSection(DRAFTS_ID)
     const { additionalFolders } = get()
     await window.api.syncWatchedFolders(collectWatchedFolders(path, additionalFolders))
+    void get().refreshMoveTargets()
   },
 
   addFolder: async (path) => {
@@ -422,6 +476,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     set((s) => ({ sections: [...s.sections, section] }))
     const { draftsFolder } = get()
     await window.api.syncWatchedFolders(collectWatchedFolders(draftsFolder, next))
+    void get().refreshMoveTargets()
   },
 
   removeFolder: async (path) => {
@@ -433,6 +488,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     }))
     const { draftsFolder } = get()
     await window.api.syncWatchedFolders(collectWatchedFolders(draftsFolder, next))
+    void get().refreshMoveTargets()
   },
 
   createSubfolder: async (parentPath) => {
@@ -441,12 +497,14 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       (s) => s.path && (parentPath === s.path || parentPath.startsWith(s.path + '/'))
     )
     if (section) await get().refreshSection(section.id)
+    void get().refreshMoveTargets()
     return newPath
   },
 
   renameFolder: async (oldPath, newName) => {
     const newPath = await window.api.rename(oldPath, newName)
     await get().refreshAllSections()
+    void get().refreshMoveTargets()
     return newPath
   },
 
