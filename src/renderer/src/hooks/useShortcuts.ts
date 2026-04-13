@@ -9,12 +9,17 @@ export const useShortcuts = (): void => {
     createDraft,
     saveActive,
     closeTab,
+    closePane,
     activeTabId,
+    activePaneId,
+    paneRoot,
+    splitPane,
     toggleSidebar,
     setEditorMode,
     editorMode,
     tabs,
     setActiveTab,
+    setActivePane,
     openSettings,
     openQuickOpen,
     openCommandPalette,
@@ -64,11 +69,23 @@ export const useShortcuts = (): void => {
         return
       }
 
-      // Close tab: cmd/ctrl+w
+      // Close tab / close pane: cmd/ctrl+w
       if (key === 'w' && !e.shiftKey && !e.altKey) {
+        e.preventDefault()
+        // If we're in a split, close the pane instead of the tab
+        if (paneRoot.type === 'split') {
+          closePane(activePaneId)
+        } else if (activeTabId) {
+          closeTab(activeTabId)
+        }
+        return
+      }
+
+      // Split pane: cmd/ctrl+\ (horizontal split)
+      if (e.key === '\\' && !e.shiftKey && !e.altKey) {
         if (activeTabId) {
           e.preventDefault()
-          closeTab(activeTabId)
+          splitPane(activePaneId, 'horizontal', activeTabId)
         }
         return
       }
@@ -115,12 +132,17 @@ export const useShortcuts = (): void => {
     createDraft,
     saveActive,
     closeTab,
+    closePane,
     activeTabId,
+    activePaneId,
+    paneRoot,
+    splitPane,
     toggleSidebar,
     setEditorMode,
     editorMode,
     tabs,
     setActiveTab,
+    setActivePane,
     openSettings,
     openQuickOpen,
     openCommandPalette,

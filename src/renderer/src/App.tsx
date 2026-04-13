@@ -6,7 +6,7 @@ import UpdateBanner from '@/components/UpdateBanner'
 import SettingsDialog from '@/components/SettingsDialog'
 import QuickOpen from '@/components/QuickOpen'
 import CommandPalette from '@/components/CommandPalette'
-import EditorPane from '@/components/editor/EditorPane'
+import SplitContainer from '@/components/editor/SplitContainer'
 import { useShortcuts } from '@/hooks/useShortcuts'
 import { useUpdateSubscription } from '@/hooks/useUpdateSubscription'
 import { useTheme } from '@/hooks/useTheme'
@@ -18,6 +18,7 @@ import { useWorkspace } from '@/store/workspace'
 const App = (): React.JSX.Element => {
   const sidebarVisible = useWorkspace((s) => s.sidebarVisible)
   const hydrate = useWorkspace((s) => s.hydrate)
+  const paneRoot = useWorkspace((s) => s.paneRoot)
 
   useEffect(() => {
     void hydrate()
@@ -47,7 +48,7 @@ const App = (): React.JSX.Element => {
           <ResizablePanel>
             <div className="flex h-full flex-col">
               <div className="min-h-0 flex-1">
-                <EditorPane />
+                <SplitContainer node={paneRoot} />
               </div>
             </div>
           </ResizablePanel>

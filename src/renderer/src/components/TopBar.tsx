@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import {
   DndContext,
   type DragEndEvent,
+  type DragMoveEvent,
+  type DragStartEvent,
   PointerSensor,
   useSensor,
   useSensors,
@@ -10,18 +12,18 @@ import {
 import { SortableContext, horizontalListSortingStrategy, useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { PanelLeftIcon, PanelLeftOpenIcon, PlusIcon, XIcon, EyeIcon, CodeIcon } from 'lucide-react'
+import {
+  ContextMenu,
+  ContextMenuTrigger,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator
+} from '@/components/ui/context-menu'
 import { cn } from '@/lib/utils'
 import { useWorkspace, type OpenFile } from '@/store/workspace'
 
 
 const isMac = navigator.userAgent.toLowerCase().includes('mac')
-
-/**
- * Pre-pivot smarkup tab design — a single top bar that IS the title bar.
- * The bar background is the drag region (click empty space between tabs
- * to move the window); tabs and buttons are no-drag so they remain
- * interactive. On macOS the leftmost 78px is reserved for traffic lights.
- */
 
 type TabProps = {
   tab: OpenFile
@@ -29,6 +31,11 @@ type TabProps = {
   renaming: boolean
   onActivate: () => void
   onClose: () => void
+  onCloseOthers: () => void
+  onCloseAll: () => void
+  onOpenToSide: () => void
+  onOpenInNewWindow: () => void
+  onStartRename: () => void
   onCommitRename: (newName: string) => void
   onCancelRename: () => void
 }
@@ -39,6 +46,11 @@ const Tab = ({
   renaming,
   onActivate,
   onClose,
+  onCloseOthers,
+  onCloseAll,
+  onOpenToSide,
+  onOpenInNewWindow,
+  onStartRename,
   onCommitRename,
   onCancelRename
 }: TabProps): React.JSX.Element => {
@@ -80,7 +92,7 @@ const Tab = ({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } as any
 
-  return (
+  const tabContent = (
     <div
       ref={setNodeRef}
       style={style}
@@ -168,6 +180,25 @@ const Tab = ({
       </button>
     </div>
   )
+
+  return (
+    <ContextMenu>
+      <ContextMenuTrigger asChild>{tabContent}</ContextMenuTrigger>
+      <ContextMenuContent>
+        <ContextMenuItem onSelect={onOpenToSide}>Open to the Side</ContextMenuItem>
+        <ContextMenuItem onSelect={onOpenInNewWindow}>Open in New Window</ContextMenuItem>
+        <ContextMenuSeparator />
+        <ContextMenuItem onSelect={onClose}>Close</ContextMenuItem>
+        <ContextMenuItem onSelect={onCloseOthers}>Close Others</ContextMenuItem>
+        <ContextMenuItem onSelect={onCloseAll}>Close All</ContextMenuItem>
+        <ContextMenuSeparator />
+        <ContextMenuItem onSelect={onStartRename}>Rename</ContextMenuItem>
+        <ContextMenuItem onSelect={() => void window.api.revealInFolder(tab.path)}>
+          Reveal in {isMac ? 'Finder' : 'Explorer'}
+        </ContextMenuItem>
+      </ContextMenuContent>
+    </ContextMenu>
+  )
 }
 
 const EmptyLabel = (): React.JSX.Element => (
@@ -217,18 +248,63 @@ const TopBar = (): React.JSX.Element => {
     activeTabId,
     setActiveTab,
     closeTab,
+    closeOtherTabs,
+    closeAllTabs,
     reorderTabs,
     createDraft,
     sidebarVisible,
     toggleSidebar,
     renamingTabId,
     renameFile,
-    cancelRenamingTab
+    cancelRenamingTab,
+    startRenamingTab,
+    splitPane,
+    activePaneId
   } = useWorkspace()
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }))
 
+  // --- Drag-out detection state ---
+  const tabBarRef = useRef<HTMLDivElement>(null)
+  const dragStartPosRef = useRef<{ x: number; y: number } | null>(null)
+  const draggingTabIdRef = useRef<string | null>(null)
+  const didDetachRef = useRef(false)
+
+  const handleDragStart = (event: DragStartEvent): void => {
+    draggingTabIdRef.current = event.active.id as string
+    didDetachRef.current = false
+    const activatorEvent = event.activatorEvent as PointerEvent
+    dragStartPosRef.current = { x: activatorEvent.clientX, y: activatorEvent.clientY }
+  }
+
+  const handleDragMove = (event: DragMoveEvent): void => {
+    if (didDetachRef.current) return
+    const rect = tabBarRef.current?.getBoundingClientRect()
+    if (!rect || !dragStartPosRef.current) return
+
+    const currentY = dragStartPosRef.current.y + event.delta.y
+
+    // If pointer is 50px+ below the tab bar, trigger detach
+    if (currentY > rect.bottom + 50 || currentY < rect.top - 50) {
+      didDetachRef.current = true
+      const tabId = draggingTabIdRef.current
+      const tab = tabs.find((t) => t.id === tabId)
+      if (tab) {
+        const screenX = dragStartPosRef.current.x + event.delta.x
+        const screenY = dragStartPosRef.current.y + event.delta.y
+        void window.api.openTabInNewWindow(
+          { path: tab.path, content: tab.content, savedContent: tab.savedContent },
+          { x: screenX + window.screenX - 300, y: screenY + window.screenY - 20 }
+        )
+        closeTab(tab.id)
+      }
+    }
+  }
+
   const handleDragEnd = (event: DragEndEvent): void => {
+    dragStartPosRef.current = null
+    draggingTabIdRef.current = null
+    if (didDetachRef.current) return
     const { active, over } = event
     if (!over || active.id === over.id) return
     const fromIndex = tabs.findIndex((t) => t.id === active.id)
@@ -268,10 +344,12 @@ const TopBar = (): React.JSX.Element => {
       {tabs.length === 0 ? (
         <EmptyLabel />
       ) : (
-        <div className="flex min-w-0 flex-1 items-end gap-[2px] overflow-hidden px-2">
+        <div ref={tabBarRef} className="flex min-w-0 flex-1 items-end gap-[2px] overflow-hidden px-2">
           <DndContext
             sensors={sensors}
             collisionDetection={closestCenter}
+            onDragStart={handleDragStart}
+            onDragMove={handleDragMove}
             onDragEnd={handleDragEnd}
           >
             <SortableContext items={tabs.map((t) => t.id)} strategy={horizontalListSortingStrategy}>
@@ -283,6 +361,20 @@ const TopBar = (): React.JSX.Element => {
                   renaming={tab.id === renamingTabId}
                   onActivate={() => setActiveTab(tab.id)}
                   onClose={() => closeTab(tab.id)}
+                  onCloseOthers={() => closeOtherTabs(tab.id)}
+                  onCloseAll={closeAllTabs}
+                  onOpenToSide={() => splitPane(activePaneId, 'horizontal', tab.id)}
+                  onOpenInNewWindow={() => {
+                    void window.api.openTabInNewWindow(
+                      { path: tab.path, content: tab.content, savedContent: tab.savedContent },
+                      { x: window.screenX + 50, y: window.screenY + 50 }
+                    )
+                    closeTab(tab.id)
+                  }}
+                  onStartRename={() => {
+                    setActiveTab(tab.id)
+                    startRenamingTab()
+                  }}
                   onCommitRename={async (newName) => {
                     cancelRenamingTab()
                     await renameFile(tab.path, newName)

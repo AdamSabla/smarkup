@@ -9,7 +9,30 @@ import icon from '../../resources/icon.png?asset'
 
 const isMac = process.platform === 'darwin'
 
-const createWindow = (): BrowserWindow => {
+// --- Window manager ---------------------------------------------------------
+
+type TabTransferData = {
+  path: string
+  content: string
+  savedContent: string
+}
+
+type WindowInit = {
+  tabs?: TabTransferData[]
+  activeTabPath?: string | null
+}
+
+let windowIdCounter = 0
+const windowInitStore = new Map<string, WindowInit>()
+const windowIdMap = new Map<BrowserWindow, string>()
+
+const createWindow = (init?: WindowInit): BrowserWindow => {
+  const windowId = String(++windowIdCounter)
+
+  if (init) {
+    windowInitStore.set(windowId, init)
+  }
+
   const mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
@@ -36,8 +59,15 @@ const createWindow = (): BrowserWindow => {
     }
   })
 
+  windowIdMap.set(mainWindow, windowId)
+
   mainWindow.on('ready-to-show', () => {
     mainWindow.show()
+  })
+
+  mainWindow.on('closed', () => {
+    windowIdMap.delete(mainWindow)
+    windowInitStore.delete(windowId)
   })
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
@@ -45,10 +75,15 @@ const createWindow = (): BrowserWindow => {
     return { action: 'deny' }
   })
 
+  // Pass windowId as query param so renderer knows its identity synchronously
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
-    mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
+    const url = new URL(process.env['ELECTRON_RENDERER_URL'])
+    url.searchParams.set('windowId', windowId)
+    mainWindow.loadURL(url.toString())
   } else {
-    mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
+    mainWindow.loadFile(join(__dirname, '../renderer/index.html'), {
+      query: { windowId }
+    })
   }
 
   return mainWindow
@@ -190,10 +225,47 @@ const registerSettingsHandlers = (): void => {
 // --- File watcher IPC ----------------------------------------------------
 
 const registerWatcherHandlers = (): void => {
-  ipcMain.handle('fs:syncWatchedFolders', (_event, folders: string[]) => {
-    syncWatchedFolders(folders)
+  ipcMain.handle('fs:syncWatchedFolders', (event, folders: string[]) => {
+    const win = BrowserWindow.fromWebContents(event.sender)
+    const windowId = win ? windowIdMap.get(win) ?? 'unknown' : 'unknown'
+    syncWatchedFolders(folders, windowId)
     return true
   })
+}
+
+// --- Window management IPC -----------------------------------------------
+
+const registerWindowHandlers = (): void => {
+  // Renderer calls this on startup to get its init data (tabs to open, etc.)
+  ipcMain.handle('window:getInit', (_event, windowId: string) => {
+    const init = windowInitStore.get(windowId)
+    if (init) {
+      windowInitStore.delete(windowId)
+      return init
+    }
+    return null
+  })
+
+  // Renderer calls this when a tab is dragged out or "Open in New Window" is selected
+  ipcMain.handle(
+    'window:openTabInNewWindow',
+    (
+      _event,
+      tabData: TabTransferData,
+      screenPos: { x: number; y: number }
+    ) => {
+      const win = createWindow({
+        tabs: [tabData],
+        activeTabPath: tabData.path
+      })
+      win.setBounds({
+        x: Math.round(screenPos.x),
+        y: Math.round(screenPos.y),
+        width: 1000,
+        height: 700
+      })
+    }
+  )
 }
 
 // --- Auto-updater --------------------------------------------------------
@@ -215,9 +287,6 @@ const broadcastUpdateStatus = (status: UpdateStatus): void => {
 }
 
 const registerUpdater = (): void => {
-  // Don't attempt auto-download — surface an "update available" banner and
-  // let the user click through to the GitHub Release to download manually.
-  // This avoids needing code signing for the initial release flow.
   autoUpdater.autoDownload = false
   autoUpdater.autoInstallOnAppQuit = false
 
@@ -271,6 +340,7 @@ app.whenReady().then(() => {
   registerFileHandlers()
   registerSettingsHandlers()
   registerWatcherHandlers()
+  registerWindowHandlers()
   registerUpdater()
   createWindow()
 

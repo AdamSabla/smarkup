@@ -2,6 +2,9 @@
  * Watches a set of directories for markdown file changes and broadcasts
  * debounced `fs:watchEvent` messages to all renderer windows. The renderer
  * responds by refreshing the section that contains the changed path.
+ *
+ * Supports ref-counted watching across multiple windows — a folder is only
+ * unwatched when no window needs it anymore.
  */
 import { BrowserWindow } from 'electron'
 import chokidar, { type FSWatcher } from 'chokidar'
@@ -15,6 +18,9 @@ export type WatchEvent = {
 const watchers = new Map<string, FSWatcher>()
 const pendingByFolder = new Map<string, Set<WatchEvent>>()
 const flushTimers = new Map<string, NodeJS.Timeout>()
+
+/** Per-window watch registry for ref-counting */
+const windowWatches = new Map<string, Set<string>>()
 
 const flush = (folder: string): void => {
   const pending = pendingByFolder.get(folder)
@@ -45,7 +51,7 @@ const schedule = (folder: string, event: WatchEvent): void => {
   )
 }
 
-export const startWatching = (folder: string): void => {
+const startWatching = (folder: string): void => {
   if (watchers.has(folder)) return
   const watcher = chokidar.watch(folder, {
     ignoreInitial: true,
@@ -75,7 +81,7 @@ export const startWatching = (folder: string): void => {
   watchers.set(folder, watcher)
 }
 
-export const stopWatching = (folder: string): void => {
+const stopWatching = (folder: string): void => {
   const watcher = watchers.get(folder)
   if (!watcher) return
   void watcher.close()
@@ -88,16 +94,35 @@ export const stopWatching = (folder: string): void => {
   }
 }
 
-export const syncWatchedFolders = (folders: string[]): void => {
+/**
+ * Sync watched folders for a specific window. The watcher computes the union
+ * of all windows' desired folders and starts/stops chokidar watchers accordingly.
+ */
+export const syncWatchedFolders = (folders: string[], windowId: string = 'default'): void => {
+  // Update this window's desired set
   const desired = new Set(folders.filter(Boolean))
-  for (const existing of watchers.keys()) {
-    if (!desired.has(existing)) stopWatching(existing)
+  if (desired.size === 0) {
+    windowWatches.delete(windowId)
+  } else {
+    windowWatches.set(windowId, desired)
   }
-  for (const folder of desired) {
+
+  // Compute the union of all windows' desired folders
+  const union = new Set<string>()
+  for (const set of windowWatches.values()) {
+    for (const f of set) union.add(f)
+  }
+
+  // Start/stop watchers based on the union
+  for (const existing of watchers.keys()) {
+    if (!union.has(existing)) stopWatching(existing)
+  }
+  for (const folder of union) {
     if (!watchers.has(folder)) startWatching(folder)
   }
 }
 
 export const stopAllWatchers = (): void => {
   for (const folder of Array.from(watchers.keys())) stopWatching(folder)
+  windowWatches.clear()
 }

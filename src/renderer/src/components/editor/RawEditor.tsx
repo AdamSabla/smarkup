@@ -1,8 +1,40 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import CodeMirror from '@uiw/react-codemirror'
 import { markdown } from '@codemirror/lang-markdown'
-import { EditorView, keymap } from '@codemirror/view'
+import { EditorView, keymap, Decoration, ViewPlugin, ViewUpdate } from '@codemirror/view'
+import { RangeSetBuilder } from '@codemirror/state'
 import { useWorkspace } from '@/store/workspace'
+
+const placeholderMark = Decoration.mark({ class: 'cm-placeholder-highlight' })
+
+const placeholderHighlighter = ViewPlugin.fromClass(
+  class {
+    decorations
+
+    constructor(view: EditorView) {
+      this.decorations = this.build(view)
+    }
+
+    update(update: ViewUpdate): void {
+      if (update.docChanged || update.viewportChanged) {
+        this.decorations = this.build(update.view)
+      }
+    }
+
+    build(view: EditorView) {
+      const builder = new RangeSetBuilder<Decoration>()
+      const { from, to } = view.viewport
+      const text = view.state.doc.sliceString(from, to)
+      const re = /\{\{[^}]+\}\}/g
+      let match
+      while ((match = re.exec(text))) {
+        builder.add(from + match.index, from + match.index + match[0].length, placeholderMark)
+      }
+      return builder.finish()
+    }
+  },
+  { decorations: (v) => v.decorations }
+)
 
 type Props = {
   tabId: string
@@ -127,6 +159,7 @@ const RawEditor = ({ tabId, value, onChange }: Props): React.JSX.Element => {
     () => [
       markdown(),
       checklistKeymap,
+      placeholderHighlighter,
       EditorView.lineWrapping,
       EditorView.theme({
         '&': {
@@ -152,6 +185,11 @@ const RawEditor = ({ tabId, value, onChange }: Props): React.JSX.Element => {
         },
         '&.cm-focused': {
           outline: 'none'
+        },
+        '.cm-placeholder-highlight': {
+          color: '#e879f9',
+          borderRadius: '3px',
+          backgroundColor: 'rgba(232, 121, 249, 0.12)'
         }
       })
     ],

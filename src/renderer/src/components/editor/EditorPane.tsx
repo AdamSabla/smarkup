@@ -11,9 +11,20 @@ const EmptyState = (): React.JSX.Element => (
   </div>
 )
 
-const EditorPane = (): React.JSX.Element => {
-  const { tabs, activeTabId, editorMode, updateActiveContent, showWordCount } = useWorkspace()
-  const active = tabs.find((t) => t.id === activeTabId)
+type EditorPaneProps = {
+  tabId: string | null
+  paneId: string
+}
+
+const EditorPane = ({ tabId, paneId }: EditorPaneProps): React.JSX.Element => {
+  const tabs = useWorkspace((s) => s.tabs)
+  const editorMode = useWorkspace((s) => s.editorMode)
+  const showWordCount = useWorkspace((s) => s.showWordCount)
+  const updateTabContent = useWorkspace((s) => s.updateTabContent)
+  const setActivePane = useWorkspace((s) => s.setActivePane)
+  const activePaneId = useWorkspace((s) => s.activePaneId)
+
+  const active = tabs.find((t) => t.id === tabId)
 
   const words = useMemo(() => {
     if (!active) return 0
@@ -22,22 +33,32 @@ const EditorPane = (): React.JSX.Element => {
 
   if (!active) return <EmptyState />
 
+  const handleChange = (content: string): void => {
+    updateTabContent(active.id, content)
+  }
+
+  const handleFocus = (): void => {
+    if (activePaneId !== paneId) {
+      setActivePane(paneId)
+    }
+  }
+
   return (
-    <div className="relative flex h-full flex-col">
+    <div className="relative flex h-full flex-col" onMouseDown={handleFocus}>
       <div className="flex-1 overflow-hidden">
         {editorMode === 'visual' ? (
           <VisualEditor
             key={active.id}
             tabId={active.id}
             value={active.content}
-            onChange={updateActiveContent}
+            onChange={handleChange}
           />
         ) : (
           <RawEditor
             key={active.id}
             tabId={active.id}
             value={active.content}
-            onChange={updateActiveContent}
+            onChange={handleChange}
           />
         )}
       </div>

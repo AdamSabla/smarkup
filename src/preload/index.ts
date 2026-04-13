@@ -42,6 +42,17 @@ export type WatchPayload = {
   events: WatchEvent[]
 }
 
+export type TabTransferData = {
+  path: string
+  content: string
+  savedContent: string
+}
+
+export type WindowInit = {
+  tabs?: TabTransferData[]
+  activeTabPath?: string | null
+}
+
 const api = {
   openDirectory: (): Promise<string | null> => ipcRenderer.invoke('dialog:openDirectory'),
   readDirectory: (path: string): Promise<FileEntry[]> =>
@@ -91,7 +102,17 @@ const api = {
     return () => {
       ipcRenderer.off('updater:status', handler)
     }
-  }
+  },
+
+  // --- Window management ------------------------------------------------
+  getWindowId: (): string =>
+    new URLSearchParams(window.location.search).get('windowId') ?? 'default',
+  getWindowInit: (windowId: string): Promise<WindowInit | null> =>
+    ipcRenderer.invoke('window:getInit', windowId),
+  openTabInNewWindow: (
+    tab: TabTransferData,
+    pos: { x: number; y: number }
+  ): Promise<void> => ipcRenderer.invoke('window:openTabInNewWindow', tab, pos)
 }
 
 export type SmarkupApi = typeof api
