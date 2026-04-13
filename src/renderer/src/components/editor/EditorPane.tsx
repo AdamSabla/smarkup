@@ -25,11 +25,9 @@ const EditorPane = ({ tabId, paneId }: EditorPaneProps): React.JSX.Element => {
   const activePaneId = useWorkspace((s) => s.activePaneId)
 
   const active = tabs.find((t) => t.id === tabId)
+  const activeContent = active?.content ?? ''
 
-  const words = useMemo(() => {
-    if (!active) return 0
-    return countWords(active.content)
-  }, [active?.content])
+  const words = useMemo(() => countWords(activeContent), [activeContent])
 
   if (!active) return <EmptyState />
 

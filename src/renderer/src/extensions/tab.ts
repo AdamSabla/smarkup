@@ -11,7 +11,10 @@ declare module '@tiptap/core' {
   }
 }
 
-function getListItems(state: { doc: PMNode; selection: { from: number; to: number } }) {
+function getListItems(state: {
+  doc: PMNode
+  selection: { from: number; to: number }
+}): Array<{ node: PMNode; pos: number }> {
   const nodes: Array<{ node: PMNode; pos: number }> = []
 
   state.doc.nodesBetween(state.selection.from, state.selection.to, (node, pos, parent) => {

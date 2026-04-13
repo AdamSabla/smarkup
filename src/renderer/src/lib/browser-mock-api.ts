@@ -36,7 +36,8 @@ let mockSettings: Settings = {
   activeTabPath: null,
   recentFiles: [],
   autoSave: false,
-  autoSaveDelayMs: 1500
+  autoSaveDelayMs: 1500,
+  showWordCount: false
 }
 
 const listEntries = (): FileEntry[] =>
@@ -130,7 +131,12 @@ const mockApi: SmarkupApi = {
   openReleaseUrl: async (url) => {
     window.open(url, '_blank', 'noopener,noreferrer')
   },
-  onUpdateStatus: () => () => undefined
+  onUpdateStatus: () => () => undefined,
+
+  // Window management: no-op in browser mode (single window only)
+  getWindowId: () => 'default',
+  getWindowInit: async () => null,
+  openTabInNewWindow: async () => undefined
 }
 
 export const installBrowserMockApi = (): void => {

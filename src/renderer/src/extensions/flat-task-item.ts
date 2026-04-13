@@ -17,7 +17,7 @@ function clampIndent(n: number): number {
 /*  Helpers                                                            */
 /* ------------------------------------------------------------------ */
 
-function getTopItems(state: Editor['state']) {
+function getTopItems(state: Editor['state']): Array<{ node: PMNode; pos: number }> {
   const nodes: Array<{ node: PMNode; pos: number }> = []
   state.doc.nodesBetween(state.selection.from, state.selection.to, (node, pos, parent) => {
     if (parent === state.doc) {
@@ -184,8 +184,8 @@ export const FlatTaskItem = Node.create({
       {
         tag: 'div[data-type="flatTaskItem"]',
         priority: 100,
-        contentElement: (dom: HTMLElement) => {
-          const inner = dom.querySelector(':scope > div:not([data-type])')
+        contentElement: (dom: HTMLElement): HTMLElement => {
+          const inner = dom.querySelector<HTMLElement>(':scope > div:not([data-type])')
           return inner ?? dom
         }
       }

@@ -297,7 +297,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     const windowInit: WindowInit | null =
       windowId !== 'default' ? await window.api.getWindowInit(windowId) : null
 
-    let restoredTabs: OpenFile[] = []
+    const restoredTabs: OpenFile[] = []
 
     if (windowInit?.tabs && windowInit.tabs.length > 0) {
       // New window with transferred tabs — use init data directly

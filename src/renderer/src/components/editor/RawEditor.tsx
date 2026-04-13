@@ -1,7 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import CodeMirror from '@uiw/react-codemirror'
 import { markdown } from '@codemirror/lang-markdown'
-import { EditorView, keymap, Decoration, ViewPlugin, ViewUpdate } from '@codemirror/view'
+import {
+  EditorView,
+  keymap,
+  Decoration,
+  DecorationSet,
+  ViewPlugin,
+  ViewUpdate
+} from '@codemirror/view'
 import { RangeSetBuilder } from '@codemirror/state'
 import { useWorkspace } from '@/store/workspace'
 
@@ -21,7 +28,7 @@ const placeholderHighlighter = ViewPlugin.fromClass(
       }
     }
 
-    build(view: EditorView) {
+    build(view: EditorView): DecorationSet {
       const builder = new RangeSetBuilder<Decoration>()
       const { from, to } = view.viewport
       const text = view.state.doc.sliceString(from, to)
