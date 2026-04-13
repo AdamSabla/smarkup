@@ -130,6 +130,8 @@ type WorkspaceState = {
   renamingTabId: string | null
   /** Remembered scroll-top per tab id (volatile, not persisted to disk) */
   scrollPositions: Record<string, number>
+  /** Paths that are collapsed in the sidebar tree (volatile, survives sidebar toggle) */
+  sidebarCollapsedPaths: Set<string>
   hydrated: boolean
 
   // --- Actions ---
@@ -183,6 +185,9 @@ type WorkspaceState = {
   saveScrollPosition: (tabId: string, scrollTop: number) => void
   startRenamingTab: () => void
   cancelRenamingTab: () => void
+  toggleSidebarCollapsedPath: (path: string) => void
+  expandSidebarPaths: (...paths: string[]) => void
+  collapseSidebarPath: (path: string) => void
 
   setUpdateStatus: (status: UpdateStatus) => void
   checkForUpdates: () => Promise<void>
@@ -289,6 +294,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   commandPaletteOpen: false,
   renamingTabId: null,
   scrollPositions: {},
+  sidebarCollapsedPaths: new Set<string>(),
   hydrated: false,
 
   hydrate: async () => {
@@ -813,6 +819,28 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     if (activeTabId) set({ renamingTabId: activeTabId })
   },
   cancelRenamingTab: () => set({ renamingTabId: null }),
+
+  toggleSidebarCollapsedPath: (path) => {
+    const current = get().sidebarCollapsedPaths
+    const next = new Set(current)
+    if (next.has(path)) next.delete(path)
+    else next.add(path)
+    set({ sidebarCollapsedPaths: next })
+  },
+
+  expandSidebarPaths: (...paths) => {
+    const current = get().sidebarCollapsedPaths
+    const next = new Set(current)
+    for (const p of paths) next.delete(p)
+    set({ sidebarCollapsedPaths: next })
+  },
+
+  collapseSidebarPath: (path) => {
+    const current = get().sidebarCollapsedPaths
+    const next = new Set(current)
+    next.add(path)
+    set({ sidebarCollapsedPaths: next })
+  },
 
   setUpdateStatus: (status) => set({ updateStatus: status }),
 

@@ -717,14 +717,24 @@ const SectionView = ({
 }
 
 const Sidebar = (): React.JSX.Element => {
-  const { sections, addFolder, removeFolder, openSettings, openFile, createSubfolder, renameFolder } =
-    useWorkspace()
+  const {
+    sections,
+    addFolder,
+    removeFolder,
+    openSettings,
+    openFile,
+    createSubfolder,
+    renameFolder,
+    sidebarCollapsedPaths,
+    toggleSidebarCollapsedPath,
+    expandSidebarPaths,
+    collapseSidebarPath
+  } = useWorkspace()
   const [renamingPath, setRenamingPath] = useState<string | null>(null)
   const [renamingFolderPath, setRenamingFolderPath] = useState<string | null>(null)
   const [focusedItem, setFocusedItem] = useState<string | null>(null)
   const sidebarRef = useRef<HTMLDivElement>(null)
 
-  const [collapsedPaths, setCollapsedPaths] = useState<Set<string>>(new Set())
   const [showAllSections, setShowAllSections] = useState<Set<string>>(new Set())
 
   const expandedPaths = useMemo(() => {
@@ -737,18 +747,16 @@ const Sidebar = (): React.JSX.Element => {
       all.add(s.id)
       for (const sub of s.subfolders) walk(sub)
     }
-    for (const p of collapsedPaths) all.delete(p)
+    for (const p of sidebarCollapsedPaths) all.delete(p)
     return all
-  }, [sections, collapsedPaths])
+  }, [sections, sidebarCollapsedPaths])
 
-  const toggleExpanded = useCallback((path: string) => {
-    setCollapsedPaths((prev) => {
-      const next = new Set(prev)
-      if (next.has(path)) next.delete(path)
-      else next.add(path)
-      return next
-    })
-  }, [])
+  const toggleExpanded = useCallback(
+    (path: string) => {
+      toggleSidebarCollapsedPath(path)
+    },
+    [toggleSidebarCollapsedPath]
+  )
 
   const toggleShowAll = useCallback((sectionId: string) => {
     setShowAllSections((prev) => {
@@ -811,11 +819,7 @@ const Sidebar = (): React.JSX.Element => {
           e.preventDefault()
           if (item.type === 'section' || item.type === 'folder') {
             if (!expandedPaths.has(item.path)) {
-              setCollapsedPaths((prev) => {
-                const next = new Set(prev)
-                next.delete(item.path)
-                return next
-              })
+              expandSidebarPaths(item.path)
             } else {
               const next = flatItems[idx + 1]
               if (next && next.parentPath === item.path) {
@@ -828,7 +832,7 @@ const Sidebar = (): React.JSX.Element => {
         case 'ArrowLeft': {
           e.preventDefault()
           if ((item.type === 'section' || item.type === 'folder') && expandedPaths.has(item.path)) {
-            setCollapsedPaths((prev) => new Set([...prev, item.path]))
+            collapseSidebarPath(item.path)
           } else if (item.parentPath) {
             setFocusedItem(item.parentPath)
           }
@@ -853,23 +857,28 @@ const Sidebar = (): React.JSX.Element => {
         }
       }
     },
-    [activeFocusedItem, flatItems, expandedPaths, toggleExpanded, openFile, renamingPath]
+    [
+      activeFocusedItem,
+      flatItems,
+      expandedPaths,
+      toggleExpanded,
+      expandSidebarPaths,
+      collapseSidebarPath,
+      openFile,
+      renamingPath
+    ]
   )
 
   const handleCreateSubfolder = useCallback(
     async (parentPath: string): Promise<void> => {
-      setCollapsedPaths((prev) => {
-        const next = new Set(prev)
-        next.delete(parentPath)
-        // Also ensure the owning section is expanded
-        for (const s of sections) {
-          if (s.path && (parentPath === s.path || parentPath.startsWith(s.path + '/'))) {
-            next.delete(s.id)
-            break
-          }
+      const pathsToExpand: string[] = [parentPath]
+      for (const s of sections) {
+        if (s.path && (parentPath === s.path || parentPath.startsWith(s.path + '/'))) {
+          pathsToExpand.push(s.id)
+          break
         }
-        return next
-      })
+      }
+      expandSidebarPaths(...pathsToExpand)
       try {
         const newPath = await createSubfolder(parentPath)
         setRenamingFolderPath(newPath)
@@ -877,7 +886,7 @@ const Sidebar = (): React.JSX.Element => {
         // Directory may already exist or other FS error
       }
     },
-    [createSubfolder, sections]
+    [createSubfolder, sections, expandSidebarPaths]
   )
 
   const handleCommitFolderRename = useCallback(
