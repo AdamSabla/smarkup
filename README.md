@@ -133,44 +133,56 @@ git push origin v0.1.0
 This triggers `.github/workflows/release.yml`, which:
 
 1. Runs a build on macOS, Windows, and Linux runners in parallel.
-2. Runs `electron-builder --publish always` on each, which uploads `.dmg`, `.exe`, `.AppImage`, `.deb` and the matching `latest*.yml` update manifests to a **draft** GitHub Release.
+2. Runs `electron-builder --publish always` on each, which uploads `.dmg`, `.zip` (mac), `.exe`, `.AppImage`, `.deb` and the matching `latest*.yml` update manifests to a **draft** GitHub Release. The `.zip` is what `electron-updater` downloads to apply updates on macOS; the `.dmg` is only for first install.
 3. Also uploads the installers as workflow artifacts (fallback).
 
 ### 2. Publish the draft release
 
-Go to `https://github.com/AdamSabla/smarkup/releases`, review the draft, and click **Publish**. Once published, the `latest*.yml` files become the update manifest that the installed app checks.
+Go to `https://github.com/AdamSabla/smarkup/releases`, review the draft, and click **Publish**. `electron-updater` only sees **published** (non-draft) releases, so installed apps won't discover the update until this step is done. Keeping `releaseType: draft` in `electron-builder.yml` gives you a safety net — the build can ship without users seeing it immediately.
 
 ### 3. Auto-update behavior
 
-The installed app (see `src/main/index.ts`) uses `electron-updater` in **manual-download mode**:
+The installed app uses `electron-updater` in **silent-download mode** (see `src/main/index.ts`):
 
-- On launch, it checks `https://github.com/AdamSabla/smarkup/releases/latest` 5 seconds after startup.
-- If a newer version is available, the renderer shows an **Update banner** at the top of the window with a "Download" button.
-- Clicking "Download" opens the GitHub release page in the user's default browser. The user downloads and installs manually.
+1. On launch, 5 seconds after startup, the app checks `https://github.com/AdamSabla/smarkup/releases/latest`.
+2. If a newer version is available, the update banner shows "Downloading smarkup vX.Y.Z…" and the download starts in the background.
+3. While downloading, the banner shows a progress bar.
+4. When the download finishes, the banner switches to "smarkup vX.Y.Z is ready. Restart to install." with a **Restart now** button.
+   - Clicking **Restart now** quits the app and relaunches into the new version immediately.
+   - Clicking the X dismisses the banner; the update is applied automatically on the next quit (`autoInstallOnAppQuit = true`).
+5. Users can also trigger a check manually via the command palette (⌘K → "Check for updates").
 
-Why manual download rather than silent install? Because:
+Platform nuances:
 
-1. macOS refuses to auto-relaunch unsigned apps. Silent updates on Mac require an Apple Developer ID ($99/yr).
-2. Windows SmartScreen warns on unsigned installers. An EV code signing cert is ~$200+/yr.
+- **Windows / Linux:** works out of the box whether or not the build is signed. SmartScreen may warn on unsigned Windows installers on first install until reputation builds, but updates themselves work.
+- **macOS:** auto-update **requires a signed and notarized build**. `electron-updater` validates the downloaded ZIP's code signature against the running app and silently refuses to apply an unsigned update. See "Code signing on macOS" below.
 
-Once you have signing in place, flip `autoUpdater.autoDownload = true` in `src/main/index.ts` and add a "Restart to update" UX.
+### Code signing on macOS (required for Mac auto-update)
 
-### Code signing (when you're ready)
+Without this, Mac users will see the banner but the install will quietly fail, and every first-install will be blocked by Gatekeeper. This is a hard requirement from Apple — there is no workaround.
 
-Uncomment the signing env vars in `.github/workflows/release.yml` and add these repository secrets:
+1. Enroll in the [Apple Developer Program](https://developer.apple.com/programs/) ($99/year).
+2. In Xcode → Settings → Accounts, create a **Developer ID Application** certificate. Export it from Keychain as a `.p12` with a password.
+3. Create an app-specific password at [appleid.apple.com](https://appleid.apple.com) → App-Specific Passwords.
+4. Look up your Team ID at [developer.apple.com/account](https://developer.apple.com/account) → Membership Details.
+5. Add these GitHub Actions secrets (Settings → Secrets and variables → Actions):
+   - `MAC_CERT_P12_BASE64` — `base64 -i cert.p12 | pbcopy`
+   - `MAC_CERT_PASSWORD` — the `.p12` password
+   - `APPLE_ID` — your Apple ID email
+   - `APPLE_APP_SPECIFIC_PASSWORD` — the app-specific password from step 3
+   - `APPLE_TEAM_ID` — from step 4
+6. In `electron-builder.yml`, flip `mac.notarize` from `false` to `true`.
 
-**macOS:**
+The release workflow (`.github/workflows/release.yml`) already references these secrets, so once they exist the next tagged build signs and notarizes automatically.
 
-- `MAC_CERT_P12_BASE64` — Developer ID cert exported as .p12, base64-encoded
-- `MAC_CERT_PASSWORD` — password for the .p12
-- `APPLE_ID` — your Apple ID
-- `APPLE_APP_SPECIFIC_PASSWORD` — https://appleid.apple.com → "App-Specific Passwords"
-- `APPLE_TEAM_ID` — from https://developer.apple.com/account/#/membership
+### Code signing on Windows (optional)
 
-**Windows:**
+Windows auto-update works unsigned, but users will see a SmartScreen warning on first install. To eliminate it:
 
-- `WIN_CSC_LINK` — EV cert .pfx base64-encoded (or a URL)
+- `WIN_CSC_LINK` — .pfx cert base64-encoded (or a URL)
 - `WIN_CSC_KEY_PASSWORD` — cert password
+
+An EV code signing cert costs ~$200+/year and builds SmartScreen reputation immediately; a standard OV cert is cheaper but takes weeks to months of installs to warm up.
 
 ## A note on repo visibility
 

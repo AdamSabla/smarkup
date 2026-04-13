@@ -35,19 +35,43 @@ jobs:
         run: npx electron-vite build && npx electron-builder --mac --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Leave signing off until you have an Apple Developer ID.
-          # When you do, add these secrets and uncomment:
-          # CSC_LINK: ${{ secrets.MAC_CERT_P12_BASE64 }}
-          # CSC_KEY_PASSWORD: ${{ secrets.MAC_CERT_PASSWORD }}
-          # APPLE_ID: ${{ secrets.APPLE_ID }}
-          # APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          # APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          # macOS code signing + notarization.
+          #
+          # These secrets are read automatically by electron-builder when
+          # present. If they're unset the build still succeeds, but the
+          # produced app is unsigned — Gatekeeper will nag users on first
+          # install AND electron-updater will refuse to apply updates on
+          # macOS (it validates the downloaded ZIP's signature against the
+          # running app). Set `notarize: true` in electron-builder.yml once
+          # you've added these.
+          #
+          # Required secrets (add via Settings → Secrets and variables →
+          # Actions):
+          #   MAC_CERT_P12_BASE64          Developer ID Application cert as
+          #                                .p12, base64-encoded.
+          #   MAC_CERT_PASSWORD            Password for the .p12.
+          #   APPLE_ID                     Your Apple ID email.
+          #   APPLE_APP_SPECIFIC_PASSWORD  appleid.apple.com → App-Specific
+          #                                Passwords.
+          #   APPLE_TEAM_ID                developer.apple.com/account →
+          #                                Membership Details.
+          CSC_LINK: ${{ secrets.MAC_CERT_P12_BASE64 }}
+          CSC_KEY_PASSWORD: ${{ secrets.MAC_CERT_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
 
       - name: Build & publish (Windows)
         if: matrix.os == 'windows-latest'
         run: npx electron-vite build && npx electron-builder --win --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Windows code signing (optional — auto-update works unsigned, but
+          # SmartScreen will warn on the installer until reputation builds).
+          #   WIN_CSC_LINK          .pfx cert base64-encoded (or a URL).
+          #   WIN_CSC_KEY_PASSWORD  Password for the .pfx.
+          CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
 
       - name: Build & publish (Linux)
         if: matrix.os == 'ubuntu-latest'
@@ -65,5 +89,6 @@ jobs:
             dist/*.AppImage
             dist/*.deb
             dist/*.zip
+            dist/*.blockmap
             dist/latest*.yml
           if-no-files-found: ignore

@@ -22,11 +22,30 @@ nsis:
 mac:
   icon: build/icon.icns
   entitlementsInherit: build/entitlements.mac.plist
+  # dmg = first-install experience for users.
+  # zip = required artifact for electron-updater to apply in-place updates on
+  #       macOS. Without it, Mac users see the update banner but the install
+  #       fails. Keep both.
+  target:
+    - target: dmg
+      arch:
+        - x64
+        - arm64
+    - target: zip
+      arch:
+        - x64
+        - arm64
   extendInfo:
     - NSCameraUsageDescription: Application requests access to the device's camera.
     - NSMicrophoneUsageDescription: Application requests access to the device's microphone.
     - NSDocumentsFolderUsageDescription: Application requests access to the user's Documents folder.
     - NSDownloadsFolderUsageDescription: Application requests access to the user's Downloads folder.
+  # Notarization is required for auto-update to actually apply on macOS.
+  # electron-updater verifies the downloaded ZIP's code signature against the
+  # running app — unsigned/unnotarized builds will fail the verification and
+  # silently refuse to update. Flip this to `true` once you add the Apple
+  # Developer secrets to GitHub Actions (APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD,
+  # APPLE_TEAM_ID) — electron-builder picks them up automatically.
   notarize: false
 dmg:
   icon: build/icon.icns

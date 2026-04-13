@@ -12,6 +12,8 @@ export type UpdateStatus =
   | { kind: 'idle' }
   | { kind: 'checking' }
   | { kind: 'available'; version: string; releaseUrl: string }
+  | { kind: 'downloading'; version: string; percent: number; bytesPerSecond: number }
+  | { kind: 'downloaded'; version: string; releaseUrl: string }
   | { kind: 'not-available' }
   | { kind: 'error'; message: string }
 
@@ -96,6 +98,7 @@ const api = {
   checkForUpdates: (): Promise<UpdateStatus> => ipcRenderer.invoke('updater:check'),
   getUpdateStatus: (): Promise<UpdateStatus> => ipcRenderer.invoke('updater:getStatus'),
   openReleaseUrl: (url: string): Promise<void> => ipcRenderer.invoke('updater:openRelease', url),
+  quitAndInstallUpdate: (): Promise<void> => ipcRenderer.invoke('updater:quitAndInstall'),
   onUpdateStatus: (callback: (status: UpdateStatus) => void): (() => void) => {
     const handler = (_event: unknown, status: UpdateStatus): void => callback(status)
     ipcRenderer.on('updater:status', handler)

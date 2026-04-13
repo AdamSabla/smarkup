@@ -274,10 +274,13 @@ type UpdateStatus =
   | { kind: 'idle' }
   | { kind: 'checking' }
   | { kind: 'available'; version: string; releaseUrl: string }
+  | { kind: 'downloading'; version: string; percent: number; bytesPerSecond: number }
+  | { kind: 'downloaded'; version: string; releaseUrl: string }
   | { kind: 'not-available' }
   | { kind: 'error'; message: string }
 
 let latestUpdateStatus: UpdateStatus = { kind: 'idle' }
+let pendingUpdateVersion: string | null = null
 
 const broadcastUpdateStatus = (status: UpdateStatus): void => {
   latestUpdateStatus = status
@@ -286,20 +289,46 @@ const broadcastUpdateStatus = (status: UpdateStatus): void => {
   }
 }
 
+const releaseUrlFor = (version: string): string =>
+  `https://github.com/AdamSabla/smarkup/releases/tag/v${version}`
+
 const registerUpdater = (): void => {
-  autoUpdater.autoDownload = false
-  autoUpdater.autoInstallOnAppQuit = false
+  // Silent background download once an update is detected. The renderer
+  // shows progress via the banner and offers a "Restart to install" button
+  // once download completes. If the user quits without clicking restart,
+  // electron-updater applies the update on next launch.
+  autoUpdater.autoDownload = true
+  autoUpdater.autoInstallOnAppQuit = true
 
   autoUpdater.on('checking-for-update', () => {
     broadcastUpdateStatus({ kind: 'checking' })
   })
 
   autoUpdater.on('update-available', (info) => {
-    const releaseUrl = `https://github.com/AdamSabla/smarkup/releases/tag/v${info.version}`
+    pendingUpdateVersion = info.version
     broadcastUpdateStatus({
       kind: 'available',
       version: info.version,
-      releaseUrl
+      releaseUrl: releaseUrlFor(info.version)
+    })
+  })
+
+  autoUpdater.on('download-progress', (progress) => {
+    const version = pendingUpdateVersion ?? 'unknown'
+    broadcastUpdateStatus({
+      kind: 'downloading',
+      version,
+      percent: progress.percent,
+      bytesPerSecond: progress.bytesPerSecond
+    })
+  })
+
+  autoUpdater.on('update-downloaded', (info) => {
+    pendingUpdateVersion = info.version
+    broadcastUpdateStatus({
+      kind: 'downloaded',
+      version: info.version,
+      releaseUrl: releaseUrlFor(info.version)
     })
   })
 
@@ -327,6 +356,12 @@ const registerUpdater = (): void => {
 
   ipcMain.handle('updater:openRelease', async (_event, url: string) => {
     await shell.openExternal(url)
+  })
+
+  ipcMain.handle('updater:quitAndInstall', () => {
+    // isSilent=false, isForceRunAfter=true: show installer UI on Windows if
+    // needed, and relaunch on macOS/Linux after the swap.
+    autoUpdater.quitAndInstall(false, true)
   })
 }
 
