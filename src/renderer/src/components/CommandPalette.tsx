@@ -21,6 +21,7 @@ import {
   TrashIcon,
   XIcon
 } from 'lucide-react'
+import { useShallow } from 'zustand/react/shallow'
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import {
   Command,
@@ -31,17 +32,16 @@ import {
   CommandList,
   CommandSeparator
 } from '@/components/ui/command'
+import Spinner from '@/components/ui/spinner'
 import { useWorkspace } from '@/store/workspace'
 
 type Page = 'commands' | 'movePicker' | 'createFolder'
 
-type MoveTarget = {
-  path: string
-  label: string
-}
-
 const CommandPaletteBody = (): React.JSX.Element => {
-  const store = useWorkspace()
+  // Subscribe with shallow equality so the body doesn't re-render on
+  // unrelated store changes (e.g. the active tab's content changing while
+  // the user is typing in the editor). The palette is permanently mounted
+  // for instant open, so avoiding extra renders matters.
   const {
     closeCommandPalette,
     openQuickOpen,
@@ -68,8 +68,45 @@ const CommandPaletteBody = (): React.JSX.Element => {
     recentFiles,
     openFile,
     autoSave,
-    setAutoSave
-  } = store
+    setAutoSave,
+    commandPaletteOpen,
+    moveTargets,
+    moveTargetsLoading,
+    refreshMoveTargets
+  } = useWorkspace(
+    useShallow((s) => ({
+      closeCommandPalette: s.closeCommandPalette,
+      openQuickOpen: s.openQuickOpen,
+      openSettings: s.openSettings,
+      createDraft: s.createDraft,
+      saveActive: s.saveActive,
+      closeTab: s.closeTab,
+      closeOtherTabs: s.closeOtherTabs,
+      closeAllTabs: s.closeAllTabs,
+      activeTabId: s.activeTabId,
+      tabs: s.tabs,
+      additionalFolders: s.additionalFolders,
+      addFolder: s.addFolder,
+      removeFolder: s.removeFolder,
+      setDraftsFolder: s.setDraftsFolder,
+      setTheme: s.setTheme,
+      setEditorMode: s.setEditorMode,
+      editorMode: s.editorMode,
+      toggleSidebar: s.toggleSidebar,
+      sidebarVisible: s.sidebarVisible,
+      deleteFile: s.deleteFile,
+      moveFile: s.moveFile,
+      checkForUpdates: s.checkForUpdates,
+      recentFiles: s.recentFiles,
+      openFile: s.openFile,
+      autoSave: s.autoSave,
+      setAutoSave: s.setAutoSave,
+      commandPaletteOpen: s.commandPaletteOpen,
+      moveTargets: s.moveTargets,
+      moveTargetsLoading: s.moveTargetsLoading,
+      refreshMoveTargets: s.refreshMoveTargets
+    }))
+  )
 
   const [page, setPage] = useState<Page>('commands')
   const [query, setQuery] = useState('')
@@ -82,56 +119,37 @@ const CommandPaletteBody = (): React.JSX.Element => {
     setQuery('')
   }
 
+  // Reset internal state every time the palette re-opens so it always starts
+  // on the commands page with an empty query.
+  useEffect(() => {
+    if (commandPaletteOpen) {
+      // Legitimate sync from an external "palette opened" event.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setPage('commands')
+      setQuery('')
+    }
+  }, [commandPaletteOpen])
+
   // Re-focus the cmdk input after page transitions
   useEffect(() => {
+    if (!commandPaletteOpen) return
     requestAnimationFrame(() => {
       const input = document.querySelector<HTMLInputElement>('[data-slot="command-input"]')
       input?.focus()
     })
-  }, [page])
+  }, [page, commandPaletteOpen])
+
+  // If the user ever lands on the move picker and we somehow have no cached
+  // targets, kick off a refresh — normally the store keeps them warm.
+  useEffect(() => {
+    if (page === 'movePicker' && moveTargets.length === 0 && !moveTargetsLoading) {
+      void refreshMoveTargets()
+    }
+  }, [page, moveTargets.length, moveTargetsLoading, refreshMoveTargets])
 
   const dismiss = (): void => {
     closeCommandPalette()
   }
-
-  // --- Move file: discover destination folders ----------------------------
-  const [moveTargets, setMoveTargets] = useState<MoveTarget[] | null>(null)
-
-  useEffect(() => {
-    if (page !== 'movePicker') return
-    let cancelled = false
-    const loadTargets = async (): Promise<void> => {
-      const roots: string[] = []
-      if (store.draftsFolder) roots.push(store.draftsFolder)
-      for (const f of additionalFolders) roots.push(f)
-
-      const allPaths = new Set<string>(roots)
-      for (const root of roots) {
-        try {
-          const subs = await window.api.listFoldersRecursive(root)
-          subs.forEach((s) => allPaths.add(s))
-        } catch {
-          // ignore unreachable roots
-        }
-      }
-      if (cancelled) return
-      const targets: MoveTarget[] = Array.from(allPaths)
-        .sort()
-        .map((p) => {
-          // Show "<rootLabel>/<rest>" when nested under a known root
-          const matchingRoot = roots.find((r) => p === r || p.startsWith(r + '/'))
-          const rootLabel = matchingRoot ? matchingRoot.split('/').pop() || matchingRoot : ''
-          const rest = matchingRoot && p !== matchingRoot ? p.slice(matchingRoot.length + 1) : ''
-          const label = rest ? `${rootLabel}/${rest}` : rootLabel
-          return { path: p, label }
-        })
-      setMoveTargets(targets)
-    }
-    void loadTargets()
-    return () => {
-      cancelled = true
-    }
-  }, [page, additionalFolders, store.draftsFolder])
 
   // --- Create folder page state ------------------------------------------
   const [newFolderParent, setNewFolderParent] = useState<string | null>(null)
@@ -395,6 +413,7 @@ const CommandPaletteBody = (): React.JSX.Element => {
 
   // --- Page: movePicker --------------------------------------------------
   if (page === 'movePicker') {
+    const hasTargets = moveTargets.length > 0
     return (
       <Command label="Move file to folder">
         <div className="flex items-center gap-2 border-b px-3 py-2 text-xs text-muted-foreground">
@@ -411,13 +430,16 @@ const CommandPaletteBody = (): React.JSX.Element => {
         </div>
         <CommandInput placeholder="Search folders…" value={query} onValueChange={setQuery} />
         <CommandList>
-          {moveTargets === null && (
-            <div className="px-4 py-6 text-center text-sm text-muted-foreground">Loading…</div>
+          {!hasTargets && moveTargetsLoading && (
+            <div className="flex items-center justify-center gap-2 px-4 py-6 text-sm text-muted-foreground">
+              <Spinner />
+              <span>Loading folders…</span>
+            </div>
           )}
-          {moveTargets && moveTargets.length === 0 && (
+          {!hasTargets && !moveTargetsLoading && (
             <CommandEmpty>No folders found. Configure your sidebar first.</CommandEmpty>
           )}
-          {moveTargets && moveTargets.length > 0 && (
+          {hasTargets && (
             <CommandGroup heading="Folders">
               {moveTargets.map((target) => (
                 <CommandItem
@@ -435,7 +457,7 @@ const CommandPaletteBody = (): React.JSX.Element => {
               ))}
             </CommandGroup>
           )}
-          {moveTargets && moveTargets.length > 0 && (
+          {hasTargets && (
             <>
               <CommandSeparator />
               <CommandGroup heading="Create new">
@@ -507,12 +529,17 @@ const CommandPalette = (): React.JSX.Element => {
 
   return (
     <Dialog open={commandPaletteOpen} onOpenChange={(open) => !open && closeCommandPalette()}>
-      <DialogContent className="max-w-xl gap-0 overflow-hidden p-0 sm:max-w-xl">
+      {/*
+       * `forceMount` keeps the palette's React tree alive between opens,
+       * so the first Cmd+K press doesn't pay the cold-mount cost of
+       * Radix Dialog + cmdk + all the CommandItems.
+       */}
+      <DialogContent forceMount className="max-w-xl gap-0 overflow-hidden p-0 sm:max-w-xl">
         <DialogTitle className="sr-only">Command palette</DialogTitle>
         <DialogDescription className="sr-only">
           Run commands or move the active file to another folder.
         </DialogDescription>
-        {commandPaletteOpen && <CommandPaletteBody />}
+        <CommandPaletteBody />
       </DialogContent>
     </Dialog>
   )

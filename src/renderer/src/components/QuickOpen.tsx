@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import Fuse from 'fuse.js'
 import { FileTextIcon, SearchIcon } from 'lucide-react'
+import { useShallow } from 'zustand/react/shallow'
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
 import { useWorkspace, type FolderNode } from '@/store/workspace'
@@ -14,11 +15,22 @@ type PaletteItem = {
 }
 
 /**
- * Inner body — only mounted while the dialog is open, so useState()
- * re-initializes each time and we don't need a reset-on-open effect.
+ * Inner body — kept permanently mounted so opening the quick-open dialog
+ * is instant and the Fuse index stays warm (it's rebuilt in the background
+ * whenever the sidebar tree changes, not on first open).
  */
 const QuickOpenBody = (): React.JSX.Element => {
-  const { closeQuickOpen, sections, openFile, recentFiles } = useWorkspace()
+  // Shallow subscription: the body stays mounted so we shouldn't re-render
+  // on unrelated store changes (e.g. content keystrokes in the editor).
+  const { closeQuickOpen, sections, openFile, recentFiles, quickOpenOpen } = useWorkspace(
+    useShallow((s) => ({
+      closeQuickOpen: s.closeQuickOpen,
+      sections: s.sections,
+      openFile: s.openFile,
+      recentFiles: s.recentFiles,
+      quickOpenOpen: s.quickOpenOpen
+    }))
+  )
 
   const [query, setQuery] = useState('')
   const [activeIndex, setActiveIndex] = useState(0)
@@ -102,16 +114,24 @@ const QuickOpenBody = (): React.JSX.Element => {
   // Derived: active index clamped to current result length — no effect needed
   const clampedIndex = Math.min(activeIndex, Math.max(0, results.length - 1))
 
-  // Focus input on mount
+  // Reset state each time the dialog is re-opened (since the body is kept
+  // mounted between opens, we need to clear stale query/selection manually).
   useEffect(() => {
-    requestAnimationFrame(() => inputRef.current?.focus())
-  }, [])
+    if (quickOpenOpen) {
+      // Legitimate sync from an external "dialog opened" event.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setQuery('')
+      setActiveIndex(0)
+      requestAnimationFrame(() => inputRef.current?.focus())
+    }
+  }, [quickOpenOpen])
 
   // Ensure active item is visible
   useEffect(() => {
+    if (!quickOpenOpen) return
     const el = listRef.current?.querySelector(`[data-index="${clampedIndex}"]`)
     el?.scrollIntoView({ block: 'nearest' })
-  }, [clampedIndex])
+  }, [clampedIndex, quickOpenOpen])
 
   const handleKeyDown = (e: React.KeyboardEvent): void => {
     if (e.key === 'ArrowDown') {
@@ -196,12 +216,16 @@ const QuickOpen = (): React.JSX.Element => {
 
   return (
     <Dialog open={quickOpenOpen} onOpenChange={(open) => !open && closeQuickOpen()}>
-      <DialogContent className="max-w-xl gap-0 overflow-hidden p-0 sm:max-w-xl">
+      {/*
+       * `forceMount` keeps the quick-open body alive between opens so the
+       * Fuse index is already built by the time the user presses Cmd+P.
+       */}
+      <DialogContent forceMount className="max-w-xl gap-0 overflow-hidden p-0 sm:max-w-xl">
         <DialogTitle className="sr-only">Search files</DialogTitle>
         <DialogDescription className="sr-only">
           Fuzzy search across all files in your sidebar.
         </DialogDescription>
-        {quickOpenOpen && <QuickOpenBody />}
+        <QuickOpenBody />
       </DialogContent>
     </Dialog>
   )

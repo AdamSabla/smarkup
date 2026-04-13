@@ -16,7 +16,9 @@ const DialogOverlay = ({
   <DialogPrimitive.Overlay
     data-slot="dialog-overlay"
     className={cn(
-      'data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 fixed inset-0 z-50 bg-black/50',
+      // `data-[state=closed]:opacity-0 pointer-events-none` keeps the overlay
+      // invisible and click-through when the dialog is force-mounted but closed.
+      'data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 fixed inset-0 z-50 bg-black/50 data-[state=closed]:opacity-0 data-[state=closed]:pointer-events-none',
       className
     )}
     {...props}
@@ -26,14 +28,18 @@ const DialogOverlay = ({
 const DialogContent = ({
   className,
   children,
+  forceMount,
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Content>): React.JSX.Element => (
-  <DialogPortal>
-    <DialogOverlay />
+  <DialogPortal forceMount={forceMount}>
+    <DialogOverlay forceMount={forceMount} />
     <DialogPrimitive.Content
+      forceMount={forceMount}
       data-slot="dialog-content"
       className={cn(
-        'bg-background data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 fixed top-[50%] left-[50%] z-50 grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 rounded-lg border p-6 shadow-lg duration-200 sm:max-w-md',
+        // `data-[state=closed]:opacity-0 pointer-events-none` hides the
+        // content when the dialog is force-mounted but closed.
+        'bg-background data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 fixed top-[50%] left-[50%] z-50 grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 rounded-lg border p-6 shadow-lg duration-200 sm:max-w-md data-[state=closed]:opacity-0 data-[state=closed]:pointer-events-none',
         className
       )}
       {...props}
