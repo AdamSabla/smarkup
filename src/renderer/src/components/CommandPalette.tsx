@@ -19,6 +19,8 @@ import {
   SettingsIcon,
   SidebarIcon,
   SunIcon,
+  TableIcon,
+  Trash2Icon,
   TrashIcon,
   XIcon
 } from 'lucide-react'
@@ -35,6 +37,7 @@ import {
 } from '@/components/ui/command'
 import Spinner from '@/components/ui/spinner'
 import { useWorkspace } from '@/store/workspace'
+import { useActiveEditor } from '@/lib/active-editor'
 
 type Page = 'commands' | 'movePicker' | 'createFolder'
 
@@ -117,6 +120,9 @@ const CommandPaletteBody = (): React.JSX.Element => {
   const [query, setQuery] = useState('')
 
   const activeTab = tabs.find((t) => t.id === activeTabId)
+  const visualEditor = useActiveEditor()
+  const canEditVisual = editorMode === 'visual' && visualEditor !== null
+  const inTable = canEditVisual && visualEditor!.isActive('table')
 
   // Reset query when switching pages
   const goTo = (next: Page): void => {
@@ -340,6 +346,101 @@ const CommandPaletteBody = (): React.JSX.Element => {
               <SaveAllIcon /> {autoSave ? 'Disable auto-save' : 'Enable auto-save'}
             </CommandItem>
           </CommandGroup>
+
+          {canEditVisual && (
+            <>
+              <CommandSeparator />
+              <CommandGroup heading="Insert">
+                <CommandItem
+                  onSelect={() => {
+                    visualEditor!
+                      .chain()
+                      .focus()
+                      .insertTable({ rows: 3, cols: 3, withHeaderRow: true })
+                      .run()
+                    dismiss()
+                  }}
+                >
+                  <TableIcon /> Insert table (3×3)
+                </CommandItem>
+              </CommandGroup>
+            </>
+          )}
+
+          {inTable && (
+            <>
+              <CommandSeparator />
+              <CommandGroup heading="Table">
+                <CommandItem
+                  onSelect={() => {
+                    visualEditor!.chain().focus().addRowBefore().run()
+                    dismiss()
+                  }}
+                >
+                  <TableIcon /> Add row above
+                </CommandItem>
+                <CommandItem
+                  onSelect={() => {
+                    visualEditor!.chain().focus().addRowAfter().run()
+                    dismiss()
+                  }}
+                >
+                  <TableIcon /> Add row below
+                </CommandItem>
+                <CommandItem
+                  onSelect={() => {
+                    visualEditor!.chain().focus().addColumnBefore().run()
+                    dismiss()
+                  }}
+                >
+                  <TableIcon /> Add column left
+                </CommandItem>
+                <CommandItem
+                  onSelect={() => {
+                    visualEditor!.chain().focus().addColumnAfter().run()
+                    dismiss()
+                  }}
+                >
+                  <TableIcon /> Add column right
+                </CommandItem>
+                <CommandItem
+                  onSelect={() => {
+                    visualEditor!.chain().focus().toggleHeaderRow().run()
+                    dismiss()
+                  }}
+                >
+                  <TableIcon /> Toggle header row
+                </CommandItem>
+                <CommandItem
+                  className="text-destructive [&_svg]:text-destructive data-[selected=true]:bg-destructive/10 data-[selected=true]:text-destructive"
+                  onSelect={() => {
+                    visualEditor!.chain().focus().deleteRow().run()
+                    dismiss()
+                  }}
+                >
+                  <Trash2Icon /> Delete row
+                </CommandItem>
+                <CommandItem
+                  className="text-destructive [&_svg]:text-destructive data-[selected=true]:bg-destructive/10 data-[selected=true]:text-destructive"
+                  onSelect={() => {
+                    visualEditor!.chain().focus().deleteColumn().run()
+                    dismiss()
+                  }}
+                >
+                  <Trash2Icon /> Delete column
+                </CommandItem>
+                <CommandItem
+                  className="text-destructive [&_svg]:text-destructive data-[selected=true]:bg-destructive/10 data-[selected=true]:text-destructive"
+                  onSelect={() => {
+                    visualEditor!.chain().focus().deleteTable().run()
+                    dismiss()
+                  }}
+                >
+                  <Trash2Icon /> Delete table
+                </CommandItem>
+              </CommandGroup>
+            </>
+          )}
 
           <CommandSeparator />
           <CommandGroup heading="Appearance">

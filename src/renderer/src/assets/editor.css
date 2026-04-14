@@ -300,25 +300,74 @@
 }
 
 /* --- Tables ----------------------------------------------------------- */
+/*
+ * Tables come from @tiptap/extension-table (GFM-compatible). The extension
+ * wraps the table in a ProseMirror-managed <table> with a <colgroup> for
+ * column widths and inserts a <div class="tableWrapper"> around it. We scope
+ * overflow to the wrapper so wide tables scroll horizontally without
+ * breaking the 680px reading column around other blocks.
+ */
+.smarkup-editor .tableWrapper {
+  margin-top: 14px;
+  margin-bottom: 14px;
+  overflow-x: auto;
+}
 .smarkup-editor table {
   border-collapse: collapse;
   table-layout: fixed;
   width: 100%;
-  margin-top: 12px;
-  margin-bottom: 12px;
   font-size: 14px;
   line-height: 22px;
+  /* Keep the table flush with the reading column — avoid the global
+     `> * { margin: auto }` rule re-centering nested elements. */
+  margin: 0;
 }
 .smarkup-editor table td,
 .smarkup-editor table th {
   border: 1px solid var(--border);
   padding: 6px 10px;
   vertical-align: top;
+  position: relative;
+  min-width: 80px;
 }
 .smarkup-editor table th {
   background: var(--muted);
   font-weight: 600;
   text-align: left;
+}
+/* Content inside cells shouldn't add its own block margin. */
+.smarkup-editor table :is(p, ul, ol) {
+  margin: 0;
+}
+
+/* Highlight the currently selected table cell(s) for editing. */
+.smarkup-editor .selectedCell {
+  background: color-mix(in oklch, #1eabeb, transparent 88%);
+}
+.smarkup-editor .selectedCell::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: transparent;
+}
+
+/* Column-resize grip rendered by the extension on the cell's right border. */
+.smarkup-editor .column-resize-handle {
+  position: absolute;
+  top: 0;
+  right: -2px;
+  bottom: 0;
+  width: 4px;
+  background: #1eabeb;
+  opacity: 0;
+  pointer-events: none;
+}
+.smarkup-editor table:hover .column-resize-handle {
+  opacity: 0.35;
+}
+.smarkup-editor.resize-cursor {
+  cursor: col-resize;
 }
 
 /* --- Placeholder ------------------------------------------------------ */

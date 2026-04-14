@@ -1,11 +1,17 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { useEditor, EditorContent, type Editor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
+import { Table } from '@tiptap/extension-table'
+import { TableRow } from '@tiptap/extension-table-row'
+import { TableHeader } from '@tiptap/extension-table-header'
+import { TableCell } from '@tiptap/extension-table-cell'
 import { Markdown, type MarkdownStorage } from 'tiptap-markdown'
 import { cn } from '@/lib/utils'
 import { useWorkspace } from '@/store/workspace'
 import { FlatTaskItem } from '@/extensions/flat-task-item'
 import { Tab } from '@/extensions/tab'
+import { getActiveEditor, setActiveEditor } from '@/lib/active-editor'
+import TableMenu from './TableMenu'
 
 const getMarkdown = (editor: Editor): string => {
   const storage = editor.storage as unknown as { markdown: MarkdownStorage }
@@ -54,6 +60,11 @@ const VisualEditor = ({ tabId, value, onChange }: Props): React.JSX.Element => {
       }),
       FlatTaskItem,
       Tab,
+      // GFM-style tables. `resizable` gives users drag-handles on column borders.
+      Table.configure({ resizable: true, HTMLAttributes: { class: 'smarkup-table' } }),
+      TableRow,
+      TableHeader,
+      TableCell,
       Markdown.configure({
         html: false,
         tightLists: true,
@@ -83,6 +94,18 @@ const VisualEditor = ({ tabId, value, onChange }: Props): React.JSX.Element => {
     }
   })
 
+  // Expose this editor as the active visual editor so the command palette and
+  // other top-level UI can run commands against it.
+  useEffect(() => {
+    if (!editor) return
+    setActiveEditor(editor)
+    return () => {
+      // Only clear if we're still the active one — avoids races when a new
+      // VisualEditor mounts (different tab) before this one unmounts.
+      if (getActiveEditor() === editor) setActiveEditor(null)
+    }
+  }, [editor])
+
   // Reconcile external value changes (e.g. file reload from watcher or raw-edit)
   useEffect(() => {
     if (!editor) return
@@ -95,8 +118,9 @@ const VisualEditor = ({ tabId, value, onChange }: Props): React.JSX.Element => {
   }, [value, editor])
 
   return (
-    <div ref={scrollRef} className="h-full overflow-auto">
+    <div ref={scrollRef} className="relative h-full overflow-auto">
       <EditorContent editor={editor} className="h-full" />
+      {editor && <TableMenu editor={editor} containerRef={scrollRef} />}
     </div>
   )
 }
