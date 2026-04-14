@@ -36,8 +36,6 @@ const createWindow = (init?: WindowInit): BrowserWindow => {
   const mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
-    minWidth: 640,
-    minHeight: 480,
     show: false,
     titleBarStyle: isMac ? 'hiddenInset' : 'hidden',
     titleBarOverlay: !isMac

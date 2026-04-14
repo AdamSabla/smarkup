@@ -9,7 +9,7 @@ import {
   ViewPlugin,
   ViewUpdate
 } from '@codemirror/view'
-import { RangeSetBuilder } from '@codemirror/state'
+import { EditorSelection, RangeSetBuilder } from '@codemirror/state'
 import { useWorkspace } from '@/store/workspace'
 
 const placeholderMark = Decoration.mark({ class: 'cm-placeholder-highlight' })
@@ -60,9 +60,23 @@ const RawEditor = ({ tabId, value, onChange }: Props): React.JSX.Element => {
   const isDark = useIsDark()
   const lastScrollTop = useRef(0)
   const initialScroll = useRef(useWorkspace.getState().scrollPositions[tabId] ?? 0)
+  const initialCursor = useRef(useWorkspace.getState().cursorPositions[tabId] ?? null)
   const saveScrollPosition = useWorkspace((s) => s.saveScrollPosition)
+  const saveCursorPosition = useWorkspace((s) => s.saveCursorPosition)
+  const viewRef = useRef<EditorView | null>(null)
 
   const onCreateEditor = useCallback((view: EditorView) => {
+    viewRef.current = view
+
+    // Restore cursor position from a previous tab visit, or place at start
+    const saved = initialCursor.current
+    if (saved) {
+      const docLen = view.state.doc.length
+      const anchor = Math.min(saved.anchor, docLen)
+      const head = Math.min(saved.head, docLen)
+      view.dispatch({ selection: EditorSelection.single(anchor, head) })
+    }
+
     if (initialScroll.current) {
       requestAnimationFrame(() => {
         view.scrollDOM.scrollTop = initialScroll.current
@@ -79,8 +93,13 @@ const RawEditor = ({ tabId, value, onChange }: Props): React.JSX.Element => {
   useEffect(() => {
     return () => {
       saveScrollPosition(tabId, lastScrollTop.current)
+      const view = viewRef.current
+      if (view) {
+        const { anchor, head } = view.state.selection.main
+        saveCursorPosition(tabId, anchor, head)
+      }
     }
-  }, [tabId, saveScrollPosition])
+  }, [tabId, saveScrollPosition, saveCursorPosition])
 
   const checklistKeymap = useMemo(
     () =>

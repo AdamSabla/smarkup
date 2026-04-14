@@ -1,6 +1,6 @@
 {
   "name": "smarkup",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "description": "Native-feeling Electron markdown editor with Tiptap + CodeMirror",
   "main": "./out/main/index.js",
   "author": "AdamSabla",
@@ -19,7 +19,7 @@
     "postinstall": "electron-builder install-app-deps",
     "build:unpack": "npm run build && electron-builder --dir",
     "build:win": "npm run build && electron-builder --win",
-    "build:mac": "electron-vite build && electron-builder --mac",
+    "build:mac": "set -a && . ./.env && set +a && electron-vite build && electron-builder --mac",
     "build:linux": "electron-vite build && electron-builder --linux"
   },
   "dependencies": {

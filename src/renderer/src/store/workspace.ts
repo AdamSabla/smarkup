@@ -130,6 +130,8 @@ type WorkspaceState = {
   renamingTabId: string | null
   /** Remembered scroll-top per tab id (volatile, not persisted to disk) */
   scrollPositions: Record<string, number>
+  /** Remembered cursor/selection per tab id (volatile, not persisted to disk) */
+  cursorPositions: Record<string, { anchor: number; head: number }>
   /** Paths that are collapsed in the sidebar tree (volatile, survives sidebar toggle) */
   sidebarCollapsedPaths: Set<string>
   hydrated: boolean
@@ -183,6 +185,7 @@ type WorkspaceState = {
   openCommandPalette: () => void
   closeCommandPalette: () => void
   saveScrollPosition: (tabId: string, scrollTop: number) => void
+  saveCursorPosition: (tabId: string, anchor: number, head: number) => void
   startRenamingTab: () => void
   cancelRenamingTab: () => void
   toggleSidebarCollapsedPath: (path: string) => void
@@ -294,6 +297,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   commandPaletteOpen: false,
   renamingTabId: null,
   scrollPositions: {},
+  cursorPositions: {},
   sidebarCollapsedPaths: new Set<string>(),
   hydrated: false,
 
@@ -641,7 +645,9 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       }
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { [id]: _, ...restScroll } = s.scrollPositions
-      return { tabs: nextTabs, activeTabId: nextActive, paneRoot: updatePaneTree(s.paneRoot), scrollPositions: restScroll }
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { [id]: _c, ...restCursor } = s.cursorPositions
+      return { tabs: nextTabs, activeTabId: nextActive, paneRoot: updatePaneTree(s.paneRoot), scrollPositions: restScroll, cursorPositions: restCursor }
     }),
 
   closeOtherTabs: (id) =>
@@ -649,14 +655,16 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       const keep = s.tabs.find((t) => t.id === id)
       if (!keep) return s
       const keptScroll = s.scrollPositions[id]
+      const keptCursor = s.cursorPositions[id]
       return {
         tabs: [keep],
         activeTabId: keep.id,
-        scrollPositions: keptScroll !== undefined ? { [id]: keptScroll } : {}
+        scrollPositions: keptScroll !== undefined ? { [id]: keptScroll } : {},
+        cursorPositions: keptCursor !== undefined ? { [id]: keptCursor } : {}
       }
     }),
 
-  closeAllTabs: () => set({ tabs: [], activeTabId: null, scrollPositions: {} }),
+  closeAllTabs: () => set({ tabs: [], activeTabId: null, scrollPositions: {}, cursorPositions: {} }),
 
   reorderTabs: (fromIndex, toIndex) =>
     set((s) => {
@@ -808,6 +816,10 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   saveScrollPosition: (tabId, scrollTop) =>
     set((s) => ({
       scrollPositions: { ...s.scrollPositions, [tabId]: scrollTop }
+    })),
+  saveCursorPosition: (tabId, anchor, head) =>
+    set((s) => ({
+      cursorPositions: { ...s.cursorPositions, [tabId]: { anchor, head } }
     })),
   startRenamingTab: () => {
     const { activeTabId } = get()

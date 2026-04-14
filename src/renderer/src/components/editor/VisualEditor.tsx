@@ -28,7 +28,9 @@ const VisualEditor = ({ tabId, value, onChange }: Props): React.JSX.Element => {
   const scrollRef = useRef<HTMLDivElement>(null)
   const lastScrollTop = useRef(0)
   const initialScroll = useRef(useWorkspace.getState().scrollPositions[tabId] ?? 0)
+  const initialCursor = useRef(useWorkspace.getState().cursorPositions[tabId] ?? null)
   const saveScrollPosition = useWorkspace((s) => s.saveScrollPosition)
+  const saveCursorPosition = useWorkspace((s) => s.saveCursorPosition)
   const lastEmittedMarkdown = useRef(value)
 
   useEffect(() => {
@@ -80,7 +82,7 @@ const VisualEditor = ({ tabId, value, onChange }: Props): React.JSX.Element => {
 
   const editor = useEditor({
     extensions,
-    autofocus: 'end',
+    autofocus: false,
     content: value,
     onUpdate: ({ editor: e }) => {
       const md = getMarkdown(e)
@@ -94,11 +96,34 @@ const VisualEditor = ({ tabId, value, onChange }: Props): React.JSX.Element => {
     }
   })
 
+  // Save cursor position on unmount (tab switch)
+  useEffect(() => {
+    return () => {
+      if (!editor) return
+      const { anchor, head } = editor.state.selection
+      saveCursorPosition(tabId, anchor, head)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tabId, saveCursorPosition, editor])
+
   // Expose this editor as the active visual editor so the command palette and
   // other top-level UI can run commands against it.
   useEffect(() => {
     if (!editor) return
     setActiveEditor(editor)
+
+    // Restore cursor position from a previous tab visit, or place at start
+    const saved = initialCursor.current
+    if (saved) {
+      const docSize = editor.state.doc.content.size
+      const anchor = Math.min(saved.anchor, docSize)
+      const head = Math.min(saved.head, docSize)
+      editor.commands.setTextSelection({ from: anchor, to: head })
+    } else {
+      editor.commands.setTextSelection(0)
+    }
+    editor.commands.focus()
+
     return () => {
       // Only clear if we're still the active one — avoids races when a new
       // VisualEditor mounts (different tab) before this one unmounts.

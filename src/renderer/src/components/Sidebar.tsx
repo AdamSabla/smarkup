@@ -103,13 +103,13 @@ function flattenVisibleTree(
       }
     }
 
-    for (const sub of section.subfolders) walkFolder(sub, section.id)
-
     const allFiles = section.files
     const visible = showAllSections.has(section.id) ? allFiles : allFiles.slice(0, INITIAL_VISIBLE)
     for (const file of visible) {
       items.push({ path: file.path, type: 'file', parentPath: section.id })
     }
+
+    for (const sub of section.subfolders) walkFolder(sub, section.id)
   }
 
   return items
@@ -666,6 +666,15 @@ const SectionView = ({
             <div className="px-2 py-1 text-[11px] text-muted-foreground">No markdown files</div>
           )}
 
+          <FileList
+            files={files}
+            renamingPath={renamingPath}
+            focusedItem={focusedItem}
+            onStartRename={onStartRename}
+            onCancelRename={onCancelRename}
+            onFocusItem={onFocusItem}
+          />
+
           {section.subfolders.map((sub) => (
             <SubfolderView
               key={sub.path}
@@ -684,15 +693,6 @@ const SectionView = ({
               onCancelFolderRename={onCancelFolderRename}
             />
           ))}
-
-          <FileList
-            files={files}
-            renamingPath={renamingPath}
-            focusedItem={focusedItem}
-            onStartRename={onStartRename}
-            onCancelRename={onCancelRename}
-            onFocusItem={onFocusItem}
-          />
 
           {hidden > 0 && !showAll && (
             <button
