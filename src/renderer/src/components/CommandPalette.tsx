@@ -22,6 +22,7 @@ import {
   TableIcon,
   Trash2Icon,
   TrashIcon,
+  KeyboardIcon,
   XIcon
 } from 'lucide-react'
 import { useShallow } from 'zustand/react/shallow'
@@ -520,6 +521,14 @@ const CommandPaletteBody = (): React.JSX.Element => {
               }}
             >
               <RefreshCwIcon /> Check for updates
+            </CommandItem>
+            <CommandItem
+              onSelect={() => {
+                dismiss()
+                useWorkspace.getState().openShortcuts()
+              }}
+            >
+              <KeyboardIcon /> Keyboard Shortcuts
             </CommandItem>
           </CommandGroup>
         </CommandList>

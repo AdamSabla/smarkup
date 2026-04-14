@@ -22,6 +22,7 @@ export type Settings = {
   autoSave: boolean
   autoSaveDelayMs: number
   showWordCount: boolean
+  rawHeadingSizes: boolean
 }
 
 const DEFAULT_SETTINGS: Settings = {
@@ -35,7 +36,8 @@ const DEFAULT_SETTINGS: Settings = {
   recentFiles: [],
   autoSave: false,
   autoSaveDelayMs: 1500,
-  showWordCount: false
+  showWordCount: false,
+  rawHeadingSizes: false
 }
 
 let cached: Settings | null = null

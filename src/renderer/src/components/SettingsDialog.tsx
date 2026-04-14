@@ -30,7 +30,9 @@ const SettingsDialog = (): React.JSX.Element => {
     autoSave,
     setAutoSave,
     showWordCount,
-    setShowWordCount
+    setShowWordCount,
+    rawHeadingSizes,
+    setRawHeadingSizes
   } = useWorkspace()
 
   const handlePickDraftsFolder = async (): Promise<void> => {
@@ -140,6 +142,34 @@ const SettingsDialog = (): React.JSX.Element => {
                   className={cn(
                     'inline-block size-3.5 rounded-full bg-background shadow transition-transform',
                     showWordCount ? 'translate-x-[18px]' : 'translate-x-[2px]'
+                  )}
+                />
+              </button>
+            </div>
+          </div>
+          {/* Raw heading sizes */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <label className="text-sm font-medium">Heading sizes in raw editor</label>
+                <p className="text-xs text-muted-foreground">
+                  Scale heading font sizes (H1–H4) in the raw markdown editor.
+                </p>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={rawHeadingSizes}
+                onClick={() => void setRawHeadingSizes(!rawHeadingSizes)}
+                className={cn(
+                  'relative inline-flex h-5 w-9 shrink-0 items-center rounded-full border transition-colors',
+                  rawHeadingSizes ? 'bg-primary border-primary' : 'bg-muted border-border'
+                )}
+              >
+                <span
+                  className={cn(
+                    'inline-block size-3.5 rounded-full bg-background shadow transition-transform',
+                    rawHeadingSizes ? 'translate-x-[18px]' : 'translate-x-[2px]'
                   )}
                 />
               </button>

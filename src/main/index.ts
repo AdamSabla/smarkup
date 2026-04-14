@@ -1,4 +1,4 @@
-import { app, shell, BrowserWindow, ipcMain, nativeTheme, dialog } from 'electron'
+import { app, shell, BrowserWindow, ipcMain, Menu, nativeTheme, dialog } from 'electron'
 import { join, dirname, basename } from 'path'
 import { promises as fs, type Dirent } from 'fs'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
@@ -340,6 +340,86 @@ app.whenReady().then(() => {
   registerWatcherHandlers()
   registerWindowHandlers()
   registerUpdater()
+
+  // --- Native macOS menu ---------------------------------------------------
+  const template: Electron.MenuItemConstructorOptions[] = [
+    ...(isMac
+      ? [
+          {
+            label: app.name,
+            submenu: [
+              { role: 'about' as const },
+              { type: 'separator' as const },
+              {
+                label: 'Check for Updates…',
+                click: (): void => {
+                  autoUpdater.checkForUpdates().catch((err) => {
+                    broadcastUpdateStatus({
+                      kind: 'error',
+                      message: err instanceof Error ? err.message : String(err)
+                    })
+                  })
+                }
+              },
+              { type: 'separator' as const },
+              { role: 'services' as const },
+              { type: 'separator' as const },
+              { role: 'hide' as const },
+              { role: 'hideOthers' as const },
+              { role: 'unhide' as const },
+              { type: 'separator' as const },
+              { role: 'quit' as const }
+            ]
+          }
+        ]
+      : []),
+    {
+      label: 'File',
+      submenu: [isMac ? { role: 'close' as const } : { role: 'quit' as const }]
+    },
+    { label: 'Edit', submenu: [
+      { role: 'undo' as const },
+      { role: 'redo' as const },
+      { type: 'separator' as const },
+      { role: 'cut' as const },
+      { role: 'copy' as const },
+      { role: 'paste' as const },
+      { role: 'selectAll' as const }
+    ]},
+    {
+      label: 'View',
+      submenu: [
+        {
+          label: 'Keyboard Shortcuts',
+          accelerator: 'CmdOrCtrl+Shift+/',
+          click: (): void => {
+            const win = BrowserWindow.getFocusedWindow()
+            if (win) win.webContents.send('app:showShortcuts')
+          }
+        },
+        { type: 'separator' as const },
+        { role: 'togglefullscreen' as const },
+        ...(is.dev ? [
+          { type: 'separator' as const },
+          { role: 'reload' as const },
+          { role: 'forceReload' as const },
+          { role: 'toggleDevTools' as const }
+        ] : [])
+      ]
+    },
+    { label: 'Window', submenu: [
+      { role: 'minimize' as const },
+      { role: 'zoom' as const },
+      ...(isMac ? [
+        { type: 'separator' as const },
+        { role: 'front' as const }
+      ] : [
+        { role: 'close' as const }
+      ])
+    ]},
+  ]
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template))
+
   createWindow()
 
   // Silent background check a few seconds after startup. Skips in dev.

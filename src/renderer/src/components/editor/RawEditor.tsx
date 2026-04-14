@@ -14,6 +14,44 @@ import { useWorkspace } from '@/store/workspace'
 
 const placeholderMark = Decoration.mark({ class: 'cm-placeholder-highlight' })
 
+const headingDecos = [
+  Decoration.line({ attributes: { class: 'cm-heading-1' } }),
+  Decoration.line({ attributes: { class: 'cm-heading-2' } }),
+  Decoration.line({ attributes: { class: 'cm-heading-3' } }),
+  Decoration.line({ attributes: { class: 'cm-heading-4' } })
+]
+
+const headingHighlighter = ViewPlugin.fromClass(
+  class {
+    decorations: DecorationSet
+
+    constructor(view: EditorView) {
+      this.decorations = this.build(view)
+    }
+
+    update(update: ViewUpdate): void {
+      if (update.docChanged || update.viewportChanged) {
+        this.decorations = this.build(update.view)
+      }
+    }
+
+    build(view: EditorView): DecorationSet {
+      const builder = new RangeSetBuilder<Decoration>()
+      const { from, to } = view.viewport
+      for (let pos = from; pos <= to; ) {
+        const line = view.state.doc.lineAt(pos)
+        const match = line.text.match(/^(#{1,4})\s/)
+        if (match) {
+          builder.add(line.from, line.from, headingDecos[match[1].length - 1])
+        }
+        pos = line.to + 1
+      }
+      return builder.finish()
+    }
+  },
+  { decorations: (v) => v.decorations }
+)
+
 const placeholderHighlighter = ViewPlugin.fromClass(
   class {
     decorations
@@ -58,9 +96,8 @@ function useIsDark(): boolean {
 
 const RawEditor = ({ tabId, value, onChange }: Props): React.JSX.Element => {
   const isDark = useIsDark()
-  const lastScrollTop = useRef(0)
-  const initialScroll = useRef(useWorkspace.getState().scrollPositions[tabId] ?? 0)
-  const initialCursor = useRef(useWorkspace.getState().cursorPositions[tabId] ?? null)
+  const rawHeadingSizes = useWorkspace((s) => s.rawHeadingSizes)
+  const restoredRef = useRef(false)
   const saveScrollPosition = useWorkspace((s) => s.saveScrollPosition)
   const saveCursorPosition = useWorkspace((s) => s.saveCursorPosition)
   const viewRef = useRef<EditorView | null>(null)
@@ -68,31 +105,95 @@ const RawEditor = ({ tabId, value, onChange }: Props): React.JSX.Element => {
   const onCreateEditor = useCallback((view: EditorView) => {
     viewRef.current = view
 
+    // Intercept Home/End/PageUp/PageDown before CodeMirror's keymap sees them.
+    // Smooth-scroll the document without moving the caret, matching visual editor behaviour.
+    let scrollAnim = 0
+    const smoothScroll = (el: HTMLElement, target: number, duration: number): void => {
+      cancelAnimationFrame(scrollAnim)
+      const start = el.scrollTop
+      const delta = target - start
+      if (Math.abs(delta) < 1) { el.scrollTop = target; return }
+      const t0 = performance.now()
+      const step = (now: number): void => {
+        const p = Math.min((now - t0) / duration, 1)
+        const ease = p < 0.5 ? 2 * p * p : 1 - (-2 * p + 2) ** 2 / 2
+        el.scrollTop = start + delta * ease
+        if (p < 1) scrollAnim = requestAnimationFrame(step)
+      }
+      scrollAnim = requestAnimationFrame(step)
+    }
+    view.dom.addEventListener(
+      'keydown',
+      (e) => {
+        const scroller = view.scrollDOM
+        if (e.key === 'Home' || e.key === 'End') {
+          e.preventDefault()
+          e.stopPropagation()
+          const target = e.key === 'Home' ? 0 : scroller.scrollHeight - scroller.clientHeight
+          smoothScroll(scroller, target, 300)
+        } else if (e.key === 'PageUp' || e.key === 'PageDown') {
+          e.preventDefault()
+          e.stopPropagation()
+          const dir = e.key === 'PageDown' ? 1 : -1
+          const target = scroller.scrollTop + dir * scroller.clientHeight * 0.85
+          smoothScroll(scroller, Math.max(0, target), 300)
+        }
+      },
+      true // capture phase — runs before CodeMirror's handler
+    )
+
     // Restore cursor position from a previous tab visit, or place at start
-    const saved = initialCursor.current
-    if (saved) {
+    const savedCursor = useWorkspace.getState().cursorPositions[tabId] ?? null
+    if (savedCursor) {
       const docLen = view.state.doc.length
-      const anchor = Math.min(saved.anchor, docLen)
-      const head = Math.min(saved.head, docLen)
+      const anchor = Math.min(savedCursor.anchor, docLen)
+      const head = Math.min(savedCursor.head, docLen)
       view.dispatch({ selection: EditorSelection.single(anchor, head) })
     }
 
-    if (initialScroll.current) {
-      requestAnimationFrame(() => {
-        view.scrollDOM.scrollTop = initialScroll.current
-        lastScrollTop.current = initialScroll.current
-      })
-    }
+    // Restore scroll using line-based anchor (survives CodeMirror virtualization).
+    // Focus first with preventScroll so the browser doesn't jump to the caret,
+    // then dispatch the scroll effect to land on the saved line.
+    requestAnimationFrame(() => {
+      view.contentDOM.focus({ preventScroll: true })
+      const saved = useWorkspace.getState().scrollPositions[tabId]
+      if (saved && typeof saved === 'object' && 'line' in saved) {
+        const clampedLine = Math.min(saved.line, view.state.doc.lines)
+        const lineInfo = view.state.doc.line(clampedLine)
+        view.dispatch({
+          effects: EditorView.scrollIntoView(lineInfo.from, {
+            y: 'start',
+            yMargin: -saved.offsetPx
+          })
+        })
+      }
+      restoredRef.current = true
+    })
 
-    const onScroll = (): void => {
-      lastScrollTop.current = view.scrollDOM.scrollTop
-    }
-    view.scrollDOM.addEventListener('scroll', onScroll, { passive: true })
   }, [])
 
+  // Persist scroll position to the store every 200ms so it's never stale.
+  // (Cleanup runs after React detaches the DOM, making view.scrollDOM unreliable.)
   useEffect(() => {
+    let lastLine = -1
+    let lastOffset = -1
+    const interval = setInterval(() => {
+      if (!restoredRef.current) return
+      const view = viewRef.current
+      if (!view) return
+      const scrollTop = view.scrollDOM.scrollTop
+      const block = view.lineBlockAtHeight(scrollTop)
+      const line = view.state.doc.lineAt(block.from).number
+      const offsetPx = Math.round(scrollTop - block.top)
+      if (line !== lastLine || offsetPx !== lastOffset) {
+        lastLine = line
+        lastOffset = offsetPx
+        saveScrollPosition(tabId, { line, offsetPx })
+      }
+    }, 200)
+
     return () => {
-      saveScrollPosition(tabId, lastScrollTop.current)
+      clearInterval(interval)
       const view = viewRef.current
       if (view) {
         const { anchor, head } = view.state.selection.main
@@ -186,6 +287,7 @@ const RawEditor = ({ tabId, value, onChange }: Props): React.JSX.Element => {
       markdown(),
       checklistKeymap,
       placeholderHighlighter,
+      ...(rawHeadingSizes ? [headingHighlighter] : []),
       EditorView.lineWrapping,
       EditorView.theme({
         '&': {
@@ -216,15 +318,18 @@ const RawEditor = ({ tabId, value, onChange }: Props): React.JSX.Element => {
           color: '#e879f9',
           borderRadius: '3px',
           backgroundColor: 'rgba(232, 121, 249, 0.12)'
-        }
+        },
+        '.cm-heading-1': { fontSize: '2.4em', lineHeight: '1.3', fontWeight: '700' },
+        '.cm-heading-2': { fontSize: '2.0em', lineHeight: '1.3', fontWeight: '600' },
+        '.cm-heading-3': { fontSize: '1.7em', lineHeight: '1.3', fontWeight: '600' },
+        '.cm-heading-4': { fontSize: '1.55em', lineHeight: '1.3', fontWeight: '600' }
       })
     ],
-    [checklistKeymap]
+    [checklistKeymap, rawHeadingSizes]
   )
 
   return (
     <CodeMirror
-      autoFocus
       value={value}
       onChange={onChange}
       onCreateEditor={onCreateEditor}

@@ -37,7 +37,8 @@ let mockSettings: Settings = {
   recentFiles: [],
   autoSave: false,
   autoSaveDelayMs: 1500,
-  showWordCount: false
+  showWordCount: false,
+  rawHeadingSizes: false
 }
 
 const listEntries = (): FileEntry[] =>
@@ -132,6 +133,9 @@ const mockApi: SmarkupApi = {
     window.open(url, '_blank', 'noopener,noreferrer')
   },
   onUpdateStatus: () => () => undefined,
+
+  // App menu events: no-op in browser mode
+  onShowShortcuts: () => () => undefined,
 
   // Window management: no-op in browser mode (single window only)
   getWindowId: () => 'default',

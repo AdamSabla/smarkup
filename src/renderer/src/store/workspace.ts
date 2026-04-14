@@ -109,6 +109,7 @@ type WorkspaceState = {
   autoSave: boolean
   autoSaveDelayMs: number
   showWordCount: boolean
+  rawHeadingSizes: boolean
 
   // --- Volatile UI state ---
   sections: SidebarSection[]
@@ -126,10 +127,14 @@ type WorkspaceState = {
   quickOpenOpen: boolean
   /** ⌘K command palette */
   commandPaletteOpen: boolean
+  /** Keyboard shortcuts modal */
+  shortcutsOpen: boolean
   /** Tab id currently being renamed inline (⌘R) */
   renamingTabId: string | null
-  /** Remembered scroll-top per tab id (volatile, not persisted to disk) */
-  scrollPositions: Record<string, number>
+  /** Remembered scroll anchor per tab id (volatile, not persisted to disk).
+   *  number = absolute scrollTop px (visual editor),
+   *  object = line + px offset within that line (raw/CodeMirror editor). */
+  scrollPositions: Record<string, number | { line: number; offsetPx: number }>
   /** Remembered cursor/selection per tab id (volatile, not persisted to disk) */
   cursorPositions: Record<string, { anchor: number; head: number }>
   /** Paths that are collapsed in the sidebar tree (volatile, survives sidebar toggle) */
@@ -178,13 +183,16 @@ type WorkspaceState = {
   setTheme: (theme: Theme) => Promise<void>
   setAutoSave: (enabled: boolean) => Promise<void>
   setShowWordCount: (enabled: boolean) => Promise<void>
+  setRawHeadingSizes: (enabled: boolean) => Promise<void>
   openSettings: () => void
   closeSettings: () => void
   openQuickOpen: () => void
   closeQuickOpen: () => void
   openCommandPalette: () => void
   closeCommandPalette: () => void
-  saveScrollPosition: (tabId: string, scrollTop: number) => void
+  openShortcuts: () => void
+  closeShortcuts: () => void
+  saveScrollPosition: (tabId: string, value: number | { line: number; offsetPx: number }) => void
   saveCursorPosition: (tabId: string, anchor: number, head: number) => void
   startRenamingTab: () => void
   cancelRenamingTab: () => void
@@ -283,6 +291,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   autoSave: false,
   autoSaveDelayMs: 1500,
   showWordCount: false,
+  rawHeadingSizes: false,
 
   sections: [],
   moveTargets: [],
@@ -295,6 +304,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   settingsOpen: false,
   quickOpenOpen: false,
   commandPaletteOpen: false,
+  shortcutsOpen: false,
   renamingTabId: null,
   scrollPositions: {},
   cursorPositions: {},
@@ -312,7 +322,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       recentFiles: settings.recentFiles ?? [],
       autoSave: settings.autoSave ?? false,
       autoSaveDelayMs: settings.autoSaveDelayMs ?? 1500,
-      showWordCount: settings.showWordCount ?? false
+      showWordCount: settings.showWordCount ?? false,
+      rawHeadingSizes: settings.rawHeadingSizes ?? false
     })
     await get().refreshAllSections()
 
@@ -807,15 +818,22 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     await persistSettings({ showWordCount: enabled })
   },
 
+  setRawHeadingSizes: async (enabled) => {
+    set({ rawHeadingSizes: enabled })
+    await persistSettings({ rawHeadingSizes: enabled })
+  },
+
   openSettings: () => set({ settingsOpen: true }),
   closeSettings: () => set({ settingsOpen: false }),
   openQuickOpen: () => set({ quickOpenOpen: true }),
   closeQuickOpen: () => set({ quickOpenOpen: false }),
   openCommandPalette: () => set({ commandPaletteOpen: true }),
   closeCommandPalette: () => set({ commandPaletteOpen: false }),
-  saveScrollPosition: (tabId, scrollTop) =>
+  openShortcuts: () => set({ shortcutsOpen: true }),
+  closeShortcuts: () => set({ shortcutsOpen: false }),
+  saveScrollPosition: (tabId, value) =>
     set((s) => ({
-      scrollPositions: { ...s.scrollPositions, [tabId]: scrollTop }
+      scrollPositions: { ...s.scrollPositions, [tabId]: value }
     })),
   saveCursorPosition: (tabId, anchor, head) =>
     set((s) => ({

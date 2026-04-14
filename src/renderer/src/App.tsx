@@ -5,6 +5,7 @@ import UpdateBanner from '@/components/UpdateBanner'
 import SettingsDialog from '@/components/SettingsDialog'
 import QuickOpen from '@/components/QuickOpen'
 import CommandPalette from '@/components/CommandPalette'
+import KeyboardShortcuts from '@/components/KeyboardShortcuts'
 import SplitContainer from '@/components/editor/SplitContainer'
 import { useShortcuts } from '@/hooks/useShortcuts'
 import { useUpdateSubscription } from '@/hooks/useUpdateSubscription'
@@ -86,6 +87,7 @@ const App = (): React.JSX.Element => {
       <SettingsDialog />
       <QuickOpen />
       <CommandPalette />
+      <KeyboardShortcuts />
     </div>
   )
 }

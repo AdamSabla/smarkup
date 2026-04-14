@@ -19,12 +19,36 @@ export const useShortcuts = (): void => {
     editorMode,
     tabs,
     setActiveTab,
-    setActivePane,
     openSettings,
     openQuickOpen,
     openCommandPalette,
-    startRenamingTab
+    startRenamingTab,
+    openShortcuts
   } = useWorkspace()
+
+  // Tab-switch shortcuts (cmd+opt+arrow, ctrl+tab) must run in the capture
+  // phase so they fire BEFORE the editor processes alt+arrow as "move by word"
+  // and corrupts the scroll position.
+  useEffect(() => {
+    const captureHandler = (e: KeyboardEvent): void => {
+      if (!mod(e)) return
+      if (
+        (e.key === 'Tab' && e.ctrlKey) ||
+        (e.altKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight'))
+      ) {
+        e.preventDefault()
+        e.stopPropagation()
+        if (tabs.length === 0) return
+        const idx = tabs.findIndex((t) => t.id === activeTabId)
+        const dir = e.key === 'ArrowLeft' || e.shiftKey ? -1 : 1
+        const next = tabs[(idx + dir + tabs.length) % tabs.length]
+        setActiveTab(next.id)
+      }
+    }
+
+    window.addEventListener('keydown', captureHandler, true)
+    return () => window.removeEventListener('keydown', captureHandler, true)
+  }, [tabs, activeTabId, setActiveTab])
 
   useEffect(() => {
     const handler = (e: KeyboardEvent): void => {
@@ -104,24 +128,17 @@ export const useShortcuts = (): void => {
         return
       }
 
-      // Toggle editor mode: cmd/ctrl+/
-      if (e.key === '/' && !e.shiftKey && !e.altKey) {
+      // Keyboard shortcuts: cmd/ctrl+shift+/
+      if (e.key === '/' && e.shiftKey && !e.altKey) {
         e.preventDefault()
-        void setEditorMode(editorMode === 'visual' ? 'raw' : 'visual')
+        openShortcuts()
         return
       }
 
-      // Next/prev tab: ctrl+tab / ctrl+shift+tab  OR  cmd+opt+→ / cmd+opt+←
-      if (
-        (e.key === 'Tab' && e.ctrlKey) ||
-        (e.altKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight'))
-      ) {
+      // Toggle editor mode: cmd/ctrl+;
+      if (e.key === ';' && !e.shiftKey && !e.altKey) {
         e.preventDefault()
-        if (tabs.length === 0) return
-        const idx = tabs.findIndex((t) => t.id === activeTabId)
-        const dir = e.key === 'ArrowLeft' || e.shiftKey ? -1 : 1
-        const next = tabs[(idx + dir + tabs.length) % tabs.length]
-        setActiveTab(next.id)
+        void setEditorMode(editorMode === 'visual' ? 'raw' : 'visual')
         return
       }
     }
@@ -140,12 +157,10 @@ export const useShortcuts = (): void => {
     toggleSidebar,
     setEditorMode,
     editorMode,
-    tabs,
-    setActiveTab,
-    setActivePane,
     openSettings,
     openQuickOpen,
     openCommandPalette,
-    startRenamingTab
+    startRenamingTab,
+    openShortcuts
   ])
 }

@@ -29,6 +29,7 @@ export type Settings = {
   autoSave: boolean
   autoSaveDelayMs: number
   showWordCount: boolean
+  rawHeadingSizes: boolean
 }
 
 export type WatchEvent = {
@@ -101,6 +102,15 @@ const api = {
     ipcRenderer.on('updater:status', handler)
     return () => {
       ipcRenderer.off('updater:status', handler)
+    }
+  },
+
+  // --- App menu events ---------------------------------------------------
+  onShowShortcuts: (callback: () => void): (() => void) => {
+    const handler = (): void => callback()
+    ipcRenderer.on('app:showShortcuts', handler)
+    return () => {
+      ipcRenderer.off('app:showShortcuts', handler)
     }
   },
 

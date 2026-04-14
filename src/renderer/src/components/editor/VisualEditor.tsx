@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { useEditor, EditorContent, type Editor } from '@tiptap/react'
+import { TextSelection } from '@tiptap/pm/state'
 import StarterKit from '@tiptap/starter-kit'
 import { Table } from '@tiptap/extension-table'
 import { TableRow } from '@tiptap/extension-table-row'
@@ -26,9 +27,7 @@ type Props = {
 
 const VisualEditor = ({ tabId, value, onChange }: Props): React.JSX.Element => {
   const scrollRef = useRef<HTMLDivElement>(null)
-  const lastScrollTop = useRef(0)
-  const initialScroll = useRef(useWorkspace.getState().scrollPositions[tabId] ?? 0)
-  const initialCursor = useRef(useWorkspace.getState().cursorPositions[tabId] ?? null)
+  const restoredRef = useRef(false)
   const saveScrollPosition = useWorkspace((s) => s.saveScrollPosition)
   const saveCursorPosition = useWorkspace((s) => s.saveCursorPosition)
   const lastEmittedMarkdown = useRef(value)
@@ -37,21 +36,21 @@ const VisualEditor = ({ tabId, value, onChange }: Props): React.JSX.Element => {
     const el = scrollRef.current
     if (!el) return
 
-    if (initialScroll.current) {
-      requestAnimationFrame(() => {
-        el.scrollTop = initialScroll.current
-        lastScrollTop.current = initialScroll.current
-      })
-    }
-
-    const onScroll = (): void => {
-      lastScrollTop.current = el.scrollTop
-    }
-    el.addEventListener('scroll', onScroll, { passive: true })
+    // Persist scroll position to the store every 200ms so it's never stale.
+    // Skip until restoration is done — otherwise the interval writes 0 to the
+    // store before the editor has loaded and the restore effect has read it.
+    let lastSaved = -1
+    const interval = setInterval(() => {
+      if (!restoredRef.current) return
+      const top = el.scrollTop
+      if (top !== lastSaved) {
+        lastSaved = top
+        saveScrollPosition(tabId, top)
+      }
+    }, 200)
 
     return () => {
-      el.removeEventListener('scroll', onScroll)
-      saveScrollPosition(tabId, lastScrollTop.current)
+      clearInterval(interval)
     }
   }, [tabId, saveScrollPosition])
 
@@ -112,21 +111,73 @@ const VisualEditor = ({ tabId, value, onChange }: Props): React.JSX.Element => {
     if (!editor) return
     setActiveEditor(editor)
 
-    // Restore cursor position from a previous tab visit, or place at start
-    const saved = initialCursor.current
-    if (saved) {
+    // Restore cursor position from a previous tab visit, or place at start.
+    // Dispatch directly (without scrollIntoView) so it doesn't override scroll restore.
+    const savedCursor = useWorkspace.getState().cursorPositions[tabId] ?? null
+    if (savedCursor) {
       const docSize = editor.state.doc.content.size
-      const anchor = Math.min(saved.anchor, docSize)
-      const head = Math.min(saved.head, docSize)
-      editor.commands.setTextSelection({ from: anchor, to: head })
+      const anchor = Math.min(savedCursor.anchor, docSize)
+      const head = Math.min(savedCursor.head, docSize)
+      const sel = TextSelection.create(editor.state.doc, anchor, head)
+      editor.view.dispatch(editor.state.tr.setSelection(sel))
     } else {
-      editor.commands.setTextSelection(0)
+      const sel = TextSelection.create(editor.state.doc, 0)
+      editor.view.dispatch(editor.state.tr.setSelection(sel))
     }
-    editor.commands.focus()
+
+    // Restore scroll position, then focus. Focus must come AFTER scroll
+    // to prevent scrollIntoView from overriding our position.
+    // Use ResizeObserver to re-apply scrollTop until layout settles.
+    const scrollEl = scrollRef.current
+    if (!scrollEl) {
+      restoredRef.current = true
+      editor.view.dom.focus({ preventScroll: true })
+      return () => {
+        if (getActiveEditor() === editor) setActiveEditor(null)
+      }
+    }
+
+    const saved = useWorkspace.getState().scrollPositions[tabId]
+    const savedTop = typeof saved === 'number' ? saved : 0
+    if (!savedTop) {
+      restoredRef.current = true
+      requestAnimationFrame(() => editor.view.dom.focus({ preventScroll: true }))
+      return () => {
+        if (getActiveEditor() === editor) setActiveEditor(null)
+      }
+    }
+
+    let settled = false
+    scrollEl.scrollTop = savedTop
+
+    const settle = (): void => {
+      settled = true
+      restoredRef.current = true
+      observer.disconnect()
+      editor.view.dom.focus({ preventScroll: true })
+    }
+
+    const observer = new ResizeObserver(() => {
+      if (settled) return
+      scrollEl.scrollTop = savedTop
+      if (scrollEl.scrollHeight - scrollEl.clientHeight >= savedTop) {
+        settle()
+      }
+    })
+    const contentEl = scrollEl.firstElementChild
+    if (contentEl) observer.observe(contentEl)
+
+    // Safety timeout — stop after 500ms and focus regardless
+    const timeout = setTimeout(() => {
+      if (!settled) {
+        scrollEl.scrollTop = savedTop
+        settle()
+      }
+    }, 500)
 
     return () => {
-      // Only clear if we're still the active one — avoids races when a new
-      // VisualEditor mounts (different tab) before this one unmounts.
+      observer.disconnect()
+      clearTimeout(timeout)
       if (getActiveEditor() === editor) setActiveEditor(null)
     }
   }, [editor])
