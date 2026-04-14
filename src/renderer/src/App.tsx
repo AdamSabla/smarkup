@@ -1,5 +1,4 @@
-import { useEffect } from 'react'
-import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import TopBar from '@/components/TopBar'
 import Sidebar from '@/components/Sidebar'
 import UpdateBanner from '@/components/UpdateBanner'
@@ -15,10 +14,37 @@ import { usePersistOpenTabs } from '@/hooks/usePersistOpenTabs'
 import { useAutoSave } from '@/hooks/useAutoSave'
 import { useWorkspace } from '@/store/workspace'
 
+const SIDEBAR_DEFAULT = 240
+const SIDEBAR_MIN = 180
+const SIDEBAR_MAX = 500
+
 const App = (): React.JSX.Element => {
   const sidebarVisible = useWorkspace((s) => s.sidebarVisible)
   const hydrate = useWorkspace((s) => s.hydrate)
   const paneRoot = useWorkspace((s) => s.paneRoot)
+
+  const [sidebarWidth, setSidebarWidth] = useState(SIDEBAR_DEFAULT)
+  const dragging = useRef(false)
+  const startX = useRef(0)
+  const startWidth = useRef(0)
+
+  const onPointerDown = useCallback((e: React.PointerEvent) => {
+    e.preventDefault()
+    dragging.current = true
+    startX.current = e.clientX
+    startWidth.current = sidebarWidth
+    ;(e.target as HTMLElement).setPointerCapture(e.pointerId)
+  }, [sidebarWidth])
+
+  const onPointerMove = useCallback((e: React.PointerEvent) => {
+    if (!dragging.current) return
+    const delta = e.clientX - startX.current
+    setSidebarWidth(Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, startWidth.current + delta)))
+  }, [])
+
+  const onPointerUp = useCallback(() => {
+    dragging.current = false
+  }, [])
 
   useEffect(() => {
     void hydrate()
@@ -36,23 +62,26 @@ const App = (): React.JSX.Element => {
       <TopBar />
       <UpdateBanner />
       <div className="flex min-h-0 flex-1">
-        <ResizablePanelGroup direction="horizontal">
-          {sidebarVisible && (
-            <>
-              <ResizablePanel defaultSize="240px" minSize="180px" maxSize="500px">
-                <Sidebar />
-              </ResizablePanel>
-              <ResizableHandle />
-            </>
-          )}
-          <ResizablePanel>
-            <div className="flex h-full flex-col">
-              <div className="min-h-0 flex-1">
-                <SplitContainer node={paneRoot} />
-              </div>
+        {sidebarVisible && (
+          <>
+            <div className="h-full shrink-0 overflow-hidden" style={{ width: sidebarWidth }}>
+              <Sidebar />
             </div>
-          </ResizablePanel>
-        </ResizablePanelGroup>
+            <div
+              className="relative flex w-px shrink-0 cursor-col-resize items-center justify-center bg-border after:absolute after:inset-y-0 after:left-1/2 after:w-1 after:-translate-x-1/2 hover:bg-ring/40"
+              onPointerDown={onPointerDown}
+              onPointerMove={onPointerMove}
+              onPointerUp={onPointerUp}
+            />
+          </>
+        )}
+        <div className="min-w-0 flex-1">
+          <div className="flex h-full flex-col">
+            <div className="min-h-0 flex-1">
+              <SplitContainer node={paneRoot} />
+            </div>
+          </div>
+        </div>
       </div>
       <SettingsDialog />
       <QuickOpen />
