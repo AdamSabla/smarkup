@@ -11,6 +11,7 @@ import { cn } from '@/lib/utils'
 import { FlatTaskItem } from '@/extensions/flat-task-item'
 import { Tab } from '@/extensions/tab'
 import { HtmlPaste } from '@/extensions/html-paste'
+import { ListCommands } from '@/extensions/list-commands'
 import { getActiveEditor, setActiveEditor } from '@/lib/active-editor'
 import { serializeSliceToText } from '@/lib/serialize-clipboard-text'
 import TableMenu from './TableMenu'
@@ -44,11 +45,17 @@ type Props = {
   isActive: boolean
 }
 
-const VisualEditor = ({ tabId: _tabId, value, onChange, isActive }: Props): React.JSX.Element => {
+const VisualEditor = ({ value, onChange, isActive }: Props): React.JSX.Element => {
   const scrollRef = useRef<HTMLDivElement>(null)
   const lastEmittedMarkdown = useRef(value)
+  // Keep `onChange` reachable from tiptap's onUpdate without recreating the
+  // editor on every parent re-render. Updating in an effect instead of during
+  // render satisfies react-hooks/refs and is equivalent in practice — the
+  // onUpdate handler only fires from user input after commit.
   const onChangeRef = useRef(onChange)
-  onChangeRef.current = onChange
+  useEffect(() => {
+    onChangeRef.current = onChange
+  }, [onChange])
 
   const extensions = useMemo(
     () => [
@@ -59,6 +66,10 @@ const VisualEditor = ({ tabId: _tabId, value, onChange, isActive }: Props): Reac
       }),
       PlainText,
       FlatTaskItem,
+      // Registered after FlatTaskItem so its Mod-Shift-L / 7 / 8 shortcuts
+      // take precedence over Tiptap's defaults and unify conversion across
+      // bullet / ordered / task lists. See extensions/list-commands.ts.
+      ListCommands,
       Tab,
       // GFM-style tables. `resizable` gives users drag-handles on column borders.
       Table.configure({ resizable: true, HTMLAttributes: { class: 'smarkup-table' } }),

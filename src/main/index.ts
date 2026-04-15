@@ -269,13 +269,14 @@ const registerWatcherHandlers = (): void => {
 
 const registerWindowHandlers = (): void => {
   // Renderer calls this on startup to get its init data (tabs to open, etc.)
+  // We keep the entry around until the window closes (see the `closed`
+  // handler in createWindow) rather than deleting on first read — React
+  // StrictMode in dev double-invokes `useEffect`, so hydrate fires twice;
+  // the second call needs to see the same init data or it would fall back
+  // to restoring the parent window's full tab list from settings. A plain
+  // renderer reload (Cmd+R) benefits from this too.
   ipcMain.handle('window:getInit', (_event, windowId: string) => {
-    const init = windowInitStore.get(windowId)
-    if (init) {
-      windowInitStore.delete(windowId)
-      return init
-    }
-    return null
+    return windowInitStore.get(windowId) ?? null
   })
 
   // Renderer approves the pending close after the user picked

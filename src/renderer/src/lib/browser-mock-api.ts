@@ -32,6 +32,7 @@ let mockSettings: Settings = {
   theme: 'system',
   sidebarVisible: true,
   editorMode: 'visual',
+  fileEditorModes: {},
   openTabs: [],
   activeTabPath: null,
   recentFiles: [],

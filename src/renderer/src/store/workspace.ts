@@ -103,6 +103,34 @@ const remapAutoNamedPaths = (paths: Set<string>, oldPath: string, newPath: strin
   return changed ? next : paths
 }
 
+/** Same prefix-rewrite logic as remapPathPrefix, but for the fileEditorModes
+ *  map. Used after a folder rename/move so per-file mode preferences follow
+ *  their files. */
+const remapFileEditorModes = (
+  modes: Record<string, EditorMode>,
+  oldPath: string,
+  newPath: string
+): Record<string, EditorMode> => {
+  if (oldPath === newPath) return modes
+  const keys = Object.keys(modes)
+  if (keys.length === 0) return modes
+  const prefix = oldPath + '/'
+  let changed = false
+  const next: Record<string, EditorMode> = {}
+  for (const p of keys) {
+    if (p === oldPath) {
+      next[newPath] = modes[p]
+      changed = true
+    } else if (p.startsWith(prefix)) {
+      next[newPath + p.slice(oldPath.length)] = modes[p]
+      changed = true
+    } else {
+      next[p] = modes[p]
+    }
+  }
+  return changed ? next : modes
+}
+
 /** Rewrite any leaf whose `tabId` matches `oldTabId` to reference `newTabId`.
  *  Used after rename/move, where the tab's id changes but the pane leaf
  *  still holds the stale id — without this, the pane points at a tab that
@@ -186,7 +214,13 @@ type WorkspaceState = {
   additionalFolders: string[]
   theme: Theme
   sidebarVisible: boolean
+  /** Global fallback mode for files without a per-file override. */
   editorMode: EditorMode
+  /**
+   * Per-file editor mode overrides, keyed by absolute path. Takes precedence
+   * over the global `editorMode`. Persisted so preferences survive restarts.
+   */
+  fileEditorModes: Record<string, EditorMode>
   recentFiles: string[]
   autoSave: boolean
   autoSaveDelayMs: number
@@ -390,6 +424,17 @@ const sectionContainsFile = (section: SidebarSection, filePath: string): boolean
 const persistSettings = (patch: Partial<Settings>): Promise<Settings> =>
   window.api.saveSettings(patch)
 
+/**
+ * Resolve the effective editor mode for a given file path:
+ * per-file override if one exists, otherwise the global default.
+ * Exported so components can read it without duplicating the fallback rule.
+ */
+export const resolveEditorMode = (
+  path: string | null | undefined,
+  fileEditorModes: Record<string, EditorMode>,
+  globalMode: EditorMode
+): EditorMode => (path && fileEditorModes[path] ? fileEditorModes[path] : globalMode)
+
 const collectWatchedFolders = (
   draftsFolder: string | null,
   additionalFolders: string[]
@@ -406,6 +451,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   theme: 'system',
   sidebarVisible: true,
   editorMode: 'visual',
+  fileEditorModes: {},
   recentFiles: [],
   autoSave: false,
   autoSaveDelayMs: 1500,
@@ -442,6 +488,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       theme: settings.theme,
       sidebarVisible: settings.sidebarVisible,
       editorMode: settings.editorMode,
+      fileEditorModes: settings.fileEditorModes ?? {},
       recentFiles: settings.recentFiles ?? [],
       autoSave: settings.autoSave ?? false,
       autoSaveDelayMs: settings.autoSaveDelayMs ?? 1500,
@@ -652,9 +699,13 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     set((s) => {
       const remapped = remapPathPrefix(s, oldPath, newPath)
       const nextAutoNamed = remapAutoNamedPaths(s.autoNamedPaths, oldPath, newPath)
-      return { ...remapped, autoNamedPaths: nextAutoNamed }
+      const nextModes = remapFileEditorModes(s.fileEditorModes, oldPath, newPath)
+      return { ...remapped, autoNamedPaths: nextAutoNamed, fileEditorModes: nextModes }
     })
-    void persistSettings({ autoNamedPaths: Array.from(get().autoNamedPaths) })
+    void persistSettings({
+      autoNamedPaths: Array.from(get().autoNamedPaths),
+      fileEditorModes: get().fileEditorModes
+    })
     await get().refreshAllSections()
     void get().refreshMoveTargets()
     return newPath
@@ -701,13 +752,28 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       openSettings()
       return
     }
+    // Capture the active tab's effective mode BEFORE we change the active
+    // tab by opening the draft — the new file should inherit the mode of
+    // the file the user was in when they triggered "new".
+    const { activeTabId, tabs, fileEditorModes, editorMode } = get()
+    const sourceTab = activeTabId ? tabs.find((t) => t.id === activeTabId) : undefined
+    const inheritedMode = resolveEditorMode(sourceTab?.path, fileEditorModes, editorMode)
+
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
     const newPath = await window.api.createFile(draftsFolder, `untitled-${timestamp}.md`)
     // Mark as auto-named so the next non-empty line typed becomes the filename.
     const nextAutoNamed = new Set(get().autoNamedPaths)
     nextAutoNamed.add(newPath)
-    set({ autoNamedPaths: nextAutoNamed })
-    void persistSettings({ autoNamedPaths: Array.from(nextAutoNamed) })
+    // Record the inherited mode so the draft opens the same way as its source.
+    const nextModes: Record<string, EditorMode> = {
+      ...get().fileEditorModes,
+      [newPath]: inheritedMode
+    }
+    set({ autoNamedPaths: nextAutoNamed, fileEditorModes: nextModes })
+    void persistSettings({
+      autoNamedPaths: Array.from(nextAutoNamed),
+      fileEditorModes: nextModes
+    })
     await get().refreshSection(DRAFTS_ID)
     await get().openFile(newPath)
   },
@@ -788,6 +854,12 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       nextAutoNamed.delete(oldPath)
       nextAutoNamed.add(renamedPath)
 
+      const nextModes = { ...s.fileEditorModes }
+      if (oldPath in nextModes) {
+        nextModes[renamedPath] = nextModes[oldPath]
+        delete nextModes[oldPath]
+      }
+
       return {
         tabs: nextTabs,
         activeTabId: nextActive,
@@ -795,13 +867,15 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         scrollPositions: nextScroll,
         cursorPositions: nextCursor,
         recentFiles: nextRecent,
-        autoNamedPaths: nextAutoNamed
+        autoNamedPaths: nextAutoNamed,
+        fileEditorModes: nextModes
       }
     })
 
     void persistSettings({
       autoNamedPaths: Array.from(get().autoNamedPaths),
-      recentFiles: get().recentFiles
+      recentFiles: get().recentFiles,
+      fileEditorModes: get().fileEditorModes
     })
 
     // Refresh the parent section so the sidebar shows the new name.
@@ -829,6 +903,11 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       const nextAutoNamed = new Set(s.autoNamedPaths)
       nextAutoNamed.delete(oldPath)
       nextAutoNamed.delete(newPath)
+      const nextModes = { ...s.fileEditorModes }
+      if (oldPath in nextModes) {
+        nextModes[newPath] = nextModes[oldPath]
+        delete nextModes[oldPath]
+      }
       return {
         tabs: s.tabs.map((t) =>
           t.path === oldPath ? { ...t, id: newPath, path: newPath, name: safeName } : t
@@ -839,10 +918,14 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         // the file instead of falling back to the empty state.
         paneRoot: remapPaneTabId(s.paneRoot, oldPath, newPath),
         renamingTabId: s.renamingTabId === oldPath ? null : s.renamingTabId,
-        autoNamedPaths: nextAutoNamed
+        autoNamedPaths: nextAutoNamed,
+        fileEditorModes: nextModes
       }
     })
-    void persistSettings({ autoNamedPaths: Array.from(get().autoNamedPaths) })
+    void persistSettings({
+      autoNamedPaths: Array.from(get().autoNamedPaths),
+      fileEditorModes: get().fileEditorModes
+    })
     await get().refreshAllSections()
   },
 
@@ -852,15 +935,27 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       const idx = s.tabs.findIndex((t) => t.path === path)
       const nextAutoNamed = new Set(s.autoNamedPaths)
       nextAutoNamed.delete(path)
-      if (idx === -1) return { autoNamedPaths: nextAutoNamed }
+      const nextModes =
+        path in s.fileEditorModes
+          ? Object.fromEntries(Object.entries(s.fileEditorModes).filter(([k]) => k !== path))
+          : s.fileEditorModes
+      if (idx === -1) return { autoNamedPaths: nextAutoNamed, fileEditorModes: nextModes }
       const nextTabs = s.tabs.filter((t) => t.path !== path)
       const nextActive =
         s.activeTabId === path
           ? (nextTabs[Math.min(idx, nextTabs.length - 1)]?.id ?? null)
           : s.activeTabId
-      return { tabs: nextTabs, activeTabId: nextActive, autoNamedPaths: nextAutoNamed }
+      return {
+        tabs: nextTabs,
+        activeTabId: nextActive,
+        autoNamedPaths: nextAutoNamed,
+        fileEditorModes: nextModes
+      }
     })
-    void persistSettings({ autoNamedPaths: Array.from(get().autoNamedPaths) })
+    void persistSettings({
+      autoNamedPaths: Array.from(get().autoNamedPaths),
+      fileEditorModes: get().fileEditorModes
+    })
     await get().refreshAllSections()
   },
 
@@ -874,6 +969,11 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         nextAutoNamed.delete(path)
         nextAutoNamed.add(newPath)
       }
+      const nextModes = { ...s.fileEditorModes }
+      if (path in nextModes) {
+        nextModes[newPath] = nextModes[path]
+        delete nextModes[path]
+      }
       return {
         tabs: s.tabs.map((t) =>
           t.path === path
@@ -882,10 +982,14 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         ),
         activeTabId: s.activeTabId === path ? newPath : s.activeTabId,
         paneRoot: remapPaneTabId(s.paneRoot, path, newPath),
-        autoNamedPaths: nextAutoNamed
+        autoNamedPaths: nextAutoNamed,
+        fileEditorModes: nextModes
       }
     })
-    void persistSettings({ autoNamedPaths: Array.from(get().autoNamedPaths) })
+    void persistSettings({
+      autoNamedPaths: Array.from(get().autoNamedPaths),
+      fileEditorModes: get().fileEditorModes
+    })
     await get().refreshAllSections()
   },
 
@@ -900,9 +1004,13 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     set((s) => {
       const remapped = remapPathPrefix(s, path, newPath)
       const nextAutoNamed = remapAutoNamedPaths(s.autoNamedPaths, path, newPath)
-      return { ...remapped, autoNamedPaths: nextAutoNamed }
+      const nextModes = remapFileEditorModes(s.fileEditorModes, path, newPath)
+      return { ...remapped, autoNamedPaths: nextAutoNamed, fileEditorModes: nextModes }
     })
-    void persistSettings({ autoNamedPaths: Array.from(get().autoNamedPaths) })
+    void persistSettings({
+      autoNamedPaths: Array.from(get().autoNamedPaths),
+      fileEditorModes: get().fileEditorModes
+    })
     await get().refreshAllSections()
     void get().refreshMoveTargets()
   },
@@ -1249,6 +1357,19 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   },
 
   setEditorMode: async (mode) => {
+    // Per-file preference: record the mode against the active tab's path so
+    // switching here doesn't affect other tabs. If there's no active tab,
+    // treat the switch as a change to the global default instead.
+    const { activeTabId, tabs, fileEditorModes, editorMode } = get()
+    const activeTab = activeTabId ? tabs.find((t) => t.id === activeTabId) : undefined
+    if (activeTab) {
+      if (fileEditorModes[activeTab.path] === mode) return
+      const nextModes = { ...fileEditorModes, [activeTab.path]: mode }
+      set({ fileEditorModes: nextModes })
+      await persistSettings({ fileEditorModes: nextModes })
+      return
+    }
+    if (editorMode === mode) return
     set({ editorMode: mode })
     await persistSettings({ editorMode: mode })
   },

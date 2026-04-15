@@ -28,6 +28,8 @@ const shortcuts: { section: string; items: { label: string; keys: string }[] }[]
       { label: 'Toggle visual / raw mode', keys: `${mod} ;` },
       { label: 'Rename file', keys: `${mod} R` },
       { label: 'Split pane', keys: `${mod} \\` },
+      { label: 'Toggle bullet list', keys: `${mod} Shift 8` },
+      { label: 'Toggle numbered list', keys: `${mod} Shift 7` },
       { label: 'Toggle checklist', keys: `${mod} Shift L` },
       { label: 'Toggle checkbox', keys: `${mod} Enter` }
     ]

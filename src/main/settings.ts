@@ -16,6 +16,12 @@ export type Settings = {
   theme: Theme
   sidebarVisible: boolean
   editorMode: 'visual' | 'raw'
+  /**
+   * Per-file editor mode overrides, keyed by absolute path. When a file's
+   * path is in this map, it opens in the recorded mode; otherwise it falls
+   * back to the global `editorMode` default.
+   */
+  fileEditorModes: Record<string, 'visual' | 'raw'>
   openTabs: string[]
   activeTabPath: string | null
   recentFiles: string[]
@@ -38,6 +44,7 @@ const DEFAULT_SETTINGS: Settings = {
   theme: 'system',
   sidebarVisible: true,
   editorMode: 'visual',
+  fileEditorModes: {},
   openTabs: [],
   activeTabPath: null,
   recentFiles: [],

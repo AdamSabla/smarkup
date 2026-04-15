@@ -120,7 +120,7 @@ function useIsDark(): boolean {
   return document.documentElement.classList.contains('dark')
 }
 
-const RawEditor = ({ tabId: _tabId, value, onChange, isActive }: Props): React.JSX.Element => {
+const RawEditor = ({ value, onChange, isActive }: Props): React.JSX.Element => {
   const isDark = useIsDark()
   const rawHeadingSizes = useWorkspace((s) => s.rawHeadingSizes)
   const rawWordWrap = useWorkspace((s) => s.rawWordWrap)
@@ -159,11 +159,15 @@ const RawEditor = ({ tabId: _tabId, value, onChange, isActive }: Props): React.J
           e.preventDefault()
           e.stopPropagation()
           const dir = e.key === 'PageDown' ? 1 : -1
-          // Match the visual editor: instant native-style scroll by ~one
-          // viewport (minus a small overlap so context carries over).
-          const target = scroller.scrollTop + dir * (scroller.clientHeight - 40)
-          cancelAnimationFrame(scrollAnim)
-          scroller.scrollTop = Math.max(0, target)
+          // Smooth-scroll by ~one viewport (minus a small overlap so context
+          // carries over). Short duration keeps it responsive while taking
+          // the edge off the instant jump.
+          const maxScroll = scroller.scrollHeight - scroller.clientHeight
+          const target = Math.max(
+            0,
+            Math.min(maxScroll, scroller.scrollTop + dir * (scroller.clientHeight - 40))
+          )
+          smoothScroll(scroller, target, 180)
         }
       },
       true // capture phase — runs before CodeMirror's handler

@@ -27,7 +27,7 @@ function getTopItems(state: Editor['state']): Array<{ node: PMNode; pos: number 
   return nodes
 }
 
-function toggleTaskList(editor: Editor, taskItemType: NodeType): boolean {
+export function toggleTaskList(editor: Editor, taskItemType: NodeType): boolean {
   if (!editor.isEditable) return false
 
   const items = getTopItems(editor.state)
@@ -365,7 +365,9 @@ export const FlatTaskItem = Node.create({
         return false
       },
 
-      'Mod-Shift-l': ({ editor }) => toggleTaskList(editor, this.type),
+      // Mod-Shift-L (and Mod-Shift-8 / Mod-Shift-7) are handled by the
+      // ListCommands extension which can convert between bullet/ordered/task
+      // list items regardless of current context.
 
       'Mod-Enter': ({ editor }) => {
         const { from, to } = editor.state.selection

@@ -23,6 +23,12 @@ export type Settings = {
   theme: Theme
   sidebarVisible: boolean
   editorMode: 'visual' | 'raw'
+  /**
+   * Per-file editor mode overrides, keyed by absolute path. When present,
+   * the file opens in the recorded mode; otherwise the global `editorMode`
+   * is used.
+   */
+  fileEditorModes: Record<string, 'visual' | 'raw'>
   openTabs: string[]
   activeTabPath: string | null
   recentFiles: string[]

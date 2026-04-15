@@ -67,6 +67,7 @@ const CommandPaletteBody = (): React.JSX.Element => {
     setTheme,
     setEditorMode,
     editorMode,
+    fileEditorModes,
     toggleSidebar,
     sidebarVisible,
     deleteFile,
@@ -103,6 +104,7 @@ const CommandPaletteBody = (): React.JSX.Element => {
       setTheme: s.setTheme,
       setEditorMode: s.setEditorMode,
       editorMode: s.editorMode,
+      fileEditorModes: s.fileEditorModes,
       toggleSidebar: s.toggleSidebar,
       sidebarVisible: s.sidebarVisible,
       deleteFile: s.deleteFile,
@@ -127,8 +129,10 @@ const CommandPaletteBody = (): React.JSX.Element => {
   const [query, setQuery] = useState('')
 
   const activeTab = tabs.find((t) => t.id === activeTabId)
+  const effectiveMode =
+    activeTab && fileEditorModes[activeTab.path] ? fileEditorModes[activeTab.path] : editorMode
   const visualEditor = useActiveEditor()
-  const canEditVisual = editorMode === 'visual' && visualEditor !== null
+  const canEditVisual = effectiveMode === 'visual' && visualEditor !== null
   const inTable = canEditVisual && visualEditor!.isActive('table')
 
   // Reset query when switching pages
@@ -342,11 +346,11 @@ const CommandPaletteBody = (): React.JSX.Element => {
             )}
             <CommandItem
               onSelect={() => {
-                void setEditorMode(editorMode === 'visual' ? 'raw' : 'visual')
+                void setEditorMode(effectiveMode === 'visual' ? 'raw' : 'visual')
                 dismiss()
               }}
             >
-              <EyeIcon /> Switch to {editorMode === 'visual' ? 'Raw' : 'Visual'} mode
+              <EyeIcon /> Switch to {effectiveMode === 'visual' ? 'Raw' : 'Visual'} mode
             </CommandItem>
           </CommandGroup>
 

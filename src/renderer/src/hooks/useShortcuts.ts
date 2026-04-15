@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { useWorkspace } from '@/store/workspace'
+import { resolveEditorMode, useWorkspace } from '@/store/workspace'
 
 const isMac = navigator.userAgent.toLowerCase().includes('mac')
 const mod = (e: KeyboardEvent): boolean => (isMac ? e.metaKey : e.ctrlKey)
@@ -17,6 +17,7 @@ export const useShortcuts = (): void => {
     toggleSidebar,
     setEditorMode,
     editorMode,
+    fileEditorModes,
     tabs,
     setActiveTab,
     openSettings,
@@ -137,10 +138,13 @@ export const useShortcuts = (): void => {
         return
       }
 
-      // Toggle editor mode: cmd/ctrl+;
+      // Toggle editor mode: cmd/ctrl+; — toggles the active file's effective
+      // mode (per-file override), not the global default.
       if (e.key === ';' && !e.shiftKey && !e.altKey) {
         e.preventDefault()
-        void setEditorMode(editorMode === 'visual' ? 'raw' : 'visual')
+        const activeTab = activeTabId ? tabs.find((t) => t.id === activeTabId) : undefined
+        const current = resolveEditorMode(activeTab?.path, fileEditorModes, editorMode)
+        void setEditorMode(current === 'visual' ? 'raw' : 'visual')
         return
       }
     }
@@ -159,6 +163,8 @@ export const useShortcuts = (): void => {
     toggleSidebar,
     setEditorMode,
     editorMode,
+    fileEditorModes,
+    tabs,
     openSettings,
     openQuickOpen,
     openCommandPalette,

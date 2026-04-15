@@ -29,6 +29,7 @@ type TabProps = {
   tab: OpenFile
   active: boolean
   renaming: boolean
+  showRightSeparator: boolean
   onActivate: () => void
   onClose: () => void
   onCloseOthers: () => void
@@ -44,6 +45,7 @@ const Tab = ({
   tab,
   active,
   renaming,
+  showRightSeparator,
   onActivate,
   onClose,
   onCloseOthers,
@@ -100,7 +102,7 @@ const Tab = ({
       {...listeners}
       onClick={renaming ? undefined : onActivate}
       className={cn(
-        'group relative flex h-8 min-w-[100px] max-w-[180px] cursor-pointer items-center gap-1 rounded-t-[6px]',
+        'group relative flex h-8 min-w-[60px] max-w-[180px] flex-1 basis-0 cursor-pointer items-center gap-1 rounded-t-[6px]',
         'pl-[10px] pr-[5px] select-none',
         'text-[12.5px] font-medium transition-colors duration-150',
         active
@@ -178,6 +180,12 @@ const Tab = ({
           <XIcon className="size-3" />
         )}
       </button>
+      {showRightSeparator && (
+        <div
+          className="pointer-events-none absolute right-[-2px] top-1/2 h-4 w-px -translate-y-1/2 bg-foreground/15"
+          aria-hidden
+        />
+      )}
     </div>
   )
 
@@ -208,37 +216,39 @@ const EmptyLabel = (): React.JSX.Element => (
 )
 
 const ModeSwitcher = (): React.JSX.Element => {
-  const { editorMode, setEditorMode } = useWorkspace()
+  const { editorMode, fileEditorModes, activeTabId, tabs, setEditorMode } = useWorkspace()
+  const activeTab = activeTabId ? tabs.find((t) => t.id === activeTabId) : undefined
+  const effectiveMode =
+    activeTab && fileEditorModes[activeTab.path] ? fileEditorModes[activeTab.path] : editorMode
+  const isVisual = effectiveMode === 'visual'
   return (
-    <div
-      className="flex items-center gap-0.5"
+    <button
+      onClick={() => void setEditorMode(isVisual ? 'raw' : 'visual')}
       style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+      className="group flex items-center gap-0.5 rounded-[6px] p-0.5 hover:bg-foreground/[0.04] transition-colors"
+      aria-label={`Switch to ${isVisual ? 'raw' : 'visual'} mode`}
     >
-      <button
-        onClick={() => void setEditorMode('visual')}
+      <span
         className={cn(
           'flex size-[26px] items-center justify-center rounded-[5px] transition-colors',
-          editorMode === 'visual'
+          isVisual
             ? 'bg-foreground/10 text-foreground'
-            : 'text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground'
+            : 'text-muted-foreground group-hover:text-foreground'
         )}
-        aria-label="Visual mode"
       >
         <EyeIcon className="size-3.5" />
-      </button>
-      <button
-        onClick={() => void setEditorMode('raw')}
+      </span>
+      <span
         className={cn(
           'flex size-[26px] items-center justify-center rounded-[5px] transition-colors',
-          editorMode === 'raw'
+          !isVisual
             ? 'bg-foreground/10 text-foreground'
-            : 'text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground'
+            : 'text-muted-foreground group-hover:text-foreground'
         )}
-        aria-label="Raw mode"
       >
         <CodeIcon className="size-3.5" />
-      </button>
-    </div>
+      </span>
+    </button>
   )
 }
 
@@ -354,12 +364,17 @@ const TopBar = (): React.JSX.Element => {
             onDragEnd={handleDragEnd}
           >
             <SortableContext items={tabs.map((t) => t.id)} strategy={horizontalListSortingStrategy}>
-              {tabs.map((tab) => (
+              {tabs.map((tab, index) => {
+                const nextTab = tabs[index + 1]
+                const isActive = tab.id === activeTabId
+                const nextIsActive = nextTab?.id === activeTabId
+                return (
                 <Tab
                   key={tab.id}
                   tab={tab}
-                  active={tab.id === activeTabId}
+                  active={isActive}
                   renaming={tab.id === renamingTabId}
+                  showRightSeparator={!isActive && !!nextTab && !nextIsActive}
                   onActivate={() => setActiveTab(tab.id)}
                   onClose={() => requestCloseTab(tab.id)}
                   onCloseOthers={() => requestCloseOtherTabs(tab.id)}
@@ -382,7 +397,8 @@ const TopBar = (): React.JSX.Element => {
                   }}
                   onCancelRename={cancelRenamingTab}
                 />
-              ))}
+                )
+              })}
             </SortableContext>
           </DndContext>
 
