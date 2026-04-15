@@ -1,18 +1,36 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { useEditor, EditorContent, type Editor } from '@tiptap/react'
-import { TextSelection } from '@tiptap/pm/state'
 import StarterKit from '@tiptap/starter-kit'
+import { Text } from '@tiptap/extension-text'
 import { Table } from '@tiptap/extension-table'
 import { TableRow } from '@tiptap/extension-table-row'
 import { TableHeader } from '@tiptap/extension-table-header'
 import { TableCell } from '@tiptap/extension-table-cell'
 import { Markdown, type MarkdownStorage } from 'tiptap-markdown'
 import { cn } from '@/lib/utils'
-import { useWorkspace } from '@/store/workspace'
 import { FlatTaskItem } from '@/extensions/flat-task-item'
 import { Tab } from '@/extensions/tab'
+import { HtmlPaste } from '@/extensions/html-paste'
 import { getActiveEditor, setActiveEditor } from '@/lib/active-editor'
+import { serializeSliceToText } from '@/lib/serialize-clipboard-text'
 import TableMenu from './TableMenu'
+
+// tiptap-markdown's default text serializer always HTML-escapes `<` and `>`,
+// so any literal angle bracket (e.g. pasted HTML, "1 < 2") becomes `&lt;`/`&gt;`
+// in the saved markdown. Override it to leave text alone — markdown escaping
+// for `*`, `_`, `[` etc. is already handled by prosemirror-markdown's state.text.
+const PlainText = Text.extend({
+  addStorage() {
+    return {
+      markdown: {
+        serialize(state: { text: (s: string) => void }, node: { text?: string }) {
+          state.text(node.text ?? '')
+        },
+        parse: {}
+      }
+    }
+  }
+})
 
 const getMarkdown = (editor: Editor): string => {
   const storage = editor.storage as unknown as { markdown: MarkdownStorage }
@@ -23,42 +41,23 @@ type Props = {
   tabId: string
   value: string
   onChange: (markdown: string) => void
+  isActive: boolean
 }
 
-const VisualEditor = ({ tabId, value, onChange }: Props): React.JSX.Element => {
+const VisualEditor = ({ tabId: _tabId, value, onChange, isActive }: Props): React.JSX.Element => {
   const scrollRef = useRef<HTMLDivElement>(null)
-  const restoredRef = useRef(false)
-  const saveScrollPosition = useWorkspace((s) => s.saveScrollPosition)
-  const saveCursorPosition = useWorkspace((s) => s.saveCursorPosition)
   const lastEmittedMarkdown = useRef(value)
-
-  useEffect(() => {
-    const el = scrollRef.current
-    if (!el) return
-
-    // Persist scroll position to the store every 200ms so it's never stale.
-    // Skip until restoration is done — otherwise the interval writes 0 to the
-    // store before the editor has loaded and the restore effect has read it.
-    let lastSaved = -1
-    const interval = setInterval(() => {
-      if (!restoredRef.current) return
-      const top = el.scrollTop
-      if (top !== lastSaved) {
-        lastSaved = top
-        saveScrollPosition(tabId, top)
-      }
-    }, 200)
-
-    return () => {
-      clearInterval(interval)
-    }
-  }, [tabId, saveScrollPosition])
+  const onChangeRef = useRef(onChange)
+  onChangeRef.current = onChange
 
   const extensions = useMemo(
     () => [
       StarterKit.configure({
-        heading: { levels: [1, 2, 3, 4] }
+        heading: { levels: [1, 2, 3, 4] },
+        // Replaced by PlainText below — see comment on PlainText for why.
+        text: false
       }),
+      PlainText,
       FlatTaskItem,
       Tab,
       // GFM-style tables. `resizable` gives users drag-handles on column borders.
@@ -66,6 +65,7 @@ const VisualEditor = ({ tabId, value, onChange }: Props): React.JSX.Element => {
       TableRow,
       TableHeader,
       TableCell,
+      HtmlPaste,
       Markdown.configure({
         html: false,
         tightLists: true,
@@ -73,7 +73,10 @@ const VisualEditor = ({ tabId, value, onChange }: Props): React.JSX.Element => {
         linkify: true,
         breaks: false,
         transformPastedText: true,
-        transformCopiedText: true
+        // Keep the clipboard's text/plain slot as visible text (no markdown
+        // syntax), so pasting into plain inputs like the rename field yields
+        // "hello" instead of "**hello**". Rich targets still read text/html.
+        transformCopiedText: false
       })
     ],
     []
@@ -86,103 +89,34 @@ const VisualEditor = ({ tabId, value, onChange }: Props): React.JSX.Element => {
     onUpdate: ({ editor: e }) => {
       const md = getMarkdown(e)
       lastEmittedMarkdown.current = md
-      onChange(md)
+      onChangeRef.current(md)
     },
     editorProps: {
       attributes: {
         class: cn('smarkup-editor focus:outline-none')
-      }
+      },
+      // Override ProseMirror's default text serializer (which uses "\n\n"
+      // between blocks and stacks blank lines around empty paragraphs) with
+      // a single-newline-per-block walker that also adds bullet/task
+      // prefixes. See lib/serialize-clipboard-text.ts for the why.
+      clipboardTextSerializer: (slice) => serializeSliceToText(slice)
     }
   })
 
-  // Save cursor position on unmount (tab switch)
-  useEffect(() => {
-    return () => {
-      if (!editor) return
-      const { anchor, head } = editor.state.selection
-      saveCursorPosition(tabId, anchor, head)
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tabId, saveCursorPosition, editor])
-
-  // Expose this editor as the active visual editor so the command palette and
-  // other top-level UI can run commands against it.
+  // Set/unset this as the active editor and focus when tab becomes active.
+  // The editor stays mounted (DOM + scroll preserved) so no restore is needed.
   useEffect(() => {
     if (!editor) return
-    setActiveEditor(editor)
-
-    // Restore cursor position from a previous tab visit, or place at start.
-    // Dispatch directly (without scrollIntoView) so it doesn't override scroll restore.
-    const savedCursor = useWorkspace.getState().cursorPositions[tabId] ?? null
-    if (savedCursor) {
-      const docSize = editor.state.doc.content.size
-      const anchor = Math.min(savedCursor.anchor, docSize)
-      const head = Math.min(savedCursor.head, docSize)
-      const sel = TextSelection.create(editor.state.doc, anchor, head)
-      editor.view.dispatch(editor.state.tr.setSelection(sel))
-    } else {
-      const sel = TextSelection.create(editor.state.doc, 0)
-      editor.view.dispatch(editor.state.tr.setSelection(sel))
-    }
-
-    // Restore scroll position, then focus. Focus must come AFTER scroll
-    // to prevent scrollIntoView from overriding our position.
-    // Use ResizeObserver to re-apply scrollTop until layout settles.
-    const scrollEl = scrollRef.current
-    if (!scrollEl) {
-      restoredRef.current = true
-      editor.view.dom.focus({ preventScroll: true })
-      return () => {
-        if (getActiveEditor() === editor) setActiveEditor(null)
-      }
-    }
-
-    const saved = useWorkspace.getState().scrollPositions[tabId]
-    const savedTop = typeof saved === 'number' ? saved : 0
-    if (!savedTop) {
-      restoredRef.current = true
-      requestAnimationFrame(() => editor.view.dom.focus({ preventScroll: true }))
-      return () => {
-        if (getActiveEditor() === editor) setActiveEditor(null)
-      }
-    }
-
-    let settled = false
-    scrollEl.scrollTop = savedTop
-
-    const settle = (): void => {
-      settled = true
-      restoredRef.current = true
-      observer.disconnect()
+    if (isActive) {
+      setActiveEditor(editor)
       editor.view.dom.focus({ preventScroll: true })
     }
-
-    const observer = new ResizeObserver(() => {
-      if (settled) return
-      scrollEl.scrollTop = savedTop
-      if (scrollEl.scrollHeight - scrollEl.clientHeight >= savedTop) {
-        settle()
-      }
-    })
-    const contentEl = scrollEl.firstElementChild
-    if (contentEl) observer.observe(contentEl)
-
-    // Safety timeout — stop after 500ms and focus regardless
-    const timeout = setTimeout(() => {
-      if (!settled) {
-        scrollEl.scrollTop = savedTop
-        settle()
-      }
-    }, 500)
-
     return () => {
-      observer.disconnect()
-      clearTimeout(timeout)
       if (getActiveEditor() === editor) setActiveEditor(null)
     }
-  }, [editor])
+  }, [editor, isActive])
 
-  // Reconcile external value changes (e.g. file reload from watcher or raw-edit)
+  // Reconcile external value changes (e.g. file reload from watcher)
   useEffect(() => {
     if (!editor) return
     if (value === lastEmittedMarkdown.current) return

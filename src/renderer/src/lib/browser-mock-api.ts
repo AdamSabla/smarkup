@@ -38,7 +38,9 @@ let mockSettings: Settings = {
   autoSave: false,
   autoSaveDelayMs: 1500,
   showWordCount: false,
-  rawHeadingSizes: false
+  rawHeadingSizes: false,
+  rawWordWrap: true,
+  autoNamedPaths: []
 }
 
 const listEntries = (): FileEntry[] =>
@@ -115,6 +117,11 @@ const mockApi: SmarkupApi = {
     return idx === 0 ? '/' : path.slice(0, idx)
   },
 
+  // Folder drag-drop — no filesystem in browser mode, stub as no-ops.
+  isDirectory: async () => false,
+  pathExists: async () => false,
+  getPathForFile: () => '',
+
   // Settings: stored in module scope for the lifetime of the browser tab
   loadSettings: async () => mockSettings,
   saveSettings: async (patch) => {
@@ -140,7 +147,9 @@ const mockApi: SmarkupApi = {
   // Window management: no-op in browser mode (single window only)
   getWindowId: () => 'default',
   getWindowInit: async () => null,
-  openTabInNewWindow: async () => undefined
+  openTabInNewWindow: async () => undefined,
+  onCloseRequested: () => () => undefined,
+  confirmClose: async () => undefined
 }
 
 export const installBrowserMockApi = (): void => {

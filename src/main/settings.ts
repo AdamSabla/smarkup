@@ -23,6 +23,13 @@ export type Settings = {
   autoSaveDelayMs: number
   showWordCount: boolean
   rawHeadingSizes: boolean
+  rawWordWrap: boolean
+  /**
+   * Files (by absolute path) whose name is still being auto-derived from
+   * their first non-empty line. Removed from this list once the user
+   * explicitly renames the file.
+   */
+  autoNamedPaths: string[]
 }
 
 const DEFAULT_SETTINGS: Settings = {
@@ -37,7 +44,9 @@ const DEFAULT_SETTINGS: Settings = {
   autoSave: false,
   autoSaveDelayMs: 1500,
   showWordCount: false,
-  rawHeadingSizes: false
+  rawHeadingSizes: false,
+  rawWordWrap: true,
+  autoNamedPaths: []
 }
 
 let cached: Settings | null = null

@@ -3,6 +3,7 @@ import {
   ArrowLeftIcon,
   ClipboardIcon,
   ColumnsIcon,
+  CopyIcon,
   EyeIcon,
   FileClockIcon,
   FilePlusIcon,
@@ -20,6 +21,7 @@ import {
   SidebarIcon,
   SunIcon,
   TableIcon,
+  WrapTextIcon,
   Trash2Icon,
   TrashIcon,
   KeyboardIcon,
@@ -53,9 +55,9 @@ const CommandPaletteBody = (): React.JSX.Element => {
     openSettings,
     createDraft,
     saveActive,
-    closeTab,
-    closeOtherTabs,
-    closeAllTabs,
+    requestCloseTab,
+    requestCloseOtherTabs,
+    requestCloseAllTabs,
     activeTabId,
     tabs,
     additionalFolders,
@@ -74,6 +76,8 @@ const CommandPaletteBody = (): React.JSX.Element => {
     openFile,
     autoSave,
     setAutoSave,
+    rawWordWrap,
+    setRawWordWrap,
     splitPane,
     activePaneId,
     commandPaletteOpen,
@@ -87,9 +91,9 @@ const CommandPaletteBody = (): React.JSX.Element => {
       openSettings: s.openSettings,
       createDraft: s.createDraft,
       saveActive: s.saveActive,
-      closeTab: s.closeTab,
-      closeOtherTabs: s.closeOtherTabs,
-      closeAllTabs: s.closeAllTabs,
+      requestCloseTab: s.requestCloseTab,
+      requestCloseOtherTabs: s.requestCloseOtherTabs,
+      requestCloseAllTabs: s.requestCloseAllTabs,
       activeTabId: s.activeTabId,
       tabs: s.tabs,
       additionalFolders: s.additionalFolders,
@@ -108,6 +112,8 @@ const CommandPaletteBody = (): React.JSX.Element => {
       openFile: s.openFile,
       autoSave: s.autoSave,
       setAutoSave: s.setAutoSave,
+      rawWordWrap: s.rawWordWrap,
+      setRawWordWrap: s.setRawWordWrap,
       splitPane: s.splitPane,
       activePaneId: s.activePaneId,
       commandPaletteOpen: s.commandPaletteOpen,
@@ -258,6 +264,14 @@ const CommandPaletteBody = (): React.JSX.Element => {
                   <ClipboardIcon /> Copy file path
                 </CommandItem>
                 <CommandItem
+                  onSelect={() => {
+                    void navigator.clipboard.writeText(activeTab.content)
+                    dismiss()
+                  }}
+                >
+                  <CopyIcon /> Copy markdown
+                </CommandItem>
+                <CommandItem
                   className="text-destructive [&_svg]:text-destructive data-[selected=true]:bg-destructive/10 data-[selected=true]:text-destructive"
                   onSelect={() => {
                     void deleteFile(activeTab.path)
@@ -277,8 +291,8 @@ const CommandPaletteBody = (): React.JSX.Element => {
                 {activeTabId && (
                   <CommandItem
                     onSelect={() => {
-                      closeTab(activeTabId)
                       dismiss()
+                      requestCloseTab(activeTabId)
                     }}
                   >
                     <XIcon /> Close tab
@@ -287,8 +301,8 @@ const CommandPaletteBody = (): React.JSX.Element => {
                 {activeTabId && tabs.length > 1 && (
                   <CommandItem
                     onSelect={() => {
-                      closeOtherTabs(activeTabId)
                       dismiss()
+                      requestCloseOtherTabs(activeTabId)
                     }}
                   >
                     <XIcon /> Close other tabs
@@ -296,8 +310,8 @@ const CommandPaletteBody = (): React.JSX.Element => {
                 )}
                 <CommandItem
                   onSelect={() => {
-                    closeAllTabs()
                     dismiss()
+                    requestCloseAllTabs()
                   }}
                 >
                   <XIcon /> Close all tabs
@@ -345,6 +359,15 @@ const CommandPaletteBody = (): React.JSX.Element => {
               }}
             >
               <SaveAllIcon /> {autoSave ? 'Disable auto-save' : 'Enable auto-save'}
+            </CommandItem>
+            <CommandItem
+              onSelect={() => {
+                void setRawWordWrap(!rawWordWrap)
+                dismiss()
+              }}
+            >
+              <WrapTextIcon />{' '}
+              {rawWordWrap ? 'Disable word wrap (raw editor)' : 'Enable word wrap (raw editor)'}
             </CommandItem>
           </CommandGroup>
 

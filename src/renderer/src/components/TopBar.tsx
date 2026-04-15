@@ -248,8 +248,9 @@ const TopBar = (): React.JSX.Element => {
     activeTabId,
     setActiveTab,
     closeTab,
-    closeOtherTabs,
-    closeAllTabs,
+    requestCloseTab,
+    requestCloseOtherTabs,
+    requestCloseAllTabs,
     reorderTabs,
     createDraft,
     sidebarVisible,
@@ -360,9 +361,9 @@ const TopBar = (): React.JSX.Element => {
                   active={tab.id === activeTabId}
                   renaming={tab.id === renamingTabId}
                   onActivate={() => setActiveTab(tab.id)}
-                  onClose={() => closeTab(tab.id)}
-                  onCloseOthers={() => closeOtherTabs(tab.id)}
-                  onCloseAll={closeAllTabs}
+                  onClose={() => requestCloseTab(tab.id)}
+                  onCloseOthers={() => requestCloseOtherTabs(tab.id)}
+                  onCloseAll={requestCloseAllTabs}
                   onOpenToSide={() => splitPane(activePaneId, 'horizontal', tab.id)}
                   onOpenInNewWindow={() => {
                     void window.api.openTabInNewWindow(

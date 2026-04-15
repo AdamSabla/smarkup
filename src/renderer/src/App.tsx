@@ -6,6 +6,8 @@ import SettingsDialog from '@/components/SettingsDialog'
 import QuickOpen from '@/components/QuickOpen'
 import CommandPalette from '@/components/CommandPalette'
 import KeyboardShortcuts from '@/components/KeyboardShortcuts'
+import UnsavedChangesDialog from '@/components/UnsavedChangesDialog'
+import FolderDropZone from '@/components/FolderDropZone'
 import SplitContainer from '@/components/editor/SplitContainer'
 import { useShortcuts } from '@/hooks/useShortcuts'
 import { useUpdateSubscription } from '@/hooks/useUpdateSubscription'
@@ -13,6 +15,7 @@ import { useTheme } from '@/hooks/useTheme'
 import { useFileWatcher } from '@/hooks/useFileWatcher'
 import { usePersistOpenTabs } from '@/hooks/usePersistOpenTabs'
 import { useAutoSave } from '@/hooks/useAutoSave'
+import { useAutoFilename } from '@/hooks/useAutoFilename'
 import { useWorkspace } from '@/store/workspace'
 
 const SIDEBAR_DEFAULT = 240
@@ -23,6 +26,7 @@ const App = (): React.JSX.Element => {
   const sidebarVisible = useWorkspace((s) => s.sidebarVisible)
   const hydrate = useWorkspace((s) => s.hydrate)
   const paneRoot = useWorkspace((s) => s.paneRoot)
+  const requestCloseWindow = useWorkspace((s) => s.requestCloseWindow)
 
   const [sidebarWidth, setSidebarWidth] = useState(SIDEBAR_DEFAULT)
   const dragging = useRef(false)
@@ -51,12 +55,21 @@ const App = (): React.JSX.Element => {
     void hydrate()
   }, [hydrate])
 
+  // Intercept close requests from the main process (red X, Cmd+Q, etc.)
+  // so we can prompt about unsaved changes before the window goes away.
+  useEffect(() => {
+    return window.api.onCloseRequested(() => {
+      requestCloseWindow()
+    })
+  }, [requestCloseWindow])
+
   useShortcuts()
   useUpdateSubscription()
   useTheme()
   useFileWatcher()
   usePersistOpenTabs()
   useAutoSave()
+  useAutoFilename()
 
   return (
     <div className="flex h-full w-full flex-col bg-background text-foreground">
@@ -88,6 +101,8 @@ const App = (): React.JSX.Element => {
       <QuickOpen />
       <CommandPalette />
       <KeyboardShortcuts />
+      <UnsavedChangesDialog />
+      <FolderDropZone />
     </div>
   )
 }

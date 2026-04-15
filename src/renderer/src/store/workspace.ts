@@ -1,6 +1,14 @@
 import { create } from 'zustand'
 // Type-only imports — erased at build time.
-import type { FileEntry, Settings, Theme, UpdateStatus, WatchPayload, WindowInit } from '../../../preload'
+import type {
+  FileEntry,
+  Settings,
+  Theme,
+  UpdateStatus,
+  WatchPayload,
+  WindowInit
+} from '../../../preload'
+import { deriveFilenameFromContent } from '@/lib/derive-filename'
 
 export type EditorMode = 'visual' | 'raw'
 
@@ -46,6 +54,68 @@ const replaceNode = (root: PaneNode, targetId: string, replacement: PaneNode): P
     children: [
       replaceNode(root.children[0], targetId, replacement),
       replaceNode(root.children[1], targetId, replacement)
+    ] as [PaneNode, PaneNode]
+  }
+}
+
+/** Rewrite the state so every tab/pane/activeTab reference to `oldPath`
+ *  (or any descendant path `oldPath + '/...'`) points at the new location.
+ *  Used after a folder rename/move — the folder's subtree of files all get
+ *  new absolute paths in one shot, and the tab ids must follow. */
+const remapPathPrefix = (
+  s: { tabs: OpenFile[]; activeTabId: string | null; paneRoot: PaneNode },
+  oldPath: string,
+  newPath: string
+): { tabs: OpenFile[]; activeTabId: string | null; paneRoot: PaneNode } => {
+  if (oldPath === newPath) return s
+  const prefix = oldPath + '/'
+  const map = (p: string): string =>
+    p === oldPath ? newPath : p.startsWith(prefix) ? newPath + p.slice(oldPath.length) : p
+  let paneRoot = s.paneRoot
+  const tabs = s.tabs.map((t) => {
+    const mapped = map(t.path)
+    if (mapped === t.path) return t
+    paneRoot = remapPaneTabId(paneRoot, t.id, mapped)
+    return { ...t, id: mapped, path: mapped, name: mapped.split('/').pop() ?? t.name }
+  })
+  const activeTabId = s.activeTabId ? map(s.activeTabId) : s.activeTabId
+  return { tabs, activeTabId, paneRoot }
+}
+
+/** Same prefix-rewrite logic as remapPathPrefix, but for the autoNamedPaths
+ *  set. Used after a folder rename/move so files inside still get auto-named. */
+const remapAutoNamedPaths = (paths: Set<string>, oldPath: string, newPath: string): Set<string> => {
+  if (oldPath === newPath || paths.size === 0) return paths
+  const prefix = oldPath + '/'
+  let changed = false
+  const next = new Set<string>()
+  for (const p of paths) {
+    if (p === oldPath) {
+      next.add(newPath)
+      changed = true
+    } else if (p.startsWith(prefix)) {
+      next.add(newPath + p.slice(oldPath.length))
+      changed = true
+    } else {
+      next.add(p)
+    }
+  }
+  return changed ? next : paths
+}
+
+/** Rewrite any leaf whose `tabId` matches `oldTabId` to reference `newTabId`.
+ *  Used after rename/move, where the tab's id changes but the pane leaf
+ *  still holds the stale id — without this, the pane points at a tab that
+ *  no longer exists and the editor falls back to the empty state. */
+const remapPaneTabId = (root: PaneNode, oldTabId: string, newTabId: string): PaneNode => {
+  if (root.type === 'leaf') {
+    return root.tabId === oldTabId ? { ...root, tabId: newTabId } : root
+  }
+  return {
+    ...root,
+    children: [
+      remapPaneTabId(root.children[0], oldTabId, newTabId),
+      remapPaneTabId(root.children[1], oldTabId, newTabId)
     ] as [PaneNode, PaneNode]
   }
 }
@@ -98,6 +168,18 @@ export type MoveTarget = {
   label: string
 }
 
+/**
+ * A close action that's waiting on the user to resolve unsaved changes.
+ * When non-null, the UnsavedChangesDialog is shown.
+ */
+export type PendingClose =
+  | { kind: 'tab'; tabId: string }
+  | { kind: 'others'; keepTabId: string }
+  | { kind: 'all' }
+  | { kind: 'window' }
+
+export type UnsavedChoice = 'save' | 'discard' | 'cancel'
+
 type WorkspaceState = {
   // --- Persistent settings (mirrored from disk) ---
   draftsFolder: string | null
@@ -110,6 +192,7 @@ type WorkspaceState = {
   autoSaveDelayMs: number
   showWordCount: boolean
   rawHeadingSizes: boolean
+  rawWordWrap: boolean
 
   // --- Volatile UI state ---
   sections: SidebarSection[]
@@ -139,6 +222,20 @@ type WorkspaceState = {
   cursorPositions: Record<string, { anchor: number; head: number }>
   /** Paths that are collapsed in the sidebar tree (volatile, survives sidebar toggle) */
   sidebarCollapsedPaths: Set<string>
+  /**
+   * Files (by absolute path) whose name is still being auto-derived from
+   * their first non-empty line. Removed once the user explicitly renames.
+   * Persisted to settings so the auto-naming survives across sessions.
+   */
+  autoNamedPaths: Set<string>
+  /**
+   * Paths currently mid-rename by us. Used to suppress watcher self-echo
+   * (the unlink/add events fired by the renames we just initiated).
+   * Volatile — never persisted.
+   */
+  autoRenameInFlight: Set<string>
+  /** A close action waiting on the user to resolve unsaved changes. */
+  pendingClose: PendingClose | null
   hydrated: boolean
 
   // --- Actions ---
@@ -158,17 +255,38 @@ type WorkspaceState = {
 
   openFile: (path: string) => Promise<void>
   createDraft: () => Promise<void>
+  /**
+   * If the active tab is in `autoNamedPaths`, derive a new filename from
+   * its content's first non-empty line and rename the file on disk.
+   * No-op if the derived name matches the current name, would collide
+   * with another file, or the tab no longer qualifies. Called by the
+   * `useAutoFilename` hook on debounced content change.
+   */
+  autoRenameActiveTab: () => Promise<void>
   renameFile: (oldPath: string, newName: string) => Promise<void>
   deleteFile: (path: string) => Promise<void>
   moveFile: (path: string, destDir: string) => Promise<void>
+  moveFolder: (path: string, destDir: string) => Promise<void>
 
   setActiveTab: (id: string) => void
   closeTab: (id: string) => void
   closeOtherTabs: (id: string) => void
   closeAllTabs: () => void
+  /** Close a tab, prompting to save if dirty and autosave is off. */
+  requestCloseTab: (id: string) => void
+  /** Close all tabs except the given one, prompting about any dirty ones. */
+  requestCloseOtherTabs: (keepId: string) => void
+  /** Close all tabs, prompting about any dirty ones. */
+  requestCloseAllTabs: () => void
+  /** The window has been asked to close; prompt about any dirty tabs. */
+  requestCloseWindow: () => void
+  /** Resolve the currently pending close with the user's choice. */
+  resolvePendingClose: (choice: UnsavedChoice) => Promise<void>
   reorderTabs: (fromIndex: number, toIndex: number) => void
   updateActiveContent: (content: string) => void
   saveActive: () => Promise<void>
+  /** Save a specific tab by id (writes to disk and clears its dirty state). */
+  saveTab: (tabId: string) => Promise<void>
 
   // --- Pane actions ---
   splitPane: (paneId: string, direction: 'horizontal' | 'vertical', tabId: string | null) => void
@@ -184,6 +302,7 @@ type WorkspaceState = {
   setAutoSave: (enabled: boolean) => Promise<void>
   setShowWordCount: (enabled: boolean) => Promise<void>
   setRawHeadingSizes: (enabled: boolean) => Promise<void>
+  setRawWordWrap: (enabled: boolean) => Promise<void>
   openSettings: () => void
   closeSettings: () => void
   openQuickOpen: () => void
@@ -292,6 +411,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   autoSaveDelayMs: 1500,
   showWordCount: false,
   rawHeadingSizes: false,
+  rawWordWrap: true,
 
   sections: [],
   moveTargets: [],
@@ -309,6 +429,9 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   scrollPositions: {},
   cursorPositions: {},
   sidebarCollapsedPaths: new Set<string>(),
+  autoNamedPaths: new Set<string>(),
+  autoRenameInFlight: new Set<string>(),
+  pendingClose: null,
   hydrated: false,
 
   hydrate: async () => {
@@ -323,7 +446,9 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       autoSave: settings.autoSave ?? false,
       autoSaveDelayMs: settings.autoSaveDelayMs ?? 1500,
       showWordCount: settings.showWordCount ?? false,
-      rawHeadingSizes: settings.rawHeadingSizes ?? false
+      rawHeadingSizes: settings.rawHeadingSizes ?? false,
+      rawWordWrap: settings.rawWordWrap ?? true,
+      autoNamedPaths: new Set(settings.autoNamedPaths ?? [])
     })
     await get().refreshAllSections()
 
@@ -435,7 +560,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   },
 
   handleWatchEvent: async (payload) => {
-    const { sections, tabs, activeTabId } = get()
+    const { sections, tabs, activeTabId, autoRenameInFlight } = get()
     const parent =
       sections.find((sec) => sec.path === payload.folder) ??
       sections.find((sec) => sec.isDrafts && sec.path === payload.folder)
@@ -445,6 +570,9 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
 
     // If any unlinked file is currently open in a tab, close it silently
     for (const evt of payload.events) {
+      // Suppress events for paths we're currently renaming ourselves —
+      // otherwise the unlink half of our own rename would close the tab.
+      if (autoRenameInFlight.has(evt.path)) continue
       if (evt.type === 'unlink') {
         const tab = tabs.find((t) => t.path === evt.path)
         if (tab) {
@@ -519,6 +647,14 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
 
   renameFolder: async (oldPath, newName) => {
     const newPath = await window.api.rename(oldPath, newName)
+    // Any open tabs for files inside the renamed folder now point at stale
+    // paths — rewrite them so they keep working.
+    set((s) => {
+      const remapped = remapPathPrefix(s, oldPath, newPath)
+      const nextAutoNamed = remapAutoNamedPaths(s.autoNamedPaths, oldPath, newPath)
+      return { ...remapped, autoNamedPaths: nextAutoNamed }
+    })
+    void persistSettings({ autoNamedPaths: Array.from(get().autoNamedPaths) })
     await get().refreshAllSections()
     void get().refreshMoveTargets()
     return newPath
@@ -551,7 +687,11 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     set((s) => ({
       tabs: [...s.tabs, tab],
       activeTabId: tab.id,
-      paneRoot: replaceNode(paneRoot, activePaneId, { type: 'leaf', id: activePaneId, tabId: tab.id })
+      paneRoot: replaceNode(paneRoot, activePaneId, {
+        type: 'leaf',
+        id: activePaneId,
+        tabId: tab.id
+      })
     }))
   },
 
@@ -563,20 +703,146 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     }
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
     const newPath = await window.api.createFile(draftsFolder, `untitled-${timestamp}.md`)
+    // Mark as auto-named so the next non-empty line typed becomes the filename.
+    const nextAutoNamed = new Set(get().autoNamedPaths)
+    nextAutoNamed.add(newPath)
+    set({ autoNamedPaths: nextAutoNamed })
+    void persistSettings({ autoNamedPaths: Array.from(nextAutoNamed) })
     await get().refreshSection(DRAFTS_ID)
     await get().openFile(newPath)
+  },
+
+  autoRenameActiveTab: async () => {
+    const state = get()
+    const { activeTabId, tabs, autoNamedPaths, autoRenameInFlight } = state
+    if (!activeTabId) return
+    const tab = tabs.find((t) => t.id === activeTabId)
+    if (!tab) return
+    if (!autoNamedPaths.has(tab.path)) return
+    if (autoRenameInFlight.has(tab.path)) return
+
+    const derived = deriveFilenameFromContent(tab.content)
+    if (!derived) return
+    const nextName = `${derived}.md`
+    if (nextName === tab.name) return
+
+    // Same parent dir; rename only changes the basename.
+    const parent = tab.path.slice(0, tab.path.lastIndexOf('/'))
+    const nextPath = `${parent}/${nextName}`
+    if (nextPath === tab.path) return
+
+    // Skip silently if a file with the derived name already exists — we
+    // don't want to clobber the user's data and we don't want to surface
+    // an error for what's a best-effort convenience.
+    try {
+      const exists = await window.api.pathExists(nextPath)
+      if (exists) return
+    } catch {
+      return
+    }
+
+    // Mark in-flight so the watcher self-echo doesn't close the tab.
+    const inFlight = new Set(get().autoRenameInFlight)
+    inFlight.add(tab.path)
+    inFlight.add(nextPath)
+    set({ autoRenameInFlight: inFlight })
+
+    let renamedPath: string
+    try {
+      renamedPath = await window.api.rename(tab.path, nextName)
+    } catch {
+      // Rename can fail (path went away, permissions, etc.) — drop the
+      // in-flight marker and bail. The user can keep typing; we'll try
+      // again on the next debounce tick.
+      const cleanup = new Set(get().autoRenameInFlight)
+      cleanup.delete(tab.path)
+      cleanup.delete(nextPath)
+      set({ autoRenameInFlight: cleanup })
+      return
+    }
+
+    const oldPath = tab.path
+    set((s) => {
+      // Atomically rewrite every path-keyed slot. Anything missed here
+      // would either point at a stale tab id (pane goes blank) or hold
+      // stale UI state (scroll/cursor/recent files).
+      const nextTabs = s.tabs.map((t) =>
+        t.path === oldPath ? { ...t, id: renamedPath, path: renamedPath, name: nextName } : t
+      )
+      const nextActive = s.activeTabId === oldPath ? renamedPath : s.activeTabId
+      const nextPane = remapPaneTabId(s.paneRoot, oldPath, renamedPath)
+
+      const nextScroll = { ...s.scrollPositions }
+      if (oldPath in nextScroll) {
+        nextScroll[renamedPath] = nextScroll[oldPath]
+        delete nextScroll[oldPath]
+      }
+      const nextCursor = { ...s.cursorPositions }
+      if (oldPath in nextCursor) {
+        nextCursor[renamedPath] = nextCursor[oldPath]
+        delete nextCursor[oldPath]
+      }
+      const nextRecent = s.recentFiles.map((p) => (p === oldPath ? renamedPath : p))
+
+      const nextAutoNamed = new Set(s.autoNamedPaths)
+      nextAutoNamed.delete(oldPath)
+      nextAutoNamed.add(renamedPath)
+
+      return {
+        tabs: nextTabs,
+        activeTabId: nextActive,
+        paneRoot: nextPane,
+        scrollPositions: nextScroll,
+        cursorPositions: nextCursor,
+        recentFiles: nextRecent,
+        autoNamedPaths: nextAutoNamed
+      }
+    })
+
+    void persistSettings({
+      autoNamedPaths: Array.from(get().autoNamedPaths),
+      recentFiles: get().recentFiles
+    })
+
+    // Refresh the parent section so the sidebar shows the new name.
+    const sections = get().sections
+    const parentSection =
+      sections.find((sec) => sectionContainsFile(sec, oldPath)) ??
+      sections.find((sec) => sectionContainsFile(sec, renamedPath))
+    if (parentSection) await get().refreshSection(parentSection.id)
+
+    // Drop the in-flight markers a tick after the watcher would have
+    // delivered its events. 500ms is well past chokidar's debounce.
+    setTimeout(() => {
+      const cleanup = new Set(get().autoRenameInFlight)
+      cleanup.delete(oldPath)
+      cleanup.delete(renamedPath)
+      set({ autoRenameInFlight: cleanup })
+    }, 500)
   },
 
   renameFile: async (oldPath, newName) => {
     const safeName = newName.endsWith('.md') ? newName : `${newName}.md`
     const newPath = await window.api.rename(oldPath, safeName)
-    set((s) => ({
-      tabs: s.tabs.map((t) =>
-        t.path === oldPath ? { ...t, id: newPath, path: newPath, name: safeName } : t
-      ),
-      activeTabId: s.activeTabId === oldPath ? newPath : s.activeTabId,
-      renamingTabId: s.renamingTabId === oldPath ? null : s.renamingTabId
-    }))
+    set((s) => {
+      // User-initiated rename "fixes" the name: drop the auto-named flag.
+      const nextAutoNamed = new Set(s.autoNamedPaths)
+      nextAutoNamed.delete(oldPath)
+      nextAutoNamed.delete(newPath)
+      return {
+        tabs: s.tabs.map((t) =>
+          t.path === oldPath ? { ...t, id: newPath, path: newPath, name: safeName } : t
+        ),
+        activeTabId: s.activeTabId === oldPath ? newPath : s.activeTabId,
+        // Pane leaves reference tabs by id; the tab's id is the path, which
+        // just changed — rewrite any matching leaf so the pane keeps showing
+        // the file instead of falling back to the empty state.
+        paneRoot: remapPaneTabId(s.paneRoot, oldPath, newPath),
+        renamingTabId: s.renamingTabId === oldPath ? null : s.renamingTabId,
+        autoNamedPaths: nextAutoNamed
+      }
+    })
+    void persistSettings({ autoNamedPaths: Array.from(get().autoNamedPaths) })
     await get().refreshAllSections()
   },
 
@@ -584,28 +850,61 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     await window.api.deletePath(path)
     set((s) => {
       const idx = s.tabs.findIndex((t) => t.path === path)
-      if (idx === -1) return s
+      const nextAutoNamed = new Set(s.autoNamedPaths)
+      nextAutoNamed.delete(path)
+      if (idx === -1) return { autoNamedPaths: nextAutoNamed }
       const nextTabs = s.tabs.filter((t) => t.path !== path)
       const nextActive =
         s.activeTabId === path
           ? (nextTabs[Math.min(idx, nextTabs.length - 1)]?.id ?? null)
           : s.activeTabId
-      return { tabs: nextTabs, activeTabId: nextActive }
+      return { tabs: nextTabs, activeTabId: nextActive, autoNamedPaths: nextAutoNamed }
     })
+    void persistSettings({ autoNamedPaths: Array.from(get().autoNamedPaths) })
     await get().refreshAllSections()
   },
 
   moveFile: async (path, destDir) => {
     const newPath = await window.api.move(path, destDir)
-    set((s) => ({
-      tabs: s.tabs.map((t) =>
-        t.path === path
-          ? { ...t, id: newPath, path: newPath, name: newPath.split('/').pop() ?? t.name }
-          : t
-      ),
-      activeTabId: s.activeTabId === path ? newPath : s.activeTabId
-    }))
+    set((s) => {
+      // Preserve the auto-named flag across the move — per the design,
+      // auto-naming continues even after a draft leaves the drafts folder.
+      const nextAutoNamed = new Set(s.autoNamedPaths)
+      if (nextAutoNamed.has(path)) {
+        nextAutoNamed.delete(path)
+        nextAutoNamed.add(newPath)
+      }
+      return {
+        tabs: s.tabs.map((t) =>
+          t.path === path
+            ? { ...t, id: newPath, path: newPath, name: newPath.split('/').pop() ?? t.name }
+            : t
+        ),
+        activeTabId: s.activeTabId === path ? newPath : s.activeTabId,
+        paneRoot: remapPaneTabId(s.paneRoot, path, newPath),
+        autoNamedPaths: nextAutoNamed
+      }
+    })
+    void persistSettings({ autoNamedPaths: Array.from(get().autoNamedPaths) })
     await get().refreshAllSections()
+  },
+
+  moveFolder: async (path, destDir) => {
+    // Guard against dropping a folder into itself or one of its descendants —
+    // the FS would happily create a loop and orphan the contents.
+    if (destDir === path || destDir.startsWith(path + '/')) return
+    // Same-parent drop is a no-op; avoid the round trip.
+    const currentParent = path.slice(0, path.lastIndexOf('/'))
+    if (currentParent === destDir) return
+    const newPath = await window.api.move(path, destDir)
+    set((s) => {
+      const remapped = remapPathPrefix(s, path, newPath)
+      const nextAutoNamed = remapAutoNamedPaths(s.autoNamedPaths, path, newPath)
+      return { ...remapped, autoNamedPaths: nextAutoNamed }
+    })
+    void persistSettings({ autoNamedPaths: Array.from(get().autoNamedPaths) })
+    await get().refreshAllSections()
+    void get().refreshMoveTargets()
   },
 
   setActiveTab: (id) => {
@@ -651,14 +950,23 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         }
         return {
           ...node,
-          children: [updatePaneTree(node.children[0]), updatePaneTree(node.children[1])] as [PaneNode, PaneNode]
+          children: [updatePaneTree(node.children[0]), updatePaneTree(node.children[1])] as [
+            PaneNode,
+            PaneNode
+          ]
         }
       }
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { [id]: _, ...restScroll } = s.scrollPositions
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { [id]: _c, ...restCursor } = s.cursorPositions
-      return { tabs: nextTabs, activeTabId: nextActive, paneRoot: updatePaneTree(s.paneRoot), scrollPositions: restScroll, cursorPositions: restCursor }
+      return {
+        tabs: nextTabs,
+        activeTabId: nextActive,
+        paneRoot: updatePaneTree(s.paneRoot),
+        scrollPositions: restScroll,
+        cursorPositions: restCursor
+      }
     }),
 
   closeOtherTabs: (id) =>
@@ -675,7 +983,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       }
     }),
 
-  closeAllTabs: () => set({ tabs: [], activeTabId: null, scrollPositions: {}, cursorPositions: {} }),
+  closeAllTabs: () =>
+    set({ tabs: [], activeTabId: null, scrollPositions: {}, cursorPositions: {} }),
 
   reorderTabs: (fromIndex, toIndex) =>
     set((s) => {
@@ -716,6 +1025,150 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     if (parent) await get().refreshSection(parent.id)
   },
 
+  saveTab: async (tabId) => {
+    const tab = get().tabs.find((t) => t.id === tabId)
+    if (!tab) return
+    if (tab.content === tab.savedContent) return
+    const pending = tab.content
+    await window.api.writeFile(tab.path, pending)
+    set((s) => ({
+      tabs: s.tabs.map((t) => (t.id === tabId ? { ...t, savedContent: pending } : t))
+    }))
+  },
+
+  // --- Close-with-unsaved-changes flow ---------------------------------
+  //
+  // With autosave OFF, we ask the user what to do (Save / Don't Save / Cancel)
+  // via the UnsavedChangesDialog. With autosave ON, there can still be an
+  // unflushed debounce window where the tab is dirty — in that case we flush
+  // any dirty tabs to disk first and then close silently, since the user has
+  // already opted into "save everything automatically".
+
+  requestCloseTab: (id) => {
+    const { tabs, autoSave } = get()
+    const tab = tabs.find((t) => t.id === id)
+    if (!tab) return
+    const dirty = tab.content !== tab.savedContent
+    if (!dirty) {
+      get().closeTab(id)
+      return
+    }
+    if (autoSave) {
+      void (async () => {
+        await get().saveTab(id)
+        get().closeTab(id)
+      })()
+      return
+    }
+    set({ pendingClose: { kind: 'tab', tabId: id } })
+  },
+
+  requestCloseOtherTabs: (keepId) => {
+    const { tabs, autoSave } = get()
+    const dirty = tabs.filter((t) => t.id !== keepId && t.content !== t.savedContent)
+    if (dirty.length === 0) {
+      get().closeOtherTabs(keepId)
+      return
+    }
+    if (autoSave) {
+      void (async () => {
+        for (const t of dirty) await get().saveTab(t.id)
+        get().closeOtherTabs(keepId)
+      })()
+      return
+    }
+    set({ pendingClose: { kind: 'others', keepTabId: keepId } })
+  },
+
+  requestCloseAllTabs: () => {
+    const { tabs, autoSave } = get()
+    const dirty = tabs.filter((t) => t.content !== t.savedContent)
+    if (dirty.length === 0) {
+      get().closeAllTabs()
+      return
+    }
+    if (autoSave) {
+      void (async () => {
+        for (const t of dirty) await get().saveTab(t.id)
+        get().closeAllTabs()
+      })()
+      return
+    }
+    set({ pendingClose: { kind: 'all' } })
+  },
+
+  requestCloseWindow: () => {
+    const { tabs, autoSave } = get()
+    const dirty = tabs.filter((t) => t.content !== t.savedContent)
+    if (dirty.length === 0) {
+      void window.api.confirmClose()
+      return
+    }
+    if (autoSave) {
+      void (async () => {
+        for (const t of dirty) await get().saveTab(t.id)
+        void window.api.confirmClose()
+      })()
+      return
+    }
+    set({ pendingClose: { kind: 'window' } })
+  },
+
+  resolvePendingClose: async (choice) => {
+    const pc = get().pendingClose
+    if (!pc) return
+
+    // Close the dialog immediately so the user gets feedback.
+    set({ pendingClose: null })
+
+    if (choice === 'cancel') {
+      // Nothing to do; if this was a window close, we simply leave it open.
+      return
+    }
+
+    // Determine which tabs are in scope for this pending action.
+    const { tabs } = get()
+    const tabsInScope: OpenFile[] =
+      pc.kind === 'tab'
+        ? tabs.filter((t) => t.id === pc.tabId)
+        : pc.kind === 'others'
+          ? tabs.filter((t) => t.id !== pc.keepTabId)
+          : tabs // 'all' and 'window' both cover every tab
+
+    if (choice === 'save') {
+      const dirty = tabsInScope.filter((t) => t.content !== t.savedContent)
+      // Save sequentially to keep disk writes predictable and to surface
+      // errors one at a time. If any save fails, abort the close so the
+      // user doesn't lose data silently.
+      for (const t of dirty) {
+        try {
+          await get().saveTab(t.id)
+        } catch (err) {
+          console.error('Failed to save tab before close:', t.path, err)
+          // Re-show the dialog so the user can decide again.
+          set({ pendingClose: pc })
+          return
+        }
+      }
+    }
+
+    // Now perform the close action.
+    switch (pc.kind) {
+      case 'tab':
+        get().closeTab(pc.tabId)
+        break
+      case 'others':
+        get().closeOtherTabs(pc.keepTabId)
+        break
+      case 'all':
+        get().closeAllTabs()
+        break
+      case 'window':
+        void window.api.confirmClose()
+        break
+    }
+  },
+
   // --- Pane actions ---
 
   splitPane: (paneId, direction, tabId) => {
@@ -727,10 +1180,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       type: 'split',
       id: nextPaneId(),
       direction,
-      children: [
-        { ...target },
-        { type: 'leaf', id: newLeafId, tabId }
-      ],
+      children: [{ ...target }, { type: 'leaf', id: newLeafId, tabId }],
       sizes: [50, 50]
     }
     set({
@@ -821,6 +1271,11 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   setRawHeadingSizes: async (enabled) => {
     set({ rawHeadingSizes: enabled })
     await persistSettings({ rawHeadingSizes: enabled })
+  },
+
+  setRawWordWrap: async (enabled) => {
+    set({ rawWordWrap: enabled })
+    await persistSettings({ rawWordWrap: enabled })
   },
 
   openSettings: () => set({ settingsOpen: true }),

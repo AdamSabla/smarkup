@@ -8,7 +8,7 @@ export const useShortcuts = (): void => {
   const {
     createDraft,
     saveActive,
-    closeTab,
+    requestCloseTab,
     closePane,
     activeTabId,
     activePaneId,
@@ -96,11 +96,13 @@ export const useShortcuts = (): void => {
       // Close tab / close pane: cmd/ctrl+w
       if (key === 'w' && !e.shiftKey && !e.altKey) {
         e.preventDefault()
-        // If we're in a split, close the pane instead of the tab
+        // If we're in a split, close the pane instead of the tab.
+        // (Panes are stateless views over a tab — closing a pane doesn't
+        // lose any unsaved work, so no prompt is needed here.)
         if (paneRoot.type === 'split') {
           closePane(activePaneId)
         } else if (activeTabId) {
-          closeTab(activeTabId)
+          requestCloseTab(activeTabId)
         }
         return
       }
@@ -148,7 +150,7 @@ export const useShortcuts = (): void => {
   }, [
     createDraft,
     saveActive,
-    closeTab,
+    requestCloseTab,
     closePane,
     activeTabId,
     activePaneId,

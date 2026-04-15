@@ -39,7 +39,7 @@ const DialogContent = ({
       className={cn(
         // `data-[state=closed]:opacity-0 pointer-events-none` hides the
         // content when the dialog is force-mounted but closed.
-        'bg-background data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 fixed top-[50%] left-[50%] z-50 grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 rounded-lg border p-6 shadow-lg duration-200 sm:max-w-md data-[state=closed]:opacity-0 data-[state=closed]:pointer-events-none',
+        'bg-background data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 fixed top-[50%] left-[50%] z-50 grid w-[calc(100%-2rem)] max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 rounded-lg border p-6 shadow-lg duration-200 sm:max-w-md data-[state=closed]:opacity-0 data-[state=closed]:pointer-events-none',
         className
       )}
       {...props}
@@ -67,7 +67,10 @@ const DialogTitle = ({
 }: React.ComponentProps<typeof DialogPrimitive.Title>): React.JSX.Element => (
   <DialogPrimitive.Title
     data-slot="dialog-title"
-    className={cn('text-lg leading-none font-semibold', className)}
+    // `pr-8` keeps multi-line titles from running under the close button.
+    // `leading-snug` gives wrapped titles room to breathe instead of the
+    // cramped look of `leading-none`.
+    className={cn('pr-8 text-lg leading-snug font-semibold', className)}
     {...props}
   />
 )

@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron'
+import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
 
 export type FileEntry = {
@@ -30,6 +30,12 @@ export type Settings = {
   autoSaveDelayMs: number
   showWordCount: boolean
   rawHeadingSizes: boolean
+  rawWordWrap: boolean
+  /**
+   * Files (by absolute path) whose name is still being auto-derived from
+   * their first non-empty line. Removed once the user explicitly renames.
+   */
+  autoNamedPaths: string[]
 }
 
 export type WatchEvent = {
@@ -76,6 +82,11 @@ const api = {
   deletePath: (path: string): Promise<boolean> => ipcRenderer.invoke('fs:delete', path),
   basename: (path: string): Promise<string> => ipcRenderer.invoke('fs:basename', path),
   dirname: (path: string): Promise<string> => ipcRenderer.invoke('fs:dirname', path),
+  isDirectory: (path: string): Promise<boolean> => ipcRenderer.invoke('fs:isDirectory', path),
+  pathExists: (path: string): Promise<boolean> => ipcRenderer.invoke('fs:pathExists', path),
+  // Electron ≥ 32 no longer exposes `.path` on dropped File objects — you have
+  // to resolve it through `webUtils.getPathForFile` in the preload.
+  getPathForFile: (file: File): string => webUtils.getPathForFile(file),
 
   // --- Settings ---------------------------------------------------------
   loadSettings: (): Promise<Settings> => ipcRenderer.invoke('settings:load'),
@@ -122,7 +133,19 @@ const api = {
   openTabInNewWindow: (
     tab: TabTransferData,
     pos: { x: number; y: number }
-  ): Promise<void> => ipcRenderer.invoke('window:openTabInNewWindow', tab, pos)
+  ): Promise<void> => ipcRenderer.invoke('window:openTabInNewWindow', tab, pos),
+
+  // Main process asks the renderer to close this window (red X, Cmd+Q, etc.)
+  // so the renderer can prompt about unsaved changes first.
+  onCloseRequested: (callback: () => void): (() => void) => {
+    const handler = (): void => callback()
+    ipcRenderer.on('window:closeRequested', handler)
+    return () => {
+      ipcRenderer.off('window:closeRequested', handler)
+    }
+  },
+  /** Tell main it's OK to actually close this window. */
+  confirmClose: (): Promise<void> => ipcRenderer.invoke('window:confirmClose')
 }
 
 export type SmarkupApi = typeof api

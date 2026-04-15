@@ -12,13 +12,14 @@
   padding: 30px 20px 50vh;
   min-height: 100%;
   cursor: text;
+  /* Body text is Lato (matches the original electron-app editor). Headings
+   * override this back to Inter below. */
   font-family:
-    'Inter',
+    'Lato',
     -apple-system,
     BlinkMacSystemFont,
     'Segoe UI',
     sans-serif;
-  font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
   color: var(--foreground);
 }
 
@@ -31,9 +32,9 @@
 
 /* --- Paragraphs ------------------------------------------------------- */
 .smarkup-editor p {
-  font-size: 16px;
-  line-height: 26px;
-  letter-spacing: -0.005em;
+  font-size: 15px;
+  line-height: 24px;
+  letter-spacing: 0;
   margin-top: 0;
   margin-bottom: 0;
 }
@@ -118,8 +119,8 @@
   list-style: decimal;
 }
 .smarkup-editor li {
-  font-size: 16px;
-  line-height: 26px;
+  font-size: 15px;
+  line-height: 24px;
   padding-left: 4px;
   margin-top: 2px;
   margin-bottom: 2px;
@@ -222,8 +223,8 @@
 /* --- Inline code ------------------------------------------------------ */
 .smarkup-editor :not(pre) > code {
   font-family: 'Roboto Mono', ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
-  font-size: 0.88em;
-  line-height: 1.4;
+  font-size: 14px;
+  line-height: 22px;
   padding: 1px 5px;
   border-radius: 4px;
   background: var(--muted);
@@ -282,8 +283,9 @@
 }
 
 /* --- Emphasis --------------------------------------------------------- */
+/* Lato Black (900) — matches the heavier bold weight from electron-app. */
 .smarkup-editor strong {
-  font-weight: 700;
+  font-weight: 900;
   color: var(--foreground);
 }
 .smarkup-editor em {

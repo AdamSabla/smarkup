@@ -25,6 +25,8 @@ type WindowInit = {
 let windowIdCounter = 0
 const windowInitStore = new Map<string, WindowInit>()
 const windowIdMap = new Map<BrowserWindow, string>()
+/** Windows whose renderer has explicitly approved the pending close. */
+const approvedToClose = new WeakSet<BrowserWindow>()
 
 const createWindow = (init?: WindowInit): BrowserWindow => {
   const windowId = String(++windowIdCounter)
@@ -61,6 +63,16 @@ const createWindow = (init?: WindowInit): BrowserWindow => {
 
   mainWindow.on('ready-to-show', () => {
     mainWindow.show()
+  })
+
+  // Intercept close so the renderer can prompt about unsaved changes first.
+  // The renderer replies via `window:closeApproved` (which sets the flag and
+  // re-closes) or simply ignores the request (cancel = do nothing).
+  mainWindow.on('close', (event) => {
+    if (approvedToClose.has(mainWindow)) return
+    if (mainWindow.webContents.isDestroyed()) return
+    event.preventDefault()
+    mainWindow.webContents.send('window:closeRequested')
   })
 
   mainWindow.on('closed', () => {
@@ -211,6 +223,28 @@ const registerFileHandlers = (): void => {
   ipcMain.handle('fs:basename', (_event, filePath: string) => basename(filePath))
 
   ipcMain.handle('fs:dirname', (_event, filePath: string) => dirname(filePath))
+
+  // Used by the drag-and-drop folder dropzone to filter out non-directories
+  // before we try to register them as workspaces.
+  ipcMain.handle('fs:isDirectory', async (_event, p: string) => {
+    try {
+      const st = await fs.stat(p)
+      return st.isDirectory()
+    } catch {
+      return false
+    }
+  })
+
+  // Used by the auto-name-from-first-line feature to skip rename attempts
+  // that would collide with an existing file.
+  ipcMain.handle('fs:pathExists', async (_event, p: string) => {
+    try {
+      await fs.access(p)
+      return true
+    } catch {
+      return false
+    }
+  })
 }
 
 // --- Settings IPC --------------------------------------------------------
@@ -242,6 +276,15 @@ const registerWindowHandlers = (): void => {
       return init
     }
     return null
+  })
+
+  // Renderer approves the pending close after the user picked
+  // Save / Don't Save in the unsaved-changes dialog.
+  ipcMain.handle('window:confirmClose', (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender)
+    if (!win) return
+    approvedToClose.add(win)
+    win.close()
   })
 
   // Renderer calls this when a tab is dragged out or "Open in New Window" is selected

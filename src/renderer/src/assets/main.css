@@ -2,7 +2,7 @@
 @import 'tw-animate-css';
 @plugin '@tailwindcss/typography';
 
-/* Inter — editor + UI */
+/* Inter — UI + visual editor headings */
 @import '@fontsource/inter/400.css';
 @import '@fontsource/inter/500.css';
 @import '@fontsource/inter/600.css';
@@ -10,6 +10,12 @@
 @import '@fontsource/inter/900.css';
 @import '@fontsource/inter/400-italic.css';
 @import '@fontsource/inter/700-italic.css';
+
+/* Lato — visual editor body text. Weights: 400 (body), 400-italic (em),
+ * 900 (strong). Headings stay on Inter. */
+@import '@fontsource/lato/400.css';
+@import '@fontsource/lato/400-italic.css';
+@import '@fontsource/lato/900.css';
 
 /* Roboto Mono — code */
 @import '@fontsource/roboto-mono/400.css';

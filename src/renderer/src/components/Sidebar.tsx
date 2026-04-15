@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import {
   FilePlusIcon,
   FolderPlusIcon,
@@ -35,6 +35,34 @@ import { useWorkspace, type SidebarSection, type FolderNode } from '@/store/work
 import type { FileEntry } from '../../../preload'
 
 const INITIAL_VISIBLE = 10
+
+// --- Drag & drop ------------------------------------------------------------
+// We use a custom MIME type so outside drags (text, files from Finder) can't
+// accidentally trigger a move. The payload is a JSON `{kind, path}` read on
+// drop; during dragenter/dragover the browser only exposes `types`, which is
+// enough to tell "this is our sidebar drag" without leaking the payload.
+const DND_MIME = 'application/x-smarkup-sidebar-item'
+type DragPayload = { kind: 'file' | 'folder'; path: string }
+
+type DndContext = {
+  /** Path of the drop target currently under the cursor (for highlighting). */
+  dragOverPath: string | null
+  /** Path of the item being dragged — used to suppress self-drop highlight. */
+  draggingPath: string | null
+  onItemDragStart: (e: React.DragEvent, payload: DragPayload) => void
+  onItemDragEnd: () => void
+  /** Call on BOTH dragenter and dragover. Setting on both keeps highlight
+   *  tracking robust (enter can be missed in edge cases) and the continuous
+   *  dragover stream lets the innermost target always win via stopPropagation. */
+  onTargetDragOver: (e: React.DragEvent, targetPath: string, destDir: string) => void
+  onTargetDrop: (e: React.DragEvent, destDir: string) => void
+}
+const SidebarDndContext = createContext<DndContext | null>(null)
+const useSidebarDnd = (): DndContext => {
+  const ctx = useContext(SidebarDndContext)
+  if (!ctx) throw new Error('SidebarDndContext missing')
+  return ctx
+}
 
 const isMac = navigator.platform.startsWith('Mac')
 
@@ -261,6 +289,7 @@ const FileRow = ({
 }: FileRowProps): React.JSX.Element => {
   const displayName = file.name.replace(/\.md$/i, '')
   const [menuOpen, setMenuOpen] = useState(false)
+  const dnd = useSidebarDnd()
 
   if (renaming) {
     return (
@@ -273,6 +302,9 @@ const FileRow = ({
       <ContextMenuTrigger asChild>
         <button
           data-sidebar-path={file.path}
+          draggable
+          onDragStart={(e) => dnd.onItemDragStart(e, { kind: 'file', path: file.path })}
+          onDragEnd={dnd.onItemDragEnd}
           onClick={(e) => {
             if (isModClick(e)) {
               e.preventDefault()
@@ -425,6 +457,10 @@ const SubfolderView = ({
   const paddingLeft = 8 + depth * 12
   const isEmpty = folder.files.length === 0 && folder.subfolders.length === 0
   const isRenaming = renamingFolderPath === folder.path
+  const dnd = useSidebarDnd()
+  // Suppress drop highlight when the user hovers the folder they're dragging
+  // (no-op anyway, but it would look like a valid target otherwise).
+  const isDropTarget = dnd.dragOverPath === folder.path && dnd.draggingPath !== folder.path
 
   if (isRenaming) {
     return (
@@ -442,6 +478,12 @@ const SubfolderView = ({
       <div className="group/folder relative flex items-center">
         <button
           data-sidebar-path={folder.path}
+          draggable
+          onDragStart={(e) => dnd.onItemDragStart(e, { kind: 'folder', path: folder.path })}
+          onDragEnd={dnd.onItemDragEnd}
+          onDragEnter={(e) => dnd.onTargetDragOver(e, folder.path, folder.path)}
+          onDragOver={(e) => dnd.onTargetDragOver(e, folder.path, folder.path)}
+          onDrop={(e) => dnd.onTargetDrop(e, folder.path)}
           onClick={(e) => {
             if (isModClick(e)) {
               e.preventDefault()
@@ -455,7 +497,8 @@ const SubfolderView = ({
             'flex w-full items-center gap-1.5 rounded-md pr-2 py-1 text-left text-sm',
             'hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
             'text-muted-foreground',
-            focused && 'ring-1 ring-inset ring-ring'
+            focused && 'ring-1 ring-inset ring-ring',
+            isDropTarget && 'bg-sidebar-accent/70 ring-1 ring-inset ring-primary/60 text-sidebar-accent-foreground'
           )}
         >
           <ChevronRightIcon
@@ -568,6 +611,8 @@ const SectionView = ({
   const expanded = expandedPaths.has(section.id)
   const focused = focusedItem === section.id
   const { createDraft } = useWorkspace()
+  const dnd = useSidebarDnd()
+  const isDropTarget = section.path != null && dnd.dragOverPath === section.id
 
   const allFiles = section.files
   const files = showAll ? allFiles : allFiles.slice(0, INITIAL_VISIBLE)
@@ -575,8 +620,27 @@ const SectionView = ({
 
   const [sectionMenuOpen, setSectionMenuOpen] = useState(false)
 
+  // Sections are drop targets for their root folder (section.path). The
+  // handler lives on the outer wrapper so drops anywhere in the section's
+  // body — header, empty list, gaps between rows — land in the right place.
+  const sectionDropProps = section.path
+    ? {
+        onDragEnter: (e: React.DragEvent): void =>
+          dnd.onTargetDragOver(e, section.id, section.path!),
+        onDragOver: (e: React.DragEvent): void =>
+          dnd.onTargetDragOver(e, section.id, section.path!),
+        onDrop: (e: React.DragEvent): void => dnd.onTargetDrop(e, section.path!)
+      }
+    : {}
+
   return (
-    <div className="mb-3">
+    <div
+      className={cn(
+        'mb-3 rounded-md',
+        isDropTarget && 'bg-sidebar-accent/30 ring-1 ring-inset ring-primary/60'
+      )}
+      {...sectionDropProps}
+    >
       <div className="group flex items-center gap-1 px-2 pt-1 pb-0.5">
         <button
           data-sidebar-path={section.id}
@@ -725,6 +789,8 @@ const Sidebar = (): React.JSX.Element => {
     openFile,
     createSubfolder,
     renameFolder,
+    moveFile,
+    moveFolder,
     sidebarCollapsedPaths,
     toggleSidebarCollapsedPath,
     expandSidebarPaths,
@@ -910,7 +976,92 @@ const Sidebar = (): React.JSX.Element => {
     if (chosen) await addFolder(chosen)
   }
 
+  // --- Drag and drop ------------------------------------------------------
+  // We store the drag payload on the DataTransfer (read on drop) AND in a ref
+  // so targets can check self-drop without awaiting the async read — during
+  // dragover the browser hides the payload, exposing only the MIME type.
+  const dragPayloadRef = useRef<DragPayload | null>(null)
+  const [dragOverPath, setDragOverPath] = useState<string | null>(null)
+  const [draggingPath, setDraggingPath] = useState<string | null>(null)
+
+  const onItemDragStart = useCallback(
+    (e: React.DragEvent, payload: DragPayload): void => {
+      e.dataTransfer.setData(DND_MIME, JSON.stringify(payload))
+      e.dataTransfer.effectAllowed = 'move'
+      dragPayloadRef.current = payload
+      setDraggingPath(payload.path)
+    },
+    []
+  )
+
+  const onItemDragEnd = useCallback((): void => {
+    dragPayloadRef.current = null
+    setDraggingPath(null)
+    setDragOverPath(null)
+  }, [])
+
+  // Decide whether a given target is a legal drop for the current drag.
+  // Same-folder (no-op) and folder-into-self/descendant are rejected.
+  const isLegalDrop = useCallback((targetDir: string): boolean => {
+    const payload = dragPayloadRef.current
+    if (!payload) return false
+    const currentParent = payload.path.slice(0, payload.path.lastIndexOf('/'))
+    if (currentParent === targetDir) return false
+    if (payload.kind === 'folder') {
+      if (targetDir === payload.path || targetDir.startsWith(payload.path + '/')) return false
+    }
+    return true
+  }, [])
+
+  // Setting dragOverPath on every dragover (continuous) means the innermost
+  // target always wins (stopPropagation keeps the outer section from
+  // reclaiming), and moving from a child back into parent body clears the
+  // child claim naturally — parent's next dragover takes over.
+  const onTargetDragOver = useCallback(
+    (e: React.DragEvent, targetPath: string, destDir: string): void => {
+      if (!e.dataTransfer.types.includes(DND_MIME)) return
+      e.preventDefault()
+      e.stopPropagation()
+      setDragOverPath((prev) => (prev === targetPath ? prev : targetPath))
+      e.dataTransfer.dropEffect = isLegalDrop(destDir) ? 'move' : 'none'
+    },
+    [isLegalDrop]
+  )
+
+  const onTargetDrop = useCallback(
+    (e: React.DragEvent, destDir: string): void => {
+      e.preventDefault()
+      e.stopPropagation()
+      const raw = e.dataTransfer.getData(DND_MIME)
+      setDragOverPath(null)
+      if (!raw) return
+      let payload: DragPayload
+      try {
+        payload = JSON.parse(raw) as DragPayload
+      } catch {
+        return
+      }
+      if (!isLegalDrop(destDir)) return
+      if (payload.kind === 'file') void moveFile(payload.path, destDir)
+      else void moveFolder(payload.path, destDir)
+    },
+    [isLegalDrop, moveFile, moveFolder]
+  )
+
+  const dndContextValue = useMemo<DndContext>(
+    () => ({
+      dragOverPath,
+      draggingPath,
+      onItemDragStart,
+      onItemDragEnd,
+      onTargetDragOver,
+      onTargetDrop
+    }),
+    [dragOverPath, draggingPath, onItemDragStart, onItemDragEnd, onTargetDragOver, onTargetDrop]
+  )
+
   return (
+    <SidebarDndContext.Provider value={dndContextValue}>
     <div
       ref={sidebarRef}
       tabIndex={-1}
@@ -918,7 +1069,7 @@ const Sidebar = (): React.JSX.Element => {
       onBlur={handleBlur}
       className="flex h-full flex-col bg-sidebar text-sidebar-foreground outline-none"
     >
-      <ScrollArea className="flex-1 px-1 pt-2">
+      <ScrollArea className="min-h-0 flex-1 px-1 pt-2">
         {sections.map((section) => (
           <SectionView
             key={section.id}
@@ -964,6 +1115,7 @@ const Sidebar = (): React.JSX.Element => {
         </Button>
       </div>
     </div>
+    </SidebarDndContext.Provider>
   )
 }
 

@@ -3,14 +3,39 @@ import CodeMirror from '@uiw/react-codemirror'
 import { markdown } from '@codemirror/lang-markdown'
 import {
   EditorView,
+  drawSelection,
   keymap,
   Decoration,
   DecorationSet,
   ViewPlugin,
   ViewUpdate
 } from '@codemirror/view'
-import { EditorSelection, RangeSetBuilder } from '@codemirror/state'
+import { Prec, RangeSetBuilder } from '@codemirror/state'
+import { HighlightStyle, syntaxHighlighting } from '@codemirror/language'
+import { tags } from '@lezer/highlight'
 import { useWorkspace } from '@/store/workspace'
+
+// Unify heading syntax coloring: the marker (`#`, `##`, …) and the heading
+// text share the same red instead of the default theme's two-tone look
+// (green marker + red text). Red reads as more attention-grabbing than the
+// green we tried first. We hit both the generic `heading` tag (which
+// lezer-markdown applies to the whole heading including content) and each
+// specific level, so the rule wins regardless of which tag the outer theme
+// happens to match.
+const HEADING_RED = '#f87171' // tailwind red-400 — reads well on both themes
+const markdownHighlight = HighlightStyle.define([
+  { tag: tags.heading, color: HEADING_RED, fontWeight: '600' },
+  { tag: tags.heading1, color: HEADING_RED, fontWeight: '700' },
+  { tag: tags.heading2, color: HEADING_RED, fontWeight: '600' },
+  { tag: tags.heading3, color: HEADING_RED, fontWeight: '600' },
+  { tag: tags.heading4, color: HEADING_RED, fontWeight: '600' },
+  { tag: tags.heading5, color: HEADING_RED, fontWeight: '600' },
+  { tag: tags.heading6, color: HEADING_RED, fontWeight: '600' },
+  // `processingInstruction` is the tag lezer-markdown uses for the `#`
+  // marker itself — include it so it doesn't fall back to the theme's
+  // marker color.
+  { tag: tags.processingInstruction, color: HEADING_RED }
+])
 
 const placeholderMark = Decoration.mark({ class: 'cm-placeholder-highlight' })
 
@@ -85,6 +110,7 @@ type Props = {
   tabId: string
   value: string
   onChange: (value: string) => void
+  isActive: boolean
 }
 
 function useIsDark(): boolean {
@@ -94,12 +120,10 @@ function useIsDark(): boolean {
   return document.documentElement.classList.contains('dark')
 }
 
-const RawEditor = ({ tabId, value, onChange }: Props): React.JSX.Element => {
+const RawEditor = ({ tabId: _tabId, value, onChange, isActive }: Props): React.JSX.Element => {
   const isDark = useIsDark()
   const rawHeadingSizes = useWorkspace((s) => s.rawHeadingSizes)
-  const restoredRef = useRef(false)
-  const saveScrollPosition = useWorkspace((s) => s.saveScrollPosition)
-  const saveCursorPosition = useWorkspace((s) => s.saveCursorPosition)
+  const rawWordWrap = useWorkspace((s) => s.rawWordWrap)
   const viewRef = useRef<EditorView | null>(null)
 
   const onCreateEditor = useCallback((view: EditorView) => {
@@ -135,72 +159,30 @@ const RawEditor = ({ tabId, value, onChange }: Props): React.JSX.Element => {
           e.preventDefault()
           e.stopPropagation()
           const dir = e.key === 'PageDown' ? 1 : -1
-          const target = scroller.scrollTop + dir * scroller.clientHeight * 0.85
-          smoothScroll(scroller, Math.max(0, target), 300)
+          // Match the visual editor: instant native-style scroll by ~one
+          // viewport (minus a small overlap so context carries over).
+          const target = scroller.scrollTop + dir * (scroller.clientHeight - 40)
+          cancelAnimationFrame(scrollAnim)
+          scroller.scrollTop = Math.max(0, target)
         }
       },
       true // capture phase — runs before CodeMirror's handler
     )
 
-    // Restore cursor position from a previous tab visit, or place at start
-    const savedCursor = useWorkspace.getState().cursorPositions[tabId] ?? null
-    if (savedCursor) {
-      const docLen = view.state.doc.length
-      const anchor = Math.min(savedCursor.anchor, docLen)
-      const head = Math.min(savedCursor.head, docLen)
-      view.dispatch({ selection: EditorSelection.single(anchor, head) })
-    }
-
-    // Restore scroll using line-based anchor (survives CodeMirror virtualization).
-    // Focus first with preventScroll so the browser doesn't jump to the caret,
-    // then dispatch the scroll effect to land on the saved line.
+    // Initial focus
     requestAnimationFrame(() => {
       view.contentDOM.focus({ preventScroll: true })
-      const saved = useWorkspace.getState().scrollPositions[tabId]
-      if (saved && typeof saved === 'object' && 'line' in saved) {
-        const clampedLine = Math.min(saved.line, view.state.doc.lines)
-        const lineInfo = view.state.doc.line(clampedLine)
-        view.dispatch({
-          effects: EditorView.scrollIntoView(lineInfo.from, {
-            y: 'start',
-            yMargin: -saved.offsetPx
-          })
-        })
-      }
-      restoredRef.current = true
     })
-
   }, [])
 
-  // Persist scroll position to the store every 200ms so it's never stale.
-  // (Cleanup runs after React detaches the DOM, making view.scrollDOM unreliable.)
+  // Focus and recalculate viewport when this tab becomes active.
+  // The editor stays mounted (DOM + scroll preserved) so no restore is needed.
   useEffect(() => {
-    let lastLine = -1
-    let lastOffset = -1
-    const interval = setInterval(() => {
-      if (!restoredRef.current) return
-      const view = viewRef.current
-      if (!view) return
-      const scrollTop = view.scrollDOM.scrollTop
-      const block = view.lineBlockAtHeight(scrollTop)
-      const line = view.state.doc.lineAt(block.from).number
-      const offsetPx = Math.round(scrollTop - block.top)
-      if (line !== lastLine || offsetPx !== lastOffset) {
-        lastLine = line
-        lastOffset = offsetPx
-        saveScrollPosition(tabId, { line, offsetPx })
-      }
-    }, 200)
-
-    return () => {
-      clearInterval(interval)
-      const view = viewRef.current
-      if (view) {
-        const { anchor, head } = view.state.selection.main
-        saveCursorPosition(tabId, anchor, head)
-      }
-    }
-  }, [tabId, saveScrollPosition, saveCursorPosition])
+    const view = viewRef.current
+    if (!view || !isActive) return
+    view.requestMeasure()
+    view.contentDOM.focus({ preventScroll: true })
+  }, [isActive])
 
   const checklistKeymap = useMemo(
     () =>
@@ -285,10 +267,17 @@ const RawEditor = ({ tabId, value, onChange }: Props): React.JSX.Element => {
   const extensions = useMemo(
     () => [
       markdown(),
+      // Wrap in `Prec.highest` so our heading highlight overrides the
+      // highlight style the `@uiw/react-codemirror` built-in theme ships
+      // (which colors heading text red in dark mode).
+      Prec.highest(syntaxHighlighting(markdownHighlight)),
+      // Disable caret blinking. `Prec.high` so it wins over the default
+      // drawSelection that basicSetup ships with.
+      Prec.high(drawSelection({ cursorBlinkRate: 0 })),
       checklistKeymap,
       placeholderHighlighter,
       ...(rawHeadingSizes ? [headingHighlighter] : []),
-      EditorView.lineWrapping,
+      ...(rawWordWrap ? [EditorView.lineWrapping] : []),
       EditorView.theme({
         '&': {
           fontSize: '14px',
@@ -304,8 +293,26 @@ const RawEditor = ({ tabId, value, onChange }: Props): React.JSX.Element => {
         '.cm-content': {
           caretColor: 'var(--foreground)'
         },
-        '.cm-cursor': {
-          borderLeftColor: 'var(--foreground)'
+        // Thicker, taller, non-blinking caret. Negative margin + extra height
+        // stretches it ~2px beyond the line-box so it reads as a bolder bar.
+        '.cm-cursor, .cm-dropCursor': {
+          borderLeftColor: 'var(--foreground)',
+          borderLeftWidth: '2px',
+          marginTop: '-1px',
+          height: 'calc(1em + 4px) !important'
+        },
+        // Active-line indicator — subtle background plus a Sublime-style
+        // colored bar flush against the left edge of the editor. Negative
+        // margin-left pulls the highlight into the scroller's 48px left
+        // padding so the rectangle runs all the way to the edge. The
+        // paddingLeft restores the 48px shift *and* preserves the default
+        // 6px padding `.cm-line` ships with, so text stays aligned with
+        // inactive lines.
+        '.cm-activeLine': {
+          backgroundColor: 'color-mix(in srgb, var(--foreground) 6%, transparent)',
+          boxShadow: 'inset 10px 0 0 color-mix(in srgb, var(--foreground) 40%, transparent)',
+          marginLeft: '-48px',
+          paddingLeft: '54px'
         },
         '.cm-gutters': {
           backgroundColor: 'var(--background) !important',
@@ -325,7 +332,7 @@ const RawEditor = ({ tabId, value, onChange }: Props): React.JSX.Element => {
         '.cm-heading-4': { fontSize: '1.55em', lineHeight: '1.3', fontWeight: '600' }
       })
     ],
-    [checklistKeymap, rawHeadingSizes]
+    [checklistKeymap, rawHeadingSizes, rawWordWrap]
   )
 
   return (
@@ -338,7 +345,7 @@ const RawEditor = ({ tabId, value, onChange }: Props): React.JSX.Element => {
       basicSetup={{
         lineNumbers: false,
         foldGutter: false,
-        highlightActiveLine: false,
+        highlightActiveLine: true,
         highlightActiveLineGutter: false
       }}
       className="h-full"
