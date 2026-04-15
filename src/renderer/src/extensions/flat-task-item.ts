@@ -144,7 +144,35 @@ function collectFlatItems(
   }
 }
 
+// Rescue `<li>` elements where a literal `[ ]` / `[x]` survived parsing.
+// markdown-it-task-lists requires non-whitespace content after the bracket
+// (see the `/^\[[xX ]\][ \u00A0]/` probe plus its min-length guard), so an
+// empty `- [ ]` round-trips as a plain bullet with literal "[ ]" text. We
+// scan each bullet li's first text node and, if it starts with a checkbox
+// marker, strip the marker and promote the li to a task item so the regular
+// flattening step picks it up.
+const LITERAL_CHECKBOX_RE = /^\s*\[([ xX])\]\s?/
+const rescueLiteralTaskItems = (element: Element): void => {
+  for (const li of [...element.querySelectorAll('li')]) {
+    if (isTaskLi(li)) continue
+    const first = flattenLiChildren(li)[0]
+    if (!first || first.nodeType !== 3) continue
+    const text = first.textContent ?? ''
+    const match = LITERAL_CHECKBOX_RE.exec(text)
+    if (!match) continue
+    first.textContent = text.slice(match[0].length)
+    li.setAttribute('data-checked', String(match[1] === 'x' || match[1] === 'X'))
+    li.classList.add('task-list-item')
+    const parent = li.parentElement
+    if (parent && (parent.tagName === 'UL' || parent.tagName === 'OL')) {
+      parent.classList.add('contains-task-list')
+    }
+  }
+}
+
 function flattenTaskListDOM(element: Element): void {
+  rescueLiteralTaskItems(element)
+
   const topLevelLists = [...element.querySelectorAll('.contains-task-list')].filter(
     (list) => !list.parentElement?.closest('.contains-task-list')
   )
