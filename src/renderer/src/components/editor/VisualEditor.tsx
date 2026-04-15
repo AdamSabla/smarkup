@@ -48,6 +48,13 @@ type Props = {
 const VisualEditor = ({ value, onChange, isActive }: Props): React.JSX.Element => {
   const scrollRef = useRef<HTMLDivElement>(null)
   const lastEmittedMarkdown = useRef(value)
+  // Gate onUpdate on actual user interaction. Any extension-level transaction
+  // that fires at mount (e.g. a normalization appendTransaction) triggers
+  // Tiptap's onUpdate without the preventUpdate meta, which would otherwise
+  // re-serialize the doc to markdown and rewrite tab.content the moment we
+  // flip visual ↔ raw. Each mode switch remounts a fresh editor, so this ref
+  // starts false on every mount and pure mode-toggling can never mutate content.
+  const hasUserEditedRef = useRef(false)
   // Keep `onChange` reachable from tiptap's onUpdate without recreating the
   // editor on every parent re-render. Updating in an effect instead of during
   // render satisfies react-hooks/refs and is equivalent in practice — the
@@ -62,7 +69,15 @@ const VisualEditor = ({ value, onChange, isActive }: Props): React.JSX.Element =
       StarterKit.configure({
         heading: { levels: [1, 2, 3, 4] },
         // Replaced by PlainText below — see comment on PlainText for why.
-        text: false
+        text: false,
+        // TrailingNode appends an empty paragraph via appendTransaction when
+        // the doc doesn't already end in one. That transaction fires without
+        // the preventUpdate meta, so Tiptap's onUpdate runs, re-serializes
+        // the whole doc to markdown, and silently rewrites tab.content the
+        // moment the editor mounts — making a plain "switch visual → raw"
+        // show altered text. Disable it; clicking past the last block to
+        // add content is a minor ergonomics loss compared to that bug.
+        trailingNode: false
       }),
       PlainText,
       FlatTaskItem,
@@ -98,6 +113,9 @@ const VisualEditor = ({ value, onChange, isActive }: Props): React.JSX.Element =
     autofocus: false,
     content: value,
     onUpdate: ({ editor: e }) => {
+      // Drop updates that fire before the user has actually edited — see
+      // hasUserEditedRef declaration above for why.
+      if (!hasUserEditedRef.current) return
       const md = getMarkdown(e)
       lastEmittedMarkdown.current = md
       onChangeRef.current(md)
@@ -113,6 +131,23 @@ const VisualEditor = ({ value, onChange, isActive }: Props): React.JSX.Element =
       clipboardTextSerializer: (slice) => serializeSliceToText(slice)
     }
   })
+
+  // Mark the editor as user-edited on any real input event. These fire from
+  // user interaction only, not from programmatic transactions — so the
+  // onUpdate gate above stays closed through mount-time normalization but
+  // opens the moment the user starts working.
+  useEffect(() => {
+    if (!editor) return
+    const dom = editor.view.dom
+    const markEdited = (): void => {
+      hasUserEditedRef.current = true
+    }
+    const events = ['beforeinput', 'keydown', 'paste', 'drop', 'cut', 'compositionstart'] as const
+    for (const evt of events) dom.addEventListener(evt, markEdited)
+    return () => {
+      for (const evt of events) dom.removeEventListener(evt, markEdited)
+    }
+  }, [editor])
 
   // Set/unset this as the active editor and focus when tab becomes active.
   // The editor stays mounted (DOM + scroll preserved) so no restore is needed.
@@ -133,6 +168,10 @@ const VisualEditor = ({ value, onChange, isActive }: Props): React.JSX.Element =
     if (value === lastEmittedMarkdown.current) return
     const current = getMarkdown(editor)
     if (current !== value) {
+      // Reset the user-edited flag — this is an external reload (file watcher,
+      // mode switch remount, etc.), not user input. Any onUpdate fired by
+      // setContent or by follow-up mount-time normalization must not escape.
+      hasUserEditedRef.current = false
       editor.commands.setContent(value, { emitUpdate: false })
       lastEmittedMarkdown.current = value
     }

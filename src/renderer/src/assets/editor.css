@@ -103,8 +103,14 @@
 }
 
 /* --- Lists ------------------------------------------------------------ */
+/*
+ * Bullet/ordered lists and flat task items share the same text x-position
+ * so the reading column looks uniform across types: all items reserve 32px
+ * of left padding for their marker (bullet / number / checkbox), and each
+ * indent level adds 28px.
+ */
 .smarkup-editor :is(ul, ol) {
-  padding-left: 28px;
+  padding-left: 32px;
   margin-top: 10px;
   margin-bottom: 10px;
 }
@@ -121,7 +127,6 @@
 .smarkup-editor li {
   font-size: 15px;
   line-height: 24px;
-  padding-left: 4px;
   margin-top: 2px;
   margin-bottom: 2px;
 }
@@ -140,21 +145,29 @@
  *     <label><input type="checkbox" /><span></span></label>
  *     <div>inline text…</div>
  *   </div>
+ *
+ * The checkbox is absolutely positioned inside the reserved left-padding
+ * area (same 32px that ul/ol reserve for their markers), so the content
+ * text column aligns pixel-for-pixel with bullet and ordered list text.
  */
 .smarkup-editor div[data-type='flatTaskItem'] {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  padding-left: calc(var(--indent-level, 0) * 28px);
-  margin-top: 1px;
-  margin-bottom: 1px;
+  position: relative;
+  /* 32px base = same reserved marker gutter as ul/ol, plus 28px per
+     indent level (flat task items don't nest in the doc tree, so the
+     nesting visual is built entirely from padding-left). */
+  padding-left: calc(32px + var(--indent-level, 0) * 28px);
+  margin-top: 2px;
+  margin-bottom: 2px;
 }
 .smarkup-editor div[data-type='flatTaskItem'] > label {
-  flex: 0 0 auto;
+  position: absolute;
+  /* Slot the checkbox inside the reserved gutter, shifted right for each
+     indent level so it tracks with the content. */
+  left: calc(8px + var(--indent-level, 0) * 28px);
+  top: 5px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  margin-top: 5px;
   user-select: none;
   cursor: pointer;
 }
