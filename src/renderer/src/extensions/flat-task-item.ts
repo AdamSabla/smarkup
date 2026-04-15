@@ -57,6 +57,51 @@ export function toggleTaskList(editor: Editor, taskItemType: NodeType): boolean 
 /*  DOM flattening: nested task-list HTML → flat divs                  */
 /* ------------------------------------------------------------------ */
 
+// Flatten an `<li>`'s children past any single `<p>` wrapper so loose and
+// tight lists look the same to the caller. In CommonMark a list with blank
+// lines between items is "loose" and each item's inline content is wrapped
+// in `<p>` — without this step the wrapper hides the checkbox from
+// `:scope >` selectors and, more importantly, fails to fit inside
+// `flatTaskItem`'s `inline*` content (ProseMirror lifts the `<p>` out,
+// leaving an empty task item beside an orphan paragraph).
+const flattenLiChildren = (li: Element): ChildNode[] => {
+  const result: ChildNode[] = []
+  for (const node of [...li.childNodes]) {
+    if (node instanceof HTMLParagraphElement) {
+      result.push(...[...node.childNodes])
+    } else {
+      result.push(node)
+    }
+  }
+  return result
+}
+
+// Read the checked state off a task `<li>`. Supports three dialects:
+//   - GitHub-style: `<input type="checkbox" checked>` as first child
+//   - Older GFM:    `data-checked="true"` on the `<li>`
+//   - electron-app clipboard: `role="checkbox"` + `aria-checked="true"`
+const readTaskChecked = (li: Element): boolean => {
+  const input = flattenLiChildren(li).find(
+    (n): n is HTMLInputElement => n instanceof HTMLInputElement && n.type === 'checkbox'
+  )
+  if (input) return input.checked
+  if (li.getAttribute('aria-checked') === 'true') return true
+  if (li.getAttribute('data-checked') === 'true') return true
+  return false
+}
+
+// Does this `<li>` look like a task item rather than a plain bullet?
+// Matches the same three dialects as readTaskChecked.
+const isTaskLi = (li: Element): boolean => {
+  const hasCheckbox = flattenLiChildren(li).some(
+    (n) => n instanceof HTMLInputElement && n.type === 'checkbox'
+  )
+  if (hasCheckbox) return true
+  if (li.classList.contains('task-list-item')) return true
+  if (li.getAttribute('role') === 'checkbox') return true
+  return false
+}
+
 function collectFlatItems(
   list: Element,
   indent: number,
@@ -66,8 +111,8 @@ function collectFlatItems(
   for (const child of [...list.children]) {
     if (child.tagName !== 'LI') continue
 
-    const input = child.querySelector(':scope > input[type="checkbox"]')
-    const checked = (input as HTMLInputElement)?.checked ?? false
+    const flat = flattenLiChildren(child)
+    const checked = readTaskChecked(child)
 
     const div = doc.createElement('div')
     div.setAttribute('data-type', 'flatTaskItem')
@@ -75,14 +120,9 @@ function collectFlatItems(
     div.setAttribute('data-checked', String(checked))
 
     let isFirstTextNode = true
-    for (const node of [...child.childNodes]) {
+    for (const node of flat) {
       if (node instanceof Element && (node.tagName === 'UL' || node.tagName === 'OL')) continue
-      if (
-        node instanceof Element &&
-        node.tagName === 'INPUT' &&
-        (node as HTMLInputElement).type === 'checkbox'
-      )
-        continue
+      if (node instanceof HTMLInputElement && node.type === 'checkbox') continue
       const clone = node.cloneNode(true)
       if (isFirstTextNode && clone.nodeType === 3 && clone.textContent) {
         clone.textContent = clone.textContent.replace(/^\s+/, '')
@@ -94,6 +134,8 @@ function collectFlatItems(
 
     items.push(div)
 
+    // Nested lists are siblings of the `<p>` wrapper (not inside it), so
+    // they're still direct children of the li in both tight and loose forms.
     for (const nested of [...child.children]) {
       if (nested.tagName === 'UL' || nested.tagName === 'OL') {
         collectFlatItems(nested, indent + 1, items, doc)
@@ -125,11 +167,7 @@ function flattenPastedHTML(html: string): string {
     .filter((list) => !list.parentElement?.closest('ul, ol'))
     .filter((list) => {
       const lis = list.querySelectorAll(':scope > li')
-      return [...lis].some(
-        (li) =>
-          li.querySelector(':scope > input[type="checkbox"]') ||
-          li.classList.contains('task-list-item')
-      )
+      return [...lis].some(isTaskLi)
     })
 
   for (const list of lists) {
