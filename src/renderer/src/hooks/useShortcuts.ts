@@ -10,6 +10,7 @@ export const useShortcuts = (): void => {
     saveActive,
     requestCloseTab,
     requestCloseAllTabs,
+    requestCloseWindow,
     closePane,
     activeTabId,
     activePaneId,
@@ -96,7 +97,7 @@ export const useShortcuts = (): void => {
         return
       }
 
-      // Close tab / close pane: cmd/ctrl+w
+      // Close tab / close pane / close window: cmd/ctrl+w
       if (key === 'w' && !e.shiftKey && !e.altKey) {
         e.preventDefault()
         // If we're in a split, close the pane instead of the tab.
@@ -106,6 +107,10 @@ export const useShortcuts = (): void => {
           closePane(activePaneId)
         } else if (activeTabId) {
           requestCloseTab(activeTabId)
+        } else {
+          // No tab is open — fall through to closing the window, matching
+          // the platform convention that ⌘W closes the frontmost window.
+          requestCloseWindow()
         }
         return
       }
@@ -175,6 +180,7 @@ export const useShortcuts = (): void => {
     saveActive,
     requestCloseTab,
     requestCloseAllTabs,
+    requestCloseWindow,
     closePane,
     activeTabId,
     activePaneId,
