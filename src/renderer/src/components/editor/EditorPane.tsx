@@ -4,6 +4,8 @@ import { countWords } from '@/lib/text-stats'
 import TodoChip from '@/components/TodoChip'
 import VisualEditor from './VisualEditor'
 import RawEditor from './RawEditor'
+import FindBar from './FindBar'
+import OrphanBanner from './OrphanBanner'
 
 const EmptyState = (): React.JSX.Element => (
   <div className="flex h-full flex-col items-center justify-center gap-3 text-muted-foreground">
@@ -76,9 +78,17 @@ const EditorPane = ({ tabId, paneId }: EditorPaneProps): React.JSX.Element => {
     }
   }
 
+  const isPaneActive = activePaneId === paneId
+
   return (
     <div className="relative flex h-full flex-col" onMouseDown={handleFocus}>
+      {tabId && <OrphanBanner tabId={tabId} />}
       <div className="relative flex-1 overflow-hidden">
+        {/* The FindBar floats top-right inside the active pane only — in a
+         *  split the inactive pane keeps its own editor's match highlights
+         *  cleared (the bar's adapter `clear()` runs when the bar unmounts
+         *  or the active editor swaps). */}
+        {isPaneActive && <FindBar />}
         {[...desiredMounted].map((key) => {
           const sepIdx = key.lastIndexOf('::')
           const id = key.slice(0, sepIdx)
@@ -111,7 +121,7 @@ const EditorPane = ({ tabId, paneId }: EditorPaneProps): React.JSX.Element => {
        *  they never overlap. The chip is interactive (pointer-events on);
        *  the word count is decorative (pointer-events off) so it doesn't
        *  block clicks on the editor underneath. */}
-      <div className="pointer-events-none absolute bottom-2 right-3 flex items-center gap-2">
+      <div className="pointer-events-none absolute bottom-2 right-3 z-20 flex items-center gap-2">
         {showWordCount && words > 0 && (
           <span className="text-[11px] tabular-nums text-muted-foreground">
             {words.toLocaleString()} words
