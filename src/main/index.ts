@@ -106,6 +106,12 @@ const windowIdMap = new Map<BrowserWindow, string>()
 /** Windows whose renderer has explicitly approved the pending close. */
 const approvedToClose = new WeakSet<BrowserWindow>()
 
+// Set when an app-quit is in flight (Cmd+Q, menu Quit, app.quit()). We can't
+// rely on `window-all-closed` alone on macOS — it intentionally keeps the app
+// alive when all windows close. But if the user asked to quit, we must honor
+// that after every window has been approved-closed.
+let isQuitting = false
+
 const createWindow = (init?: WindowInit): BrowserWindow => {
   const windowId = String(++windowIdCounter)
 
@@ -397,6 +403,13 @@ const registerWindowHandlers = (): void => {
     win.close()
   })
 
+  // Renderer cancelled the unsaved-changes dialog. If the close was driven by
+  // an app-quit (Cmd+Q), reset the flag so a later Cmd+W on the last window
+  // doesn't terminate the app unexpectedly — the user explicitly said "no".
+  ipcMain.handle('window:cancelClose', () => {
+    isQuitting = false
+  })
+
   // Renderer calls this when a tab is dragged out or "Open in New Window" is selected
   ipcMain.handle(
     'window:openTabInNewWindow',
@@ -431,8 +444,14 @@ type UpdateStatus =
       total: number
     }
   | { kind: 'downloaded'; version: string; releaseUrl: string }
-  | { kind: 'not-available'; userInitiated: boolean; currentVersion: string }
-  | { kind: 'error'; message: string; userInitiated: boolean; releaseUrl: string | null }
+  | { kind: 'not-available'; userInitiated: boolean; currentVersion: string; checkId: number }
+  | {
+      kind: 'error'
+      message: string
+      userInitiated: boolean
+      releaseUrl: string | null
+      checkId: number
+    }
 
 let latestUpdateStatus: UpdateStatus = { kind: 'idle' }
 
@@ -441,6 +460,13 @@ let latestUpdateStatus: UpdateStatus = { kind: 'idle' }
 // startup. Updater event listeners fire asynchronously and don't carry this
 // flag themselves, so we stash it here for them to read.
 let pendingUserInitiated = false
+
+// Monotonic id bumped at the start of every check, so the renderer can tell
+// two consecutive "not-available" or "error" results apart. Without this, both
+// broadcasts share an identical shape and the banner can't distinguish a fresh
+// result from one the user already dismissed.
+let checkIdCounter = 0
+let pendingCheckId = 0
 
 // Remembered once we learn about an update, so we can still offer a
 // "Download from GitHub" fallback if the in-app download fails (e.g. Linux
@@ -456,6 +482,7 @@ const broadcastUpdateStatus = (status: UpdateStatus): void => {
 
 const runUpdateCheck = async (userInitiated: boolean): Promise<UpdateStatus> => {
   pendingUserInitiated = userInitiated
+  pendingCheckId = ++checkIdCounter
   try {
     await autoUpdater.checkForUpdates()
   } catch (err) {
@@ -463,7 +490,8 @@ const runUpdateCheck = async (userInitiated: boolean): Promise<UpdateStatus> => 
       kind: 'error',
       userInitiated,
       message: err instanceof Error ? err.message : String(err),
-      releaseUrl: lastKnownReleaseUrl
+      releaseUrl: lastKnownReleaseUrl,
+      checkId: pendingCheckId
     })
   }
   return latestUpdateStatus
@@ -525,7 +553,8 @@ const registerUpdater = (): void => {
     broadcastUpdateStatus({
       kind: 'not-available',
       userInitiated: pendingUserInitiated,
-      currentVersion: app.getVersion()
+      currentVersion: app.getVersion(),
+      checkId: pendingCheckId
     })
   })
 
@@ -534,7 +563,8 @@ const registerUpdater = (): void => {
       kind: 'error',
       message: err.message,
       userInitiated: pendingUserInitiated,
-      releaseUrl: lastKnownReleaseUrl
+      releaseUrl: lastKnownReleaseUrl,
+      checkId: pendingCheckId
     })
   })
 
@@ -710,11 +740,12 @@ app.whenReady().then(() => {
 })
 
 app.on('window-all-closed', () => {
-  if (!isMac) {
+  if (!isMac || isQuitting) {
     app.quit()
   }
 })
 
 app.on('before-quit', () => {
+  isQuitting = true
   stopAllWatchers()
 })

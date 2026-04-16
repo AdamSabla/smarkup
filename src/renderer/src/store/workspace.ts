@@ -1520,7 +1520,12 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     set({ pendingClose: null })
 
     if (choice === 'cancel') {
-      // Nothing to do; if this was a window close, we simply leave it open.
+      // If this was a window-close prompt (red X, Cmd+Q), tell main the user
+      // backed out — main needs to clear its "quit in flight" flag so a later
+      // Cmd+W on the last window doesn't unexpectedly terminate the app.
+      if (pc.kind === 'window') {
+        void window.api.cancelClose()
+      }
       return
     }
 

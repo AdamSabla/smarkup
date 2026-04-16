@@ -22,8 +22,14 @@ export type UpdateStatus =
       total: number
     }
   | { kind: 'downloaded'; version: string; releaseUrl: string }
-  | { kind: 'not-available'; userInitiated: boolean; currentVersion: string }
-  | { kind: 'error'; message: string; userInitiated: boolean; releaseUrl: string | null }
+  | { kind: 'not-available'; userInitiated: boolean; currentVersion: string; checkId: number }
+  | {
+      kind: 'error'
+      message: string
+      userInitiated: boolean
+      releaseUrl: string | null
+      checkId: number
+    }
 
 export type Theme = 'light' | 'dark' | 'system'
 
@@ -193,7 +199,10 @@ const api = {
     }
   },
   /** Tell main it's OK to actually close this window. */
-  confirmClose: (): Promise<void> => ipcRenderer.invoke('window:confirmClose')
+  confirmClose: (): Promise<void> => ipcRenderer.invoke('window:confirmClose'),
+  /** Tell main the user cancelled the unsaved-changes dialog, so a Cmd+Q
+   *  sequence must not silently resume later. */
+  cancelClose: (): Promise<void> => ipcRenderer.invoke('window:cancelClose')
 }
 
 export type SmarkupApi = typeof api

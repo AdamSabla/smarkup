@@ -21,9 +21,10 @@ const UpdateBanner = (): React.JSX.Element | null => {
   // status transition (e.g. the next check) shows the banner again.
   const [dismissedKey, setDismissedKey] = useState<string | null>(null)
 
-  // Key a status by its kind plus any identifying payload. Two consecutive
-  // "not-available" results from two separate clicks are the same key, which
-  // is fine — if you just dismissed one, we don't need to re-pop the next.
+  // Key a status by its kind plus any identifying payload. The `checkId` on
+  // `not-available` / `error` is what keeps two separate checks distinct — the
+  // shape is otherwise identical, so without the id an auto-dismissed "up to
+  // date" would silently suppress the next check's result the same session.
   const statusKey =
     status.kind === 'available'
       ? `available:${status.version}`
@@ -31,13 +32,16 @@ const UpdateBanner = (): React.JSX.Element | null => {
         ? `downloading:${status.version}`
         : status.kind === 'downloaded'
           ? `downloaded:${status.version}`
-          : status.kind === 'error'
-            ? `error:${status.message}`
-            : status.kind
+          : status.kind === 'not-available'
+            ? `not-available:${status.checkId}`
+            : status.kind === 'error'
+              ? `error:${status.checkId}:${status.message}`
+              : status.kind
 
   // Auto-dismiss transient outcomes of a user-initiated check after a delay.
   // Download progress and the "ready to install" banner stay until the user
-  // explicitly dismisses or acts on them.
+  // explicitly dismisses or acts on them. Each check carries its own checkId,
+  // so the next check's banner isn't suppressed by this auto-dismiss.
   useEffect(() => {
     if (status.kind === 'not-available' || (status.kind === 'error' && status.userInitiated)) {
       const key = statusKey

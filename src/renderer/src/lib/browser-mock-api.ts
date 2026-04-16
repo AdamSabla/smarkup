@@ -164,7 +164,8 @@ const mockApi: SmarkupApi = {
   getWindowInit: async () => null,
   openTabInNewWindow: async () => undefined,
   onCloseRequested: () => () => undefined,
-  confirmClose: async () => undefined
+  confirmClose: async () => undefined,
+  cancelClose: async () => undefined
 }
 
 export const installBrowserMockApi = (): void => {

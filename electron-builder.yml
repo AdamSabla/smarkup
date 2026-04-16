@@ -70,4 +70,7 @@ publish:
   provider: github
   owner: AdamSabla
   repo: smarkup
-  releaseType: draft
+  # Publish directly (not as draft). electron-updater only sees non-draft
+  # releases, so leaving this at the default "draft" meant every CI build
+  # was invisible to installed clients until the release was manually published.
+  releaseType: release
