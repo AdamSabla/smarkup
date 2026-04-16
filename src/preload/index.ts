@@ -10,10 +10,10 @@ export type FileEntry = {
 
 export type UpdateStatus =
   | { kind: 'idle' }
-  | { kind: 'checking' }
-  | { kind: 'available'; version: string; releaseUrl: string }
-  | { kind: 'not-available' }
-  | { kind: 'error'; message: string }
+  | { kind: 'checking'; userInitiated: boolean }
+  | { kind: 'available'; version: string; releaseUrl: string; userInitiated: boolean }
+  | { kind: 'not-available'; userInitiated: boolean; currentVersion: string }
+  | { kind: 'error'; message: string; userInitiated: boolean }
 
 export type Theme = 'light' | 'dark' | 'system'
 
@@ -136,10 +136,8 @@ const api = {
     new URLSearchParams(window.location.search).get('windowId') ?? 'default',
   getWindowInit: (windowId: string): Promise<WindowInit | null> =>
     ipcRenderer.invoke('window:getInit', windowId),
-  openTabInNewWindow: (
-    tab: TabTransferData,
-    pos: { x: number; y: number }
-  ): Promise<void> => ipcRenderer.invoke('window:openTabInNewWindow', tab, pos),
+  openTabInNewWindow: (tab: TabTransferData, pos: { x: number; y: number }): Promise<void> =>
+    ipcRenderer.invoke('window:openTabInNewWindow', tab, pos),
 
   // Main process asks the renderer to close this window (red X, Cmd+Q, etc.)
   // so the renderer can prompt about unsaved changes first.

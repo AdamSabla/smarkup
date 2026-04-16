@@ -259,7 +259,7 @@ const registerSettingsHandlers = (): void => {
 const registerWatcherHandlers = (): void => {
   ipcMain.handle('fs:syncWatchedFolders', (event, folders: string[]) => {
     const win = BrowserWindow.fromWebContents(event.sender)
-    const windowId = win ? windowIdMap.get(win) ?? 'unknown' : 'unknown'
+    const windowId = win ? (windowIdMap.get(win) ?? 'unknown') : 'unknown'
     syncWatchedFolders(folders, windowId)
     return true
   })
@@ -291,11 +291,7 @@ const registerWindowHandlers = (): void => {
   // Renderer calls this when a tab is dragged out or "Open in New Window" is selected
   ipcMain.handle(
     'window:openTabInNewWindow',
-    (
-      _event,
-      tabData: TabTransferData,
-      screenPos: { x: number; y: number }
-    ) => {
+    (_event, tabData: TabTransferData, screenPos: { x: number; y: number }) => {
       const win = createWindow({
         tabs: [tabData],
         activeTabPath: tabData.path
@@ -314,12 +310,18 @@ const registerWindowHandlers = (): void => {
 
 type UpdateStatus =
   | { kind: 'idle' }
-  | { kind: 'checking' }
-  | { kind: 'available'; version: string; releaseUrl: string }
-  | { kind: 'not-available' }
-  | { kind: 'error'; message: string }
+  | { kind: 'checking'; userInitiated: boolean }
+  | { kind: 'available'; version: string; releaseUrl: string; userInitiated: boolean }
+  | { kind: 'not-available'; userInitiated: boolean; currentVersion: string }
+  | { kind: 'error'; message: string; userInitiated: boolean }
 
 let latestUpdateStatus: UpdateStatus = { kind: 'idle' }
+
+// Tracks whether the currently in-flight autoUpdater check was started by the
+// user (via menu / command palette) or by the silent background check on
+// startup. Updater event listeners fire asynchronously and don't carry this
+// flag themselves, so we stash it here for them to read.
+let pendingUserInitiated = false
 
 const broadcastUpdateStatus = (status: UpdateStatus): void => {
   latestUpdateStatus = status
@@ -328,12 +330,26 @@ const broadcastUpdateStatus = (status: UpdateStatus): void => {
   }
 }
 
+const runUpdateCheck = async (userInitiated: boolean): Promise<UpdateStatus> => {
+  pendingUserInitiated = userInitiated
+  try {
+    await autoUpdater.checkForUpdates()
+  } catch (err) {
+    broadcastUpdateStatus({
+      kind: 'error',
+      userInitiated,
+      message: err instanceof Error ? err.message : String(err)
+    })
+  }
+  return latestUpdateStatus
+}
+
 const registerUpdater = (): void => {
   autoUpdater.autoDownload = false
   autoUpdater.autoInstallOnAppQuit = false
 
   autoUpdater.on('checking-for-update', () => {
-    broadcastUpdateStatus({ kind: 'checking' })
+    broadcastUpdateStatus({ kind: 'checking', userInitiated: pendingUserInitiated })
   })
 
   autoUpdater.on('update-available', (info) => {
@@ -341,28 +357,29 @@ const registerUpdater = (): void => {
     broadcastUpdateStatus({
       kind: 'available',
       version: info.version,
-      releaseUrl
+      releaseUrl,
+      userInitiated: pendingUserInitiated
     })
   })
 
   autoUpdater.on('update-not-available', () => {
-    broadcastUpdateStatus({ kind: 'not-available' })
+    broadcastUpdateStatus({
+      kind: 'not-available',
+      userInitiated: pendingUserInitiated,
+      currentVersion: app.getVersion()
+    })
   })
 
   autoUpdater.on('error', (err) => {
-    broadcastUpdateStatus({ kind: 'error', message: err.message })
+    broadcastUpdateStatus({
+      kind: 'error',
+      message: err.message,
+      userInitiated: pendingUserInitiated
+    })
   })
 
   ipcMain.handle('updater:check', async () => {
-    try {
-      await autoUpdater.checkForUpdates()
-    } catch (err) {
-      broadcastUpdateStatus({
-        kind: 'error',
-        message: err instanceof Error ? err.message : String(err)
-      })
-    }
-    return latestUpdateStatus
+    return runUpdateCheck(true)
   })
 
   ipcMain.handle('updater:getStatus', () => latestUpdateStatus)
@@ -397,12 +414,7 @@ app.whenReady().then(() => {
               {
                 label: 'Check for Updates…',
                 click: (): void => {
-                  autoUpdater.checkForUpdates().catch((err) => {
-                    broadcastUpdateStatus({
-                      kind: 'error',
-                      message: err instanceof Error ? err.message : String(err)
-                    })
-                  })
+                  void runUpdateCheck(true)
                 }
               },
               { type: 'separator' as const },
@@ -421,15 +433,18 @@ app.whenReady().then(() => {
       label: 'File',
       submenu: [isMac ? { role: 'close' as const } : { role: 'quit' as const }]
     },
-    { label: 'Edit', submenu: [
-      { role: 'undo' as const },
-      { role: 'redo' as const },
-      { type: 'separator' as const },
-      { role: 'cut' as const },
-      { role: 'copy' as const },
-      { role: 'paste' as const },
-      { role: 'selectAll' as const }
-    ]},
+    {
+      label: 'Edit',
+      submenu: [
+        { role: 'undo' as const },
+        { role: 'redo' as const },
+        { type: 'separator' as const },
+        { role: 'cut' as const },
+        { role: 'copy' as const },
+        { role: 'paste' as const },
+        { role: 'selectAll' as const }
+      ]
+    },
     {
       label: 'View',
       submenu: [
@@ -447,24 +462,26 @@ app.whenReady().then(() => {
         { role: 'zoomOut' as const },
         { type: 'separator' as const },
         { role: 'togglefullscreen' as const },
-        ...(is.dev ? [
-          { type: 'separator' as const },
-          { role: 'reload' as const },
-          { role: 'forceReload' as const },
-          { role: 'toggleDevTools' as const }
-        ] : [])
+        ...(is.dev
+          ? [
+              { type: 'separator' as const },
+              { role: 'reload' as const },
+              { role: 'forceReload' as const },
+              { role: 'toggleDevTools' as const }
+            ]
+          : [])
       ]
     },
-    { label: 'Window', submenu: [
-      { role: 'minimize' as const },
-      { role: 'zoom' as const },
-      ...(isMac ? [
-        { type: 'separator' as const },
-        { role: 'front' as const }
-      ] : [
-        { role: 'close' as const }
-      ])
-    ]},
+    {
+      label: 'Window',
+      submenu: [
+        { role: 'minimize' as const },
+        { role: 'zoom' as const },
+        ...(isMac
+          ? [{ type: 'separator' as const }, { role: 'front' as const }]
+          : [{ role: 'close' as const }])
+      ]
+    }
   ]
   Menu.setApplicationMenu(Menu.buildFromTemplate(template))
 
@@ -473,12 +490,7 @@ app.whenReady().then(() => {
   // Silent background check a few seconds after startup. Skips in dev.
   if (!is.dev) {
     setTimeout(() => {
-      autoUpdater.checkForUpdates().catch((err) => {
-        broadcastUpdateStatus({
-          kind: 'error',
-          message: err instanceof Error ? err.message : String(err)
-        })
-      })
+      void runUpdateCheck(false)
     }, 5000)
   }
 

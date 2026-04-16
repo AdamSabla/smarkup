@@ -135,7 +135,12 @@ const mockApi: SmarkupApi = {
   onWatchEvent: () => () => undefined,
 
   // Updater: no-op in browser mode
-  checkForUpdates: async () => ({ kind: 'not-available' }) as UpdateStatus,
+  checkForUpdates: async () =>
+    ({
+      kind: 'not-available',
+      userInitiated: true,
+      currentVersion: '0.0.0-browser'
+    }) as UpdateStatus,
   getUpdateStatus: async () => ({ kind: 'idle' }) as UpdateStatus,
   openReleaseUrl: async (url) => {
     window.open(url, '_blank', 'noopener,noreferrer')
