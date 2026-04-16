@@ -1,8 +1,25 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import {
+  DndContext as DndKitContext,
+  type DragEndEvent,
+  KeyboardSensor,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors
+} from '@dnd-kit/core'
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy
+} from '@dnd-kit/sortable'
+import { CSS as DndCSS } from '@dnd-kit/utilities'
+import {
   FilePlusIcon,
   FolderPlusIcon,
   FileTextIcon,
+  GripVerticalIcon,
   PencilIcon,
   TrashIcon,
   MoreHorizontalIcon,
@@ -595,6 +612,13 @@ type SectionViewProps = {
   onCreateSubfolder: (parentPath: string) => void
   onCommitFolderRename: (oldPath: string, newName: string) => void
   onCancelFolderRename: () => void
+  /** Optional reorder handle. Rendered absolutely-positioned on the left
+   *  edge, hidden until the section header is hovered. Supplied only for
+   *  reorderable sections (user-added folders, not Drafts). */
+  dragHandle?: React.ReactNode
+  /** True while this section is being dragged — dim the whole row so the
+   *  user can see it detaching from its slot. */
+  isDragging?: boolean
 }
 
 const SectionView = ({
@@ -612,7 +636,9 @@ const SectionView = ({
   onToggleShowAll,
   onCreateSubfolder,
   onCommitFolderRename,
-  onCancelFolderRename
+  onCancelFolderRename,
+  dragHandle,
+  isDragging
 }: SectionViewProps): React.JSX.Element => {
   const expanded = expandedPaths.has(section.id)
   const focused = focusedItem === section.id
@@ -642,11 +668,13 @@ const SectionView = ({
   return (
     <div
       className={cn(
-        'mb-3 rounded-md',
+        'group/section relative mb-3 rounded-md transition-opacity',
+        isDragging && 'opacity-50',
         isDropTarget && 'bg-sidebar-accent/30 ring-1 ring-inset ring-primary/60'
       )}
       {...sectionDropProps}
     >
+      {dragHandle}
       <div className="group flex items-center gap-1 px-2 pt-1 pb-0.5">
         <button
           data-sidebar-path={section.id}
@@ -935,11 +963,64 @@ const RecentsSection = ({
   )
 }
 
+/**
+ * Sortable wrapper around `SectionView` for user-added top-level folders.
+ * Provides the drag handle, wires up the sortable transforms, and forwards
+ * the dragging flag so the section dims while detached.
+ *
+ * Drafts is rendered with `SectionView` directly (not wrapped) — it's a
+ * sentinel pinned above the user-controlled folder list.
+ */
+const SortableSectionView = (props: SectionViewProps): React.JSX.Element => {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: props.section.id
+  })
+
+  const style: React.CSSProperties = {
+    transform: DndCSS.Transform.toString(transform),
+    transition,
+    // Lift the dragged section above its neighbors so the drop-target
+    // highlight on the underlying row doesn't bleed through the overlay.
+    zIndex: isDragging ? 10 : undefined
+  }
+
+  // The handle is the ONLY drag trigger. PointerSensor on the handle + a
+  // tolerance distance keeps a quick click-through-for-expand from being
+  // misread as the start of a drag.
+  const handle = (
+    <button
+      type="button"
+      {...attributes}
+      {...listeners}
+      aria-label={`Reorder ${props.section.label} section`}
+      title="Drag to reorder"
+      className={cn(
+        'absolute left-0 top-[6px] z-10 inline-flex size-4 items-center justify-center rounded-sm',
+        '-translate-x-[3px] text-muted-foreground/70 hover:text-foreground',
+        'cursor-grab active:cursor-grabbing touch-none select-none',
+        // Always a bit visible while dragging so the grabbed row stays legible;
+        // otherwise reveal on section hover or keyboard focus.
+        isDragging ? 'opacity-100' : 'opacity-0 group-hover/section:opacity-100 focus-visible:opacity-100'
+      )}
+    >
+      <GripVerticalIcon className="size-3" />
+    </button>
+  )
+
+  return (
+    <div ref={setNodeRef} style={style}>
+      <SectionView {...props} dragHandle={handle} isDragging={isDragging} />
+    </div>
+  )
+}
+
 const Sidebar = (): React.JSX.Element => {
   const {
     sections,
+    additionalFolders,
     addFolder,
     removeFolder,
+    reorderAdditionalFolders,
     openSettings,
     openFile,
     createSubfolder,
@@ -1215,6 +1296,49 @@ const Sidebar = (): React.JSX.Element => {
     [dragOverPath, draggingPath, onItemDragStart, onItemDragEnd, onTargetDragOver, onTargetDrop]
   )
 
+  // --- Top-level folder reordering (dnd-kit) -------------------------------
+  // We use dnd-kit for reordering sections (not HTML5 drag) because the rest
+  // of the sidebar already speaks native drag events for file/folder moves.
+  // Pointer activation is gated on the section's grip handle so quick clicks
+  // on the section header stay free to expand/collapse. 4px distance absorbs
+  // unintentional micro-movements during a click.
+  const sortableSensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  )
+
+  const handleSectionDragEnd = useCallback(
+    (event: DragEndEvent): void => {
+      const { active, over } = event
+      if (!over || active.id === over.id) return
+      const fromIndex = additionalFolders.indexOf(active.id as string)
+      const toIndex = additionalFolders.indexOf(over.id as string)
+      if (fromIndex === -1 || toIndex === -1) return
+      void reorderAdditionalFolders(fromIndex, toIndex)
+    },
+    [additionalFolders, reorderAdditionalFolders]
+  )
+
+  // Drafts is pinned above the user-reorderable folder list. Splitting the
+  // array here keeps the sortable concerns isolated to the part that should
+  // actually move.
+  const draftsSection = sections.find((s) => s.isDrafts)
+  const additionalSections = sections.filter((s) => !s.isDrafts)
+
+  const sectionCommonProps = {
+    renamingPath,
+    renamingFolderPath,
+    expandedPaths,
+    focusedItem: activeFocusedItem,
+    onToggleExpanded: toggleExpanded,
+    onStartRename: setRenamingPath,
+    onCancelRename: () => setRenamingPath(null),
+    onFocusItem: handleFocusItem,
+    onCreateSubfolder: handleCreateSubfolder,
+    onCommitFolderRename: handleCommitFolderRename,
+    onCancelFolderRename: handleCancelFolderRename
+  }
+
   return (
     <SidebarDndContext.Provider value={dndContextValue}>
     <div
@@ -1229,28 +1353,33 @@ const Sidebar = (): React.JSX.Element => {
           expanded={!sidebarCollapsedPaths.has(RECENTS_ID)}
           onToggleExpanded={() => toggleSidebarCollapsedPath(RECENTS_ID)}
         />
-        {sections.map((section) => (
+        {draftsSection && (
           <SectionView
-            key={section.id}
-            section={section}
-            renamingPath={renamingPath}
-            renamingFolderPath={renamingFolderPath}
-            expandedPaths={expandedPaths}
-            focusedItem={activeFocusedItem}
-            showAll={showAllSections.has(section.id)}
-            onToggleExpanded={toggleExpanded}
-            onStartRename={setRenamingPath}
-            onCancelRename={() => setRenamingPath(null)}
-            onFocusItem={handleFocusItem}
-            onToggleShowAll={() => toggleShowAll(section.id)}
-            onCreateSubfolder={handleCreateSubfolder}
-            onCommitFolderRename={handleCommitFolderRename}
-            onCancelFolderRename={handleCancelFolderRename}
-            onRemove={
-              section.isDrafts ? undefined : () => void removeFolder(section.path ?? section.id)
-            }
+            key={draftsSection.id}
+            section={draftsSection}
+            showAll={showAllSections.has(draftsSection.id)}
+            onToggleShowAll={() => toggleShowAll(draftsSection.id)}
+            {...sectionCommonProps}
           />
-        ))}
+        )}
+        <DndKitContext
+          sensors={sortableSensors}
+          collisionDetection={closestCenter}
+          onDragEnd={handleSectionDragEnd}
+        >
+          <SortableContext items={additionalFolders} strategy={verticalListSortingStrategy}>
+            {additionalSections.map((section) => (
+              <SortableSectionView
+                key={section.id}
+                section={section}
+                showAll={showAllSections.has(section.id)}
+                onToggleShowAll={() => toggleShowAll(section.id)}
+                onRemove={() => void removeFolder(section.path ?? section.id)}
+                {...sectionCommonProps}
+              />
+            ))}
+          </SortableContext>
+        </DndKitContext>
       </ScrollArea>
 
       <div className="flex items-center gap-1 border-t border-border/50 px-2 py-1.5">

@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { FilePlusIcon, FileTextIcon } from 'lucide-react'
 import { resolveEditorMode, useWorkspace } from '@/store/workspace'
 import { countWords } from '@/lib/text-stats'
 import TodoChip from '@/components/TodoChip'
@@ -7,12 +8,67 @@ import RawEditor from './RawEditor'
 import FindBar from './FindBar'
 import OrphanBanner from './OrphanBanner'
 
-const EmptyState = (): React.JSX.Element => (
-  <div className="flex h-full flex-col items-center justify-center gap-3 text-muted-foreground">
-    <h1 className="text-lg font-medium">smarkup</h1>
-    <p className="text-sm">Open a folder and pick a file — or create a new one.</p>
-  </div>
-)
+const isMac = navigator.userAgent.toLowerCase().includes('mac')
+const MOD_KEY = isMac ? '⌘' : 'Ctrl'
+
+/**
+ * Landing screen when no tab is open — a primary "New file" CTA followed by
+ * the five most recent files. Clicking a recent routes through `openFile`
+ * (navigation source, so Recents order isn't touched until an edit).
+ */
+const EmptyState = (): React.JSX.Element => {
+  const recentFiles = useWorkspace((s) => s.recentFiles)
+  const createDraft = useWorkspace((s) => s.createDraft)
+  const openFile = useWorkspace((s) => s.openFile)
+  const visible = recentFiles.slice(0, 5)
+
+  return (
+    <div className="flex h-full w-full items-center justify-center overflow-auto px-6 py-10">
+      <div className="flex w-full max-w-sm flex-col gap-6">
+        <button
+          onClick={() => void createDraft()}
+          className="group flex w-full items-center gap-3 rounded-xl border border-border bg-card px-4 py-3.5 text-left shadow-sm transition-all hover:border-primary/40 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+        >
+          <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary transition-colors group-hover:bg-primary group-hover:text-primary-foreground">
+            <FilePlusIcon className="size-4" />
+          </span>
+          <span className="flex flex-1 flex-col">
+            <span className="text-sm font-medium text-foreground">New file</span>
+            <span className="text-xs text-muted-foreground">Start a fresh note</span>
+          </span>
+          <kbd className="hidden shrink-0 items-center gap-0.5 rounded border border-border bg-muted/50 px-1.5 py-0.5 text-[10.5px] font-medium text-muted-foreground sm:inline-flex">
+            {MOD_KEY} N
+          </kbd>
+        </button>
+
+        {visible.length > 0 && (
+          <div className="flex flex-col gap-1">
+            <div className="px-1 pb-0.5 text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">
+              Recent
+            </div>
+            <div className="flex flex-col gap-0.5">
+              {visible.map((path) => {
+                const base = path.split('/').pop() ?? path
+                const name = base.replace(/\.md$/i, '')
+                return (
+                  <button
+                    key={path}
+                    onClick={() => void openFile(path)}
+                    title={path}
+                    className="flex items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] text-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+                  >
+                    <FileTextIcon className="size-3.5 shrink-0 text-muted-foreground" />
+                    <span className="truncate">{name}</span>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
 
 type EditorPaneProps = {
   tabId: string | null

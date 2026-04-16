@@ -209,12 +209,6 @@ const Tab = ({
   )
 }
 
-const EmptyLabel = (): React.JSX.Element => (
-  <div className="flex flex-1 items-center justify-center text-[12.5px] font-medium text-muted-foreground select-none">
-    smarkup
-  </div>
-)
-
 const ModeSwitcher = (): React.JSX.Element => {
   const { editorMode, fileEditorModes, activeTabId, tabs, setEditorMode } = useWorkspace()
   const activeTab = activeTabId ? tabs.find((t) => t.id === activeTabId) : undefined
@@ -351,9 +345,11 @@ const TopBar = (): React.JSX.Element => {
         )}
       </button>
 
-      {/* Tabs row */}
+      {/* Tabs row — an empty flex-1 placeholder keeps the drag region
+       *  intact when no tabs are open (the empty-state CTA lives in the
+       *  editor area below instead of showing a "smarkup" label here). */}
       {tabs.length === 0 ? (
-        <EmptyLabel />
+        <div className="flex-1" />
       ) : (
         <div ref={tabBarRef} className="flex min-w-0 flex-1 items-end gap-[2px] overflow-hidden px-2">
           <DndContext

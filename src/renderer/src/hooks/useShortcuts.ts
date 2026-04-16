@@ -9,6 +9,7 @@ export const useShortcuts = (): void => {
     createDraft,
     saveActive,
     requestCloseTab,
+    requestCloseAllTabs,
     closePane,
     activeTabId,
     activePaneId,
@@ -109,6 +110,15 @@ export const useShortcuts = (): void => {
         return
       }
 
+      // Close all tabs, keep window open: cmd/ctrl+shift+w
+      // (Chrome's ⌘⇧W closes the window; here we deliberately diverge — the
+      // editor window itself stays so the user lands back on the empty state.)
+      if (key === 'w' && e.shiftKey && !e.altKey) {
+        e.preventDefault()
+        requestCloseAllTabs()
+        return
+      }
+
       // Split pane: cmd/ctrl+\ (horizontal split)
       if (e.key === '\\' && !e.shiftKey && !e.altKey) {
         if (activeTabId) {
@@ -164,6 +174,7 @@ export const useShortcuts = (): void => {
     createDraft,
     saveActive,
     requestCloseTab,
+    requestCloseAllTabs,
     closePane,
     activeTabId,
     activePaneId,

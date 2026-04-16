@@ -41,6 +41,7 @@ const shortcuts: { section: string; items: { label: string; keys: string }[] }[]
     section: 'Tabs & Sidebar',
     items: [
       { label: 'Close tab / pane', keys: `${mod} W` },
+      { label: 'Close all tabs', keys: `${mod} Shift W` },
       { label: 'Next tab', keys: 'Ctrl Tab' },
       { label: 'Previous tab', keys: 'Ctrl Shift Tab' },
       { label: 'Toggle sidebar', keys: `${mod} .` }

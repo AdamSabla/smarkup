@@ -327,6 +327,12 @@ type WorkspaceState = {
   setDraftsFolder: (path: string | null) => Promise<void>
   addFolder: (path: string) => Promise<void>
   removeFolder: (path: string) => Promise<void>
+  /**
+   * Reorder the user's top-level additional folders. Indexes address the
+   * `additionalFolders` array, which is the source of truth for sidebar
+   * section order (Drafts and Recents are sentinels rendered separately).
+   */
+  reorderAdditionalFolders: (fromIndex: number, toIndex: number) => Promise<void>
 
   createSubfolder: (parentPath: string) => Promise<string>
   renameFolder: (oldPath: string, newName: string) => Promise<string>
@@ -844,6 +850,37 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     const { draftsFolder } = get()
     await window.api.syncWatchedFolders(collectWatchedFolders(draftsFolder, next))
     void get().refreshMoveTargets()
+  },
+
+  reorderAdditionalFolders: async (fromIndex, toIndex) => {
+    const folders = get().additionalFolders
+    if (
+      fromIndex < 0 ||
+      toIndex < 0 ||
+      fromIndex >= folders.length ||
+      toIndex >= folders.length ||
+      fromIndex === toIndex
+    ) {
+      return
+    }
+    const next = [...folders]
+    const [moved] = next.splice(fromIndex, 1)
+    next.splice(toIndex, 0, moved)
+    // Reorder the live sections to match — Drafts is pinned at index 0, so
+    // the additional folders start at index 1. Reshuffling by id keeps each
+    // section's already-loaded tree intact (no flicker or re-read from disk).
+    set((s) => {
+      const byId = new Map(s.sections.map((sec) => [sec.id, sec]))
+      const drafts = s.sections.find((sec) => sec.isDrafts)
+      const reorderedExtras = next
+        .map((p) => byId.get(p))
+        .filter((sec): sec is SidebarSection => sec !== undefined)
+      return {
+        additionalFolders: next,
+        sections: drafts ? [drafts, ...reorderedExtras] : reorderedExtras
+      }
+    })
+    await persistSettings({ additionalFolders: next })
   },
 
   createSubfolder: async (parentPath) => {
