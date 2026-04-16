@@ -8,6 +8,7 @@ import CommandPalette from '@/components/CommandPalette'
 import KeyboardShortcuts from '@/components/KeyboardShortcuts'
 import UnsavedChangesDialog from '@/components/UnsavedChangesDialog'
 import FolderDropZone from '@/components/FolderDropZone'
+import VariablesPanel from '@/components/VariablesPanel'
 import SplitContainer from '@/components/editor/SplitContainer'
 import { useShortcuts } from '@/hooks/useShortcuts'
 import { useUpdateSubscription } from '@/hooks/useUpdateSubscription'
@@ -63,6 +64,14 @@ const App = (): React.JSX.Element => {
     })
   }, [requestCloseWindow])
 
+  // View → Show Variables Panel in the native menu sends this event;
+  // route it through the store so the toggle is persisted.
+  useEffect(() => {
+    return window.api.onToggleVariablesPanel(() => {
+      void useWorkspace.getState().toggleVariablesPanel()
+    })
+  }, [])
+
   useShortcuts()
   useUpdateSubscription()
   useTheme()
@@ -94,6 +103,7 @@ const App = (): React.JSX.Element => {
             <div className="min-h-0 flex-1">
               <SplitContainer node={paneRoot} />
             </div>
+            <VariablesPanel />
           </div>
         </div>
       </div>

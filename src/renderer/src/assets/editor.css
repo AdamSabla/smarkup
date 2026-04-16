@@ -398,3 +398,15 @@
 .smarkup-editor ::selection {
   background: color-mix(in oklch, #1eabeb, transparent 75%);
 }
+
+/* --- Variable placeholders ({{name}}) --------------------------------- */
+/*
+ * Mirrors RawEditor's `.cm-placeholder-highlight` so `{{variable}}` matches
+ * read the same in both editors. Applied via the VariableHighlighter
+ * ProseMirror plugin (src/extensions/variable-highlighter.ts).
+ */
+.smarkup-editor .smarkup-variable-highlight {
+  color: #e879f9;
+  border-radius: 3px;
+  background-color: rgba(232, 121, 249, 0.12);
+}

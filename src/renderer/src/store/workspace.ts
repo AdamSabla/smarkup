@@ -227,6 +227,8 @@ type WorkspaceState = {
   showWordCount: boolean
   rawHeadingSizes: boolean
   rawWordWrap: boolean
+  /** Whether the bottom Variables panel is shown. */
+  variablesPanelVisible: boolean
 
   // --- Volatile UI state ---
   sections: SidebarSection[]
@@ -337,6 +339,8 @@ type WorkspaceState = {
   setShowWordCount: (enabled: boolean) => Promise<void>
   setRawHeadingSizes: (enabled: boolean) => Promise<void>
   setRawWordWrap: (enabled: boolean) => Promise<void>
+  toggleVariablesPanel: () => Promise<void>
+  setVariablesPanelVisible: (visible: boolean) => Promise<void>
   openSettings: () => void
   closeSettings: () => void
   openQuickOpen: () => void
@@ -458,6 +462,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   showWordCount: false,
   rawHeadingSizes: false,
   rawWordWrap: true,
+  variablesPanelVisible: false,
 
   sections: [],
   moveTargets: [],
@@ -495,6 +500,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       showWordCount: settings.showWordCount ?? false,
       rawHeadingSizes: settings.rawHeadingSizes ?? false,
       rawWordWrap: settings.rawWordWrap ?? true,
+      variablesPanelVisible: settings.variablesPanelVisible ?? false,
       autoNamedPaths: new Set(settings.autoNamedPaths ?? [])
     })
     await get().refreshAllSections()
@@ -1397,6 +1403,18 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   setRawWordWrap: async (enabled) => {
     set({ rawWordWrap: enabled })
     await persistSettings({ rawWordWrap: enabled })
+  },
+
+  toggleVariablesPanel: async () => {
+    const next = !get().variablesPanelVisible
+    set({ variablesPanelVisible: next })
+    await persistSettings({ variablesPanelVisible: next })
+  },
+
+  setVariablesPanelVisible: async (visible) => {
+    if (get().variablesPanelVisible === visible) return
+    set({ variablesPanelVisible: visible })
+    await persistSettings({ variablesPanelVisible: visible })
   },
 
   openSettings: () => set({ settingsOpen: true }),

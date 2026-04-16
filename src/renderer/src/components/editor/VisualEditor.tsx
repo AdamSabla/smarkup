@@ -13,6 +13,7 @@ import { FlatTaskItem } from '@/extensions/flat-task-item'
 import { Tab } from '@/extensions/tab'
 import { HtmlPaste } from '@/extensions/html-paste'
 import { ListCommands } from '@/extensions/list-commands'
+import { VariableHighlighter } from '@/extensions/variable-highlighter'
 import { getActiveEditor, setActiveEditor } from '@/lib/active-editor'
 import { serializeSliceToText } from '@/lib/serialize-clipboard-text'
 import TableMenu from './TableMenu'
@@ -169,6 +170,7 @@ const VisualEditor = ({ value, onChange, isActive }: Props): React.JSX.Element =
       TableHeader,
       TableCell,
       HtmlPaste,
+      VariableHighlighter,
       Markdown.configure({
         html: false,
         tightLists: true,

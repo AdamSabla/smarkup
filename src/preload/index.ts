@@ -47,6 +47,8 @@ export type Settings = {
   showWordCount: boolean
   rawHeadingSizes: boolean
   rawWordWrap: boolean
+  /** Whether the bottom Variables panel is shown. */
+  variablesPanelVisible: boolean
   /**
    * Files (by absolute path) whose name is still being auto-derived from
    * their first non-empty line. Removed once the user explicitly renames.
@@ -140,6 +142,13 @@ const api = {
     ipcRenderer.on('app:showShortcuts', handler)
     return () => {
       ipcRenderer.off('app:showShortcuts', handler)
+    }
+  },
+  onToggleVariablesPanel: (callback: () => void): (() => void) => {
+    const handler = (): void => callback()
+    ipcRenderer.on('app:toggleVariablesPanel', handler)
+    return () => {
+      ipcRenderer.off('app:toggleVariablesPanel', handler)
     }
   },
 

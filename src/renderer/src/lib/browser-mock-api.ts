@@ -41,6 +41,7 @@ let mockSettings: Settings = {
   showWordCount: false,
   rawHeadingSizes: false,
   rawWordWrap: true,
+  variablesPanelVisible: false,
   autoNamedPaths: []
 }
 
@@ -150,6 +151,7 @@ const mockApi: SmarkupApi = {
 
   // App menu events: no-op in browser mode
   onShowShortcuts: () => () => undefined,
+  onToggleVariablesPanel: () => () => undefined,
 
   // Window management: no-op in browser mode (single window only)
   getWindowId: () => 'default',

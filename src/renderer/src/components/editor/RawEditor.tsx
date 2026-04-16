@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import CodeMirror from '@uiw/react-codemirror'
 import { markdown } from '@codemirror/lang-markdown'
 import {
@@ -14,6 +14,7 @@ import { Prec, RangeSetBuilder } from '@codemirror/state'
 import { HighlightStyle, syntaxHighlighting } from '@codemirror/language'
 import { tags } from '@lezer/highlight'
 import { useWorkspace } from '@/store/workspace'
+import { getActiveRawEditor, setActiveRawEditor } from '@/lib/active-raw-editor'
 
 // Unify heading syntax coloring: the marker (`#`, `##`, …) and the heading
 // text share the same red instead of the default theme's two-tone look
@@ -125,9 +126,16 @@ const RawEditor = ({ value, onChange, isActive }: Props): React.JSX.Element => {
   const rawHeadingSizes = useWorkspace((s) => s.rawHeadingSizes)
   const rawWordWrap = useWorkspace((s) => s.rawWordWrap)
   const viewRef = useRef<EditorView | null>(null)
+  // Mirror of viewRef as state — CodeMirror's `onCreateEditor` fires in a
+  // later effect pass than RawEditor's own useEffect, so a pure ref would
+  // leave our "register as active editor" effect running with viewRef still
+  // null on initial mount (and never re-running). Tracking readiness as
+  // state retriggers the effect once the view actually exists.
+  const [viewReady, setViewReady] = useState(false)
 
   const onCreateEditor = useCallback((view: EditorView) => {
     viewRef.current = view
+    setViewReady(true)
 
     // Intercept Home/End/PageUp/PageDown before CodeMirror's keymap sees them.
     // Smooth-scroll the document without moving the caret, matching visual editor behaviour.
@@ -181,12 +189,18 @@ const RawEditor = ({ value, onChange, isActive }: Props): React.JSX.Element => {
 
   // Focus and recalculate viewport when this tab becomes active.
   // The editor stays mounted (DOM + scroll preserved) so no restore is needed.
+  // `viewReady` is included in the dep list so this runs once the CodeMirror
+  // view has actually been constructed (see viewReady declaration above).
   useEffect(() => {
     const view = viewRef.current
     if (!view || !isActive) return
     view.requestMeasure()
     view.contentDOM.focus({ preventScroll: true })
-  }, [isActive])
+    setActiveRawEditor(view)
+    return () => {
+      if (getActiveRawEditor() === view) setActiveRawEditor(null)
+    }
+  }, [isActive, viewReady])
 
   const checklistKeymap = useMemo(
     () =>
