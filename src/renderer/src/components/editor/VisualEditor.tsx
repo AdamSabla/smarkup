@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { useEditor, EditorContent, type Editor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
+import { Paragraph } from '@tiptap/extension-paragraph'
 import { Text } from '@tiptap/extension-text'
 import { Table } from '@tiptap/extension-table'
 import { TableRow } from '@tiptap/extension-table-row'
@@ -32,6 +33,78 @@ const PlainText = Text.extend({
     }
   }
 })
+
+// The U+00A0 codepoint (non-breaking space) we use to mark empty paragraphs
+// in serialized markdown. See PreservingParagraph for why.
+const EMPTY_PARAGRAPH_MARKER = '\u00a0'
+
+// Markdown is a lossy container for empty paragraphs: prosemirror-markdown
+// serializes an empty paragraph as a blank line, and markdown-it then
+// collapses any number of consecutive blank lines into a single paragraph
+// boundary on the way back in. So pressing Enter twice in the visual editor
+// produces paragraphs that evaporate on the first visual → raw → visual
+// round-trip, stripping the user's vertical whitespace.
+//
+// Fix: override the paragraph serializer so empty paragraphs emit a single
+// U+00A0 (non-breaking space). markdown-it treats that line as non-blank,
+// so it survives as a real paragraph node, and the round-trip becomes
+// stable. The matching stripEmptyParagraphMarkers() pass (see below) turns
+// those markers back into truly empty paragraphs after parse so the user
+// never sees or has to step past the invisible char while editing.
+const PreservingParagraph = Paragraph.extend({
+  addStorage() {
+    return {
+      markdown: {
+        serialize(
+          state: {
+            write: (s: string) => void
+            renderInline: (n: unknown) => void
+            closeBlock: (n: unknown) => void
+          },
+          node: { content: { size: number } }
+        ) {
+          if (node.content.size === 0) {
+            state.write(EMPTY_PARAGRAPH_MARKER)
+          } else {
+            state.renderInline(node)
+          }
+          state.closeBlock(node)
+        },
+        parse: {}
+      }
+    }
+  }
+})
+
+/**
+ * Replace any paragraph whose sole content is our empty-paragraph marker
+ * (see PreservingParagraph) with a truly empty paragraph. Runs after every
+ * content load so the user sees and edits plain empty paragraphs — our
+ * serializer re-emits the marker on the way out, keeping the visual ↔ raw
+ * round-trip stable.
+ */
+const stripEmptyParagraphMarkers = (editor: Editor): void => {
+  const { state } = editor
+  const tr = state.tr
+  let modified = false
+  state.doc.descendants((node, pos) => {
+    if (
+      node.type.name === 'paragraph' &&
+      node.childCount === 1 &&
+      node.firstChild?.isText === true &&
+      node.firstChild.text === EMPTY_PARAGRAPH_MARKER
+    ) {
+      const from = tr.mapping.map(pos + 1)
+      const to = tr.mapping.map(pos + 1 + node.content.size)
+      tr.delete(from, to)
+      modified = true
+    }
+  })
+  if (modified) {
+    tr.setMeta('addToHistory', false)
+    editor.view.dispatch(tr)
+  }
+}
 
 const getMarkdown = (editor: Editor): string => {
   const storage = editor.storage as unknown as { markdown: MarkdownStorage }
@@ -70,6 +143,9 @@ const VisualEditor = ({ value, onChange, isActive }: Props): React.JSX.Element =
         heading: { levels: [1, 2, 3, 4] },
         // Replaced by PlainText below — see comment on PlainText for why.
         text: false,
+        // Replaced by PreservingParagraph below — see comment on
+        // PreservingParagraph for why (empty-paragraph round-trip).
+        paragraph: false,
         // TrailingNode appends an empty paragraph via appendTransaction when
         // the doc doesn't already end in one. That transaction fires without
         // the preventUpdate meta, so Tiptap's onUpdate runs, re-serializes
@@ -79,6 +155,7 @@ const VisualEditor = ({ value, onChange, isActive }: Props): React.JSX.Element =
         // add content is a minor ergonomics loss compared to that bug.
         trailingNode: false
       }),
+      PreservingParagraph,
       PlainText,
       FlatTaskItem,
       // Registered after FlatTaskItem so its Mod-Shift-L / 7 / 8 shortcuts
@@ -149,6 +226,17 @@ const VisualEditor = ({ value, onChange, isActive }: Props): React.JSX.Element =
     }
   }, [editor])
 
+  // Strip our empty-paragraph markers from the initial content. `useEditor`
+  // seeds the doc from `content: value` synchronously during editor
+  // creation, so by the time this effect runs the markers are already in
+  // the doc as text nodes — we convert them back to truly empty paragraphs
+  // here. Subsequent loads (file watcher, mode-switch remount) are handled
+  // inside the value-reconciliation effect below.
+  useEffect(() => {
+    if (!editor) return
+    stripEmptyParagraphMarkers(editor)
+  }, [editor])
+
   // Set/unset this as the active editor and focus when tab becomes active.
   // The editor stays mounted (DOM + scroll preserved) so no restore is needed.
   useEffect(() => {
@@ -174,6 +262,9 @@ const VisualEditor = ({ value, onChange, isActive }: Props): React.JSX.Element =
       hasUserEditedRef.current = false
       editor.commands.setContent(value, { emitUpdate: false })
       lastEmittedMarkdown.current = value
+      // Convert any empty-paragraph markers in the freshly-loaded content
+      // back to truly empty paragraphs so they aren't visible to the user.
+      stripEmptyParagraphMarkers(editor)
     }
   }, [value, editor])
 
