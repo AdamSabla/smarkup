@@ -1,4 +1,12 @@
-import { AlertTriangleIcon, CheckIcon, DownloadIcon, Loader2Icon, XIcon } from 'lucide-react'
+import {
+  AlertTriangleIcon,
+  CheckIcon,
+  DownloadIcon,
+  ExternalLinkIcon,
+  Loader2Icon,
+  RotateCwIcon,
+  XIcon
+} from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { useWorkspace } from '@/store/workspace'
@@ -19,12 +27,17 @@ const UpdateBanner = (): React.JSX.Element | null => {
   const statusKey =
     status.kind === 'available'
       ? `available:${status.version}`
-      : status.kind === 'error'
-        ? `error:${status.message}`
-        : status.kind
+      : status.kind === 'downloading'
+        ? `downloading:${status.version}`
+        : status.kind === 'downloaded'
+          ? `downloaded:${status.version}`
+          : status.kind === 'error'
+            ? `error:${status.message}`
+            : status.kind
 
   // Auto-dismiss transient outcomes of a user-initiated check after a delay.
-  // "available" stays until the user explicitly dismisses or downloads.
+  // Download progress and the "ready to install" banner stay until the user
+  // explicitly dismisses or acts on them.
   useEffect(() => {
     if (status.kind === 'not-available' || (status.kind === 'error' && status.userInitiated)) {
       const key = statusKey
@@ -36,11 +49,14 @@ const UpdateBanner = (): React.JSX.Element | null => {
 
   // Decide whether this state should render at all. Background checks stay
   // silent for anything other than "available"; user-initiated checks always
-  // surface feedback.
+  // surface feedback. Download + install states always show — once an update
+  // is in-flight the user should be able to see and control it.
   const shouldShow = ((): boolean => {
     if (dismissedKey === statusKey) return false
     switch (status.kind) {
       case 'available':
+      case 'downloading':
+      case 'downloaded':
         return true
       case 'checking':
       case 'not-available':
@@ -60,23 +76,52 @@ const UpdateBanner = (): React.JSX.Element | null => {
   // --- Render per state --------------------------------------------------
 
   if (status.kind === 'available') {
-    const handleDownload = (): void => {
-      void window.api.openReleaseUrl(status.releaseUrl)
+    // With autoDownload enabled this state is usually transient — the updater
+    // fires `download-progress` almost immediately and we move to
+    // `downloading`. We still render a labelled "Preparing download…" so a
+    // slow-to-start download doesn't look like nothing is happening.
+    return (
+      <BannerShell tone="primary">
+        <span className="flex items-center gap-2 text-xs font-medium">
+          <Loader2Icon className="size-3 animate-spin" />
+          Preparing update v{status.version}…
+        </span>
+        <DismissButton tone="primary" onClick={dismiss} />
+      </BannerShell>
+    )
+  }
+
+  if (status.kind === 'downloading') {
+    const percent = Math.max(0, Math.min(100, Math.round(status.percent)))
+    return (
+      <BannerShell tone="primary">
+        <span className="flex min-w-0 items-center gap-2 text-xs font-medium">
+          <DownloadIcon className="size-3" />
+          <span className="shrink-0">Downloading update v{status.version}…</span>
+          <ProgressBar percent={percent} />
+          <span className="tabular-nums">{percent}%</span>
+        </span>
+        <DismissButton tone="primary" onClick={dismiss} />
+      </BannerShell>
+    )
+  }
+
+  if (status.kind === 'downloaded') {
+    const restart = (): void => {
+      void window.api.quitAndInstallUpdate()
     }
     return (
       <BannerShell tone="primary">
-        <span className="text-xs font-medium">Update available: smarkup v{status.version}</span>
+        <span className="flex items-center gap-2 text-xs font-medium">
+          <CheckIcon className="size-3" />
+          Update v{status.version} ready to install
+        </span>
         <div className="flex items-center gap-1">
-          <Button
-            size="sm"
-            variant="secondary"
-            className="h-6 px-2 text-xs"
-            onClick={handleDownload}
-          >
-            <DownloadIcon className="size-3" />
-            Download
+          <Button size="sm" variant="secondary" className="h-6 px-2 text-xs" onClick={restart}>
+            <RotateCwIcon className="size-3" />
+            Restart now
           </Button>
-          <DismissButton tone="primary" onClick={dismiss} />
+          <DismissButton tone="primary" onClick={dismiss} label="Install later" />
         </div>
       </BannerShell>
     )
@@ -109,13 +154,29 @@ const UpdateBanner = (): React.JSX.Element | null => {
     const retry = (): void => {
       void useWorkspace.getState().checkForUpdates()
     }
+    const openRelease = status.releaseUrl
+      ? (): void => {
+          void window.api.openReleaseUrl(status.releaseUrl as string)
+        }
+      : null
     return (
       <BannerShell tone="destructive">
-        <span className="flex items-center gap-2 text-xs font-medium">
-          <AlertTriangleIcon className="size-3" />
-          Couldn&rsquo;t check for updates: {status.message}
+        <span className="flex min-w-0 items-center gap-2 text-xs font-medium">
+          <AlertTriangleIcon className="size-3 shrink-0" />
+          <span className="truncate">Couldn&rsquo;t install update: {status.message}</span>
         </span>
         <div className="flex items-center gap-1">
+          {openRelease && (
+            <Button
+              size="sm"
+              variant="secondary"
+              className="h-6 px-2 text-xs"
+              onClick={openRelease}
+            >
+              <ExternalLinkIcon className="size-3" />
+              Download manually
+            </Button>
+          )}
           <Button size="sm" variant="secondary" className="h-6 px-2 text-xs" onClick={retry}>
             Retry
           </Button>
@@ -161,20 +222,37 @@ const DISMISS_TONE_CLASSES: Record<Tone, string> = {
 
 const DismissButton = ({
   tone,
-  onClick
+  onClick,
+  label = 'Dismiss'
 }: {
   tone: Tone
   onClick: () => void
+  label?: string
 }): React.JSX.Element => (
   <Button
     size="icon"
     variant="ghost"
     className={`size-6 ${DISMISS_TONE_CLASSES[tone]}`}
     onClick={onClick}
-    aria-label="Dismiss"
+    aria-label={label}
+    title={label}
   >
     <XIcon className="size-3" />
   </Button>
+)
+
+// Slim inline progress indicator tinted against the primary banner. Stays
+// narrow so the banner itself doesn't grow taller.
+const ProgressBar = ({ percent }: { percent: number }): React.JSX.Element => (
+  <span
+    className="relative h-1 w-24 overflow-hidden rounded-full bg-primary-foreground/20"
+    aria-hidden
+  >
+    <span
+      className="absolute inset-y-0 left-0 bg-primary-foreground transition-[width] duration-200"
+      style={{ width: `${percent}%` }}
+    />
+  </span>
 )
 
 export default UpdateBanner

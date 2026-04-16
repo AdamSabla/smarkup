@@ -312,8 +312,18 @@ type UpdateStatus =
   | { kind: 'idle' }
   | { kind: 'checking'; userInitiated: boolean }
   | { kind: 'available'; version: string; releaseUrl: string; userInitiated: boolean }
+  | {
+      kind: 'downloading'
+      version: string
+      releaseUrl: string
+      percent: number
+      bytesPerSecond: number
+      transferred: number
+      total: number
+    }
+  | { kind: 'downloaded'; version: string; releaseUrl: string }
   | { kind: 'not-available'; userInitiated: boolean; currentVersion: string }
-  | { kind: 'error'; message: string; userInitiated: boolean }
+  | { kind: 'error'; message: string; userInitiated: boolean; releaseUrl: string | null }
 
 let latestUpdateStatus: UpdateStatus = { kind: 'idle' }
 
@@ -322,6 +332,11 @@ let latestUpdateStatus: UpdateStatus = { kind: 'idle' }
 // startup. Updater event listeners fire asynchronously and don't carry this
 // flag themselves, so we stash it here for them to read.
 let pendingUserInitiated = false
+
+// Remembered once we learn about an update, so we can still offer a
+// "Download from GitHub" fallback if the in-app download fails (e.g. Linux
+// .deb installs, where electron-updater can't self-install).
+let lastKnownReleaseUrl: string | null = null
 
 const broadcastUpdateStatus = (status: UpdateStatus): void => {
   latestUpdateStatus = status
@@ -338,15 +353,19 @@ const runUpdateCheck = async (userInitiated: boolean): Promise<UpdateStatus> => 
     broadcastUpdateStatus({
       kind: 'error',
       userInitiated,
-      message: err instanceof Error ? err.message : String(err)
+      message: err instanceof Error ? err.message : String(err),
+      releaseUrl: lastKnownReleaseUrl
     })
   }
   return latestUpdateStatus
 }
 
 const registerUpdater = (): void => {
-  autoUpdater.autoDownload = false
-  autoUpdater.autoInstallOnAppQuit = false
+  // Download updates in the background as soon as we know about them, and
+  // let the platform installer run on next quit if the user doesn't restart
+  // sooner. The renderer surfaces progress + a "Restart now" prompt.
+  autoUpdater.autoDownload = true
+  autoUpdater.autoInstallOnAppQuit = true
 
   autoUpdater.on('checking-for-update', () => {
     broadcastUpdateStatus({ kind: 'checking', userInitiated: pendingUserInitiated })
@@ -354,11 +373,42 @@ const registerUpdater = (): void => {
 
   autoUpdater.on('update-available', (info) => {
     const releaseUrl = `https://github.com/AdamSabla/smarkup/releases/tag/v${info.version}`
+    lastKnownReleaseUrl = releaseUrl
     broadcastUpdateStatus({
       kind: 'available',
       version: info.version,
       releaseUrl,
       userInitiated: pendingUserInitiated
+    })
+  })
+
+  autoUpdater.on('download-progress', (progress) => {
+    // electron-updater only emits this while an `update-available` version is
+    // in flight, so reading the version back off the last status is safe.
+    const version =
+      latestUpdateStatus.kind === 'available' ||
+      latestUpdateStatus.kind === 'downloading' ||
+      latestUpdateStatus.kind === 'downloaded'
+        ? latestUpdateStatus.version
+        : ''
+    broadcastUpdateStatus({
+      kind: 'downloading',
+      version,
+      releaseUrl: lastKnownReleaseUrl ?? '',
+      percent: progress.percent,
+      bytesPerSecond: progress.bytesPerSecond,
+      transferred: progress.transferred,
+      total: progress.total
+    })
+  })
+
+  autoUpdater.on('update-downloaded', (info) => {
+    const releaseUrl = `https://github.com/AdamSabla/smarkup/releases/tag/v${info.version}`
+    lastKnownReleaseUrl = releaseUrl
+    broadcastUpdateStatus({
+      kind: 'downloaded',
+      version: info.version,
+      releaseUrl
     })
   })
 
@@ -374,7 +424,8 @@ const registerUpdater = (): void => {
     broadcastUpdateStatus({
       kind: 'error',
       message: err.message,
-      userInitiated: pendingUserInitiated
+      userInitiated: pendingUserInitiated,
+      releaseUrl: lastKnownReleaseUrl
     })
   })
 
@@ -386,6 +437,13 @@ const registerUpdater = (): void => {
 
   ipcMain.handle('updater:openRelease', async (_event, url: string) => {
     await shell.openExternal(url)
+  })
+
+  // Triggered by the "Restart now" button once an update has been downloaded.
+  // `quitAndInstall(isSilent, isForceRunAfter)` — keep defaults: let the
+  // installer show its normal UI on Windows, relaunch after install.
+  ipcMain.handle('updater:quitAndInstall', () => {
+    autoUpdater.quitAndInstall()
   })
 }
 

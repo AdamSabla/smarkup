@@ -145,6 +145,7 @@ const mockApi: SmarkupApi = {
   openReleaseUrl: async (url) => {
     window.open(url, '_blank', 'noopener,noreferrer')
   },
+  quitAndInstallUpdate: async () => undefined,
   onUpdateStatus: () => () => undefined,
 
   // App menu events: no-op in browser mode

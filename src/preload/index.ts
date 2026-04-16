@@ -12,8 +12,18 @@ export type UpdateStatus =
   | { kind: 'idle' }
   | { kind: 'checking'; userInitiated: boolean }
   | { kind: 'available'; version: string; releaseUrl: string; userInitiated: boolean }
+  | {
+      kind: 'downloading'
+      version: string
+      releaseUrl: string
+      percent: number
+      bytesPerSecond: number
+      transferred: number
+      total: number
+    }
+  | { kind: 'downloaded'; version: string; releaseUrl: string }
   | { kind: 'not-available'; userInitiated: boolean; currentVersion: string }
-  | { kind: 'error'; message: string; userInitiated: boolean }
+  | { kind: 'error'; message: string; userInitiated: boolean; releaseUrl: string | null }
 
 export type Theme = 'light' | 'dark' | 'system'
 
@@ -114,6 +124,8 @@ const api = {
   checkForUpdates: (): Promise<UpdateStatus> => ipcRenderer.invoke('updater:check'),
   getUpdateStatus: (): Promise<UpdateStatus> => ipcRenderer.invoke('updater:getStatus'),
   openReleaseUrl: (url: string): Promise<void> => ipcRenderer.invoke('updater:openRelease', url),
+  /** Quit the app and run the already-downloaded installer. */
+  quitAndInstallUpdate: (): Promise<void> => ipcRenderer.invoke('updater:quitAndInstall'),
   onUpdateStatus: (callback: (status: UpdateStatus) => void): (() => void) => {
     const handler = (_event: unknown, status: UpdateStatus): void => callback(status)
     ipcRenderer.on('updater:status', handler)
