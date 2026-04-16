@@ -10,10 +10,20 @@ export type FileEntry = {
 
 export type UpdateStatus =
   | { kind: 'idle' }
-  | { kind: 'checking' }
-  | { kind: 'available'; version: string; releaseUrl: string }
-  | { kind: 'not-available' }
-  | { kind: 'error'; message: string }
+  | { kind: 'checking'; userInitiated: boolean }
+  | { kind: 'available'; version: string; releaseUrl: string; userInitiated: boolean }
+  | {
+      kind: 'downloading'
+      version: string
+      releaseUrl: string
+      percent: number
+      bytesPerSecond: number
+      transferred: number
+      total: number
+    }
+  | { kind: 'downloaded'; version: string; releaseUrl: string }
+  | { kind: 'not-available'; userInitiated: boolean; currentVersion: string }
+  | { kind: 'error'; message: string; userInitiated: boolean; releaseUrl: string | null }
 
 export type Theme = 'light' | 'dark' | 'system'
 
@@ -114,6 +124,8 @@ const api = {
   checkForUpdates: (): Promise<UpdateStatus> => ipcRenderer.invoke('updater:check'),
   getUpdateStatus: (): Promise<UpdateStatus> => ipcRenderer.invoke('updater:getStatus'),
   openReleaseUrl: (url: string): Promise<void> => ipcRenderer.invoke('updater:openRelease', url),
+  /** Quit the app and run the already-downloaded installer. */
+  quitAndInstallUpdate: (): Promise<void> => ipcRenderer.invoke('updater:quitAndInstall'),
   onUpdateStatus: (callback: (status: UpdateStatus) => void): (() => void) => {
     const handler = (_event: unknown, status: UpdateStatus): void => callback(status)
     ipcRenderer.on('updater:status', handler)
@@ -136,10 +148,8 @@ const api = {
     new URLSearchParams(window.location.search).get('windowId') ?? 'default',
   getWindowInit: (windowId: string): Promise<WindowInit | null> =>
     ipcRenderer.invoke('window:getInit', windowId),
-  openTabInNewWindow: (
-    tab: TabTransferData,
-    pos: { x: number; y: number }
-  ): Promise<void> => ipcRenderer.invoke('window:openTabInNewWindow', tab, pos),
+  openTabInNewWindow: (tab: TabTransferData, pos: { x: number; y: number }): Promise<void> =>
+    ipcRenderer.invoke('window:openTabInNewWindow', tab, pos),
 
   // Main process asks the renderer to close this window (red X, Cmd+Q, etc.)
   // so the renderer can prompt about unsaved changes first.
