@@ -331,7 +331,17 @@ type WorkspaceState = {
   createSubfolder: (parentPath: string) => Promise<string>
   renameFolder: (oldPath: string, newName: string) => Promise<string>
 
-  openFile: (path: string) => Promise<void>
+  /**
+   * Open a file as a tab.
+   *
+   * `source` controls whether the file is promoted in Recents:
+   * - `'external'` — request came from outside the app (OS Open With, drag-drop,
+   *   File → Open…). The file is added/moved to the top of Recents.
+   * - `'navigate'` (default) — user clicked an already-known entry (sidebar,
+   *   Recents, Quick Open, palette). Recents order is untouched. Recents
+   *   promotion happens later when the user makes the first dirty edit.
+   */
+  openFile: (path: string, opts?: { source?: 'external' | 'navigate' }) => Promise<void>
   /** Remove a path from the recent files list. */
   removeRecentFile: (path: string) => void
   /** Clear all entries from the recent files list. */
@@ -865,19 +875,13 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     return newPath
   },
 
-  openFile: async (path) => {
-    const bumpRecent = (): void => {
-      const prevRecent = get().recentFiles
-      const nextRecent = [path, ...prevRecent.filter((p) => p !== path)].slice(0, MAX_RECENT_FILES)
-      if (nextRecent[0] !== prevRecent[0] || nextRecent.length !== prevRecent.length) {
-        set({ recentFiles: nextRecent })
-        void persistSettings({ recentFiles: nextRecent })
-      }
-    }
+  openFile: async (path, opts) => {
+    const source = opts?.source ?? 'navigate'
+    const shouldBump = source === 'external'
 
     const existing = get().tabs.find((t) => t.path === path)
     if (existing) {
-      bumpRecent()
+      if (shouldBump) bumpRecentFile(path)
       get().setActiveTab(existing.id)
       return
     }
@@ -902,7 +906,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       return
     }
 
-    bumpRecent()
+    if (shouldBump) bumpRecentFile(path)
     const tab: OpenFile = {
       id: path,
       path,
@@ -938,7 +942,9 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
 
   openFileDialog: async () => {
     const chosen = await window.api.openFile()
-    if (chosen) await get().openFile(chosen)
+    // File → Open… is an external request to open a specific file; always
+    // promote it in Recents regardless of whether it's already open.
+    if (chosen) await get().openFile(chosen, { source: 'external' })
   },
 
   createDraft: async () => {
@@ -1640,7 +1646,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     set({ paneRoot: replaceNode(paneRoot, splitId, { ...node, sizes }) })
   },
 
-  updateTabContent: (tabId, content) =>
+  updateTabContent: (tabId, content) => {
+    let bumpPath: string | null = null
     set((s) => {
       const tab = s.tabs.find((t) => t.id === tabId)
       // Only record a typing timestamp when content actually changed —
@@ -1648,11 +1655,16 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       // very reload that just ran.
       if (tab && tab.content !== content) {
         lastTypedAt.set(tab.path, Date.now())
+        // A real user edit: promote this file in Recents. If it's already
+        // at the top (or would be after dedup), `bumpRecentFile` is a no-op.
+        bumpPath = tab.path
       }
       return {
         tabs: s.tabs.map((t) => (t.id === tabId ? { ...t, content } : t))
       }
-    }),
+    })
+    if (bumpPath) bumpRecentFile(bumpPath)
+  },
 
   toggleSidebar: async () => {
     const next = !get().sidebarVisible
@@ -1841,6 +1853,19 @@ const scheduleReload = (path: string): void => {
     void doReload(path)
   }, wait)
   pendingReloads.set(path, timer)
+}
+
+/**
+ * Promote `path` to the top of the Recents list, trimming to the cap and
+ * persisting the change. No-op when `path` is already at the top — that
+ * guard keeps keystroke-driven bumps from thrashing settings on every edit.
+ */
+const bumpRecentFile = (path: string): void => {
+  const prev = useWorkspace.getState().recentFiles
+  const next = [path, ...prev.filter((p) => p !== path)].slice(0, MAX_RECENT_FILES)
+  if (next[0] === prev[0] && next.length === prev.length) return
+  useWorkspace.setState({ recentFiles: next })
+  void persistSettings({ recentFiles: next })
 }
 
 /** Cancel any pending deferred reload for `path`. Called before we save

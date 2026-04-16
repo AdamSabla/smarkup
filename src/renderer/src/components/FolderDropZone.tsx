@@ -55,8 +55,9 @@ const FolderDropZone = (): React.JSX.Element | null => {
         if (await window.api.isDirectory(path)) {
           await addFolder(path)
         } else if (MD_EXT_RE.test(path)) {
-          // Markdown file — open it as a tab (and add to Recents).
-          await openFile(path)
+          // Markdown file — open it as a tab and promote it in Recents
+          // (a drop from outside the app is an external open, not navigation).
+          await openFile(path, { source: 'external' })
         }
       }
     }

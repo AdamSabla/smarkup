@@ -75,11 +75,11 @@ const App = (): React.JSX.Element => {
 
   // Main forwards file paths here when the OS asks us to open a file —
   // "Open With…" in Finder, file double-click on Win/Linux, File → Open…,
-  // or a `.md` dropped onto the window. Routing through the store's
-  // `openFile` action adds it to Recents and swaps it into the active pane.
+  // or a `.md` dropped onto the window. These are *external* requests, so
+  // promote the file to the top of Recents (in-app navigation doesn't).
   useEffect(() => {
     return window.api.onOpenFileFromDisk((path) => {
-      void useWorkspace.getState().openFile(path)
+      void useWorkspace.getState().openFile(path, { source: 'external' })
     })
   }, [])
 
