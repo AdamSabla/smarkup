@@ -2,16 +2,19 @@ import { useEffect, useRef, useState } from 'react'
 import { FolderPlusIcon } from 'lucide-react'
 import { useWorkspace } from '@/store/workspace'
 
+const MD_EXT_RE = /\.(md|markdown|mkdn|mdown)$/i
+
 /**
- * Full-window overlay that appears when the user drags a folder from the OS
- * into the app, and registers dropped folders as workspace folders in the
- * sidebar. Files are ignored (overlay copy tells the user only folders stick).
+ * Full-window overlay that appears when the user drags a folder or markdown
+ * file from the OS into the app. Folders become sidebar sections; markdown
+ * files open as tabs (and land in Recents). Other files are ignored.
  *
  * Drag-enter/leave fire on every child as the pointer moves through the DOM,
  * so we keep a counter and only hide the overlay when it drops back to 0.
  */
 const FolderDropZone = (): React.JSX.Element | null => {
   const addFolder = useWorkspace((s) => s.addFolder)
+  const openFile = useWorkspace((s) => s.openFile)
   const [dragging, setDragging] = useState(false)
   const depth = useRef(0)
 
@@ -49,9 +52,12 @@ const FolderDropZone = (): React.JSX.Element | null => {
       for (const file of files) {
         const path = window.api.getPathForFile(file)
         if (!path) continue
-        const isDir = await window.api.isDirectory(path)
-        if (!isDir) continue
-        await addFolder(path)
+        if (await window.api.isDirectory(path)) {
+          await addFolder(path)
+        } else if (MD_EXT_RE.test(path)) {
+          // Markdown file — open it as a tab (and add to Recents).
+          await openFile(path)
+        }
       }
     }
 
@@ -65,7 +71,7 @@ const FolderDropZone = (): React.JSX.Element | null => {
       window.removeEventListener('dragleave', onLeave)
       window.removeEventListener('drop', onDrop)
     }
-  }, [addFolder])
+  }, [addFolder, openFile])
 
   if (!dragging) return null
 
@@ -73,9 +79,9 @@ const FolderDropZone = (): React.JSX.Element | null => {
     <div className="pointer-events-none fixed inset-0 z-50 flex items-center justify-center bg-background/70 backdrop-blur-sm">
       <div className="mx-8 flex flex-col items-center gap-3 rounded-xl border-2 border-dashed border-primary bg-background/90 px-10 py-8 text-center shadow-lg">
         <FolderPlusIcon className="size-10 text-primary" />
-        <div className="text-lg font-semibold">Drop to add folder to sidebar</div>
+        <div className="text-lg font-semibold">Drop to open</div>
         <div className="text-sm text-muted-foreground">
-          The folder will appear as a new section in your sidebar. Files are ignored.
+          Folders are added as sidebar sections; markdown files open as tabs.
         </div>
       </div>
     </div>

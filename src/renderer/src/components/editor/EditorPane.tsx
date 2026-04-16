@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { resolveEditorMode, useWorkspace } from '@/store/workspace'
 import { countWords } from '@/lib/text-stats'
+import TodoChip from '@/components/TodoChip'
 import VisualEditor from './VisualEditor'
 import RawEditor from './RawEditor'
 
@@ -106,11 +107,20 @@ const EditorPane = ({ tabId, paneId }: EditorPaneProps): React.JSX.Element => {
           )
         })}
       </div>
-      {showWordCount && words > 0 && (
-        <span className="absolute bottom-2 right-3 text-[11px] tabular-nums text-muted-foreground">
-          {words.toLocaleString()} words
-        </span>
-      )}
+      {/* Bottom-right HUD: word count + TODO chip share the same corner so
+       *  they never overlap. The chip is interactive (pointer-events on);
+       *  the word count is decorative (pointer-events off) so it doesn't
+       *  block clicks on the editor underneath. */}
+      <div className="pointer-events-none absolute bottom-2 right-3 flex items-center gap-2">
+        {showWordCount && words > 0 && (
+          <span className="text-[11px] tabular-nums text-muted-foreground">
+            {words.toLocaleString()} words
+          </span>
+        )}
+        <div className="pointer-events-auto">
+          <TodoChip tabId={tabId} isActive={activePaneId === paneId} />
+        </div>
+      </div>
     </div>
   )
 }

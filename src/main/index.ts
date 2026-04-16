@@ -1,13 +1,91 @@
 import { app, shell, BrowserWindow, ipcMain, Menu, nativeTheme, dialog } from 'electron'
 import { join, dirname, basename } from 'path'
 import { promises as fs, type Dirent } from 'fs'
-import { electronApp, optimizer, is } from '@electron-toolkit/utils'
+import { electronApp, is } from '@electron-toolkit/utils'
 import { autoUpdater } from 'electron-updater'
 import { loadSettings, saveSettings, type Settings } from './settings'
 import { syncWatchedFolders, stopAllWatchers } from './watcher'
 import icon from '../../resources/icon.png?asset'
 
 const isMac = process.platform === 'darwin'
+
+// --- Single-instance + file-open routing -----------------------------------
+//
+// When the user picks "Open With…" in Finder or double-clicks a file with
+// the app set as the default handler, the OS can either:
+//   - macOS: fire `open-file` on the already-running instance (or, if the
+//     app isn't running, launch it and fire `open-file` before `app.ready`).
+//   - Windows/Linux: launch the app again with the file path in `argv`.
+//
+// We request the single-instance lock so the second launch on Win/Linux
+// funnels through `second-instance` on the primary process instead of
+// starting a duplicate. Paths are gathered into `pendingOpenPaths` until
+// we have a renderer to deliver them to, then replayed over IPC.
+const pendingOpenPaths: string[] = []
+
+const extractOpenPathsFromArgv = (argv: string[]): string[] => {
+  const out: string[] = []
+  // argv[0] is the executable. Flags (--inspect, --enable-logging) and the
+  // electron-vite dev `.` entry aren't file paths. Require absolute paths
+  // (Unix-style or Win drive-letter) so we don't pick up random tokens.
+  for (let i = 1; i < argv.length; i++) {
+    const a = argv[i]
+    if (!a || a === '.' || a.startsWith('-')) continue
+    if (!a.startsWith('/') && !/^[A-Za-z]:[\\/]/.test(a)) continue
+    out.push(a)
+  }
+  return out
+}
+
+/** Deliver a file path to a renderer so the user sees it open. Creates a
+ *  window on demand if none exist (macOS: all windows closed but app still
+ *  alive). The renderer's `onOpenFileFromDisk` subscriber routes it into
+ *  the workspace store. */
+const routeOpenFile = (filePath: string): void => {
+  const wins = BrowserWindow.getAllWindows()
+  if (wins.length === 0) {
+    const win = createWindow()
+    win.webContents.once('did-finish-load', () => {
+      win.webContents.send('app:openFileFromDisk', filePath)
+    })
+    return
+  }
+  const target = BrowserWindow.getFocusedWindow() ?? wins[wins.length - 1]
+  target.webContents.send('app:openFileFromDisk', filePath)
+  if (target.isMinimized()) target.restore()
+  target.focus()
+}
+
+if (!app.requestSingleInstanceLock()) {
+  // Another instance is already running — the primary will receive our argv
+  // via `second-instance` below and open the file there.
+  app.exit(0)
+} else {
+  app.on('second-instance', (_event, argv) => {
+    for (const p of extractOpenPathsFromArgv(argv)) routeOpenFile(p)
+    const wins = BrowserWindow.getAllWindows()
+    const target = BrowserWindow.getFocusedWindow() ?? wins[wins.length - 1]
+    if (target) {
+      if (target.isMinimized()) target.restore()
+      target.focus()
+    }
+  })
+
+  // macOS: double-click a file in Finder → `open-file` fires. If the app
+  // wasn't running it fires BEFORE `app.ready`, so we stash the path until
+  // the initial window is up and flush it then.
+  app.on('open-file', (event, filePath) => {
+    event.preventDefault()
+    if (app.isReady()) {
+      routeOpenFile(filePath)
+    } else {
+      pendingOpenPaths.push(filePath)
+    }
+  })
+
+  // Windows/Linux: the file to open is passed via argv on launch.
+  pendingOpenPaths.push(...extractOpenPathsFromArgv(process.argv))
+}
 
 // --- Window manager ---------------------------------------------------------
 
@@ -142,6 +220,20 @@ const registerFileHandlers = (): void => {
     if (!win) return null
     const result = await dialog.showOpenDialog(win, {
       properties: ['openDirectory', 'createDirectory']
+    })
+    if (result.canceled || result.filePaths.length === 0) return null
+    return result.filePaths[0]
+  })
+
+  ipcMain.handle('dialog:openFile', async (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender)
+    if (!win) return null
+    const result = await dialog.showOpenDialog(win, {
+      properties: ['openFile'],
+      filters: [
+        { name: 'Markdown', extensions: ['md', 'markdown', 'mkdn', 'mdown'] },
+        { name: 'All Files', extensions: ['*'] }
+      ]
     })
     if (result.canceled || result.filePaths.length === 0) return null
     return result.filePaths[0]
@@ -450,9 +542,13 @@ const registerUpdater = (): void => {
 app.whenReady().then(() => {
   electronApp.setAppUserModelId('com.smarkup.app')
 
-  app.on('browser-window-created', (_, window) => {
-    optimizer.watchWindowShortcuts(window)
-  })
+  // Note: we intentionally do NOT register `optimizer.watchWindowShortcuts`
+  // here. In production builds it installs a `before-input-event` listener
+  // that calls `event.preventDefault()` on Cmd+R, swallowing the key press
+  // before the renderer can receive it. We repurpose Cmd+R as the rename
+  // shortcut (see useShortcuts.ts), so that block has to be gone. Devtools
+  // shortcuts in prod remain disabled because no menu item binds them —
+  // the reload/forceReload/toggleDevTools entries are gated on `is.dev`.
 
   registerFileHandlers()
   registerSettingsHandlers()
@@ -489,7 +585,28 @@ app.whenReady().then(() => {
       : []),
     {
       label: 'File',
-      submenu: [isMac ? { role: 'close' as const } : { role: 'quit' as const }]
+      submenu: [
+        {
+          label: 'Open…',
+          accelerator: 'CmdOrCtrl+O',
+          click: async (_menuItem, browserWindow): Promise<void> => {
+            const win =
+              (browserWindow as BrowserWindow | undefined) ?? BrowserWindow.getFocusedWindow()
+            if (!win) return
+            const result = await dialog.showOpenDialog(win, {
+              properties: ['openFile'],
+              filters: [
+                { name: 'Markdown', extensions: ['md', 'markdown', 'mkdn', 'mdown'] },
+                { name: 'All Files', extensions: ['*'] }
+              ]
+            })
+            if (result.canceled || result.filePaths.length === 0) return
+            win.webContents.send('app:openFileFromDisk', result.filePaths[0])
+          }
+        },
+        { type: 'separator' as const },
+        isMac ? { role: 'close' as const } : { role: 'quit' as const }
+      ]
     },
     {
       label: 'Edit',
@@ -552,7 +669,16 @@ app.whenReady().then(() => {
   ]
   Menu.setApplicationMenu(Menu.buildFromTemplate(template))
 
-  createWindow()
+  const initialWindow = createWindow()
+  // If the user launched the app by double-clicking a file in Finder (or
+  // passed one on the CLI), replay the pending paths once the window has
+  // finished loading — the renderer subscribes on mount.
+  if (pendingOpenPaths.length > 0) {
+    const paths = pendingOpenPaths.splice(0, pendingOpenPaths.length)
+    initialWindow.webContents.once('did-finish-load', () => {
+      for (const p of paths) initialWindow.webContents.send('app:openFileFromDisk', p)
+    })
+  }
 
   // Silent background check a few seconds after startup. Skips in dev.
   if (!is.dev) {

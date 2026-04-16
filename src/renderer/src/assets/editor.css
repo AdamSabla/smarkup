@@ -410,3 +410,29 @@
   border-radius: 3px;
   background-color: rgba(232, 121, 249, 0.12);
 }
+
+/* --- JS-style line comments (`// …`) ---------------------------------- */
+/*
+ * Mirrors RawEditor's `.cm-comment-highlight`. The user uses these as inline
+ * notes in markdown — gray + italic keeps them readable but visually receded.
+ * Applied via the TodoCommentHighlighter ProseMirror plugin.
+ */
+.smarkup-editor .smarkup-comment-highlight {
+  color: #9ca3af;
+  font-style: italic;
+}
+
+/* --- TODO badge ------------------------------------------------------- */
+/*
+ * Mirrors RawEditor's `.cm-todo-highlight`. Loud yellow sticker so unfinished
+ * thoughts stand out against any heading/text color. Applied via the
+ * TodoCommentHighlighter plugin; the inline decoration wins over the comment
+ * mark when a TODO sits inside a `// …` comment.
+ */
+.smarkup-editor .smarkup-todo-highlight {
+  background-color: #facc15;
+  color: #000;
+  font-weight: 700;
+  border-radius: 4px;
+  padding: 0 4px;
+}

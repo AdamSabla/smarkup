@@ -58,6 +58,10 @@ const listEntries = (): FileEntry[] =>
 const mockApi: SmarkupApi = {
   openDirectory: async () => '/demo',
 
+  // No native file dialog in browser preview — the in-memory FS doesn't need
+  // one and `window.showOpenFilePicker` isn't worth the polyfill effort.
+  openFile: async () => null,
+
   readDirectory: async () => listEntries(),
 
   readFile: async (path) => {
@@ -152,6 +156,7 @@ const mockApi: SmarkupApi = {
   // App menu events: no-op in browser mode
   onShowShortcuts: () => () => undefined,
   onToggleVariablesPanel: () => () => undefined,
+  onOpenFileFromDisk: () => () => undefined,
 
   // Window management: no-op in browser mode (single window only)
   getWindowId: () => 'default',

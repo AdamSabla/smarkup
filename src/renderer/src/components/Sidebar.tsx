@@ -11,7 +11,8 @@ import {
   FolderIcon,
   FolderOpenIcon,
   ChevronRightIcon,
-  PlusIcon
+  PlusIcon,
+  XIcon
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -35,6 +36,11 @@ import { useWorkspace, type SidebarSection, type FolderNode } from '@/store/work
 import type { FileEntry } from '../../../preload'
 
 const INITIAL_VISIBLE = 10
+
+/** Sentinel id for the top-of-sidebar Recents section. Not a real path —
+ *  reused in `sidebarCollapsedPaths` to persist the section's collapse
+ *  state alongside regular folders. */
+const RECENTS_ID = '__recents__'
 
 // --- Drag & drop ------------------------------------------------------------
 // We use a custom MIME type so outside drags (text, files from Finder) can't
@@ -780,6 +786,137 @@ const SectionView = ({
   )
 }
 
+type RecentsRowProps = {
+  path: string
+  active: boolean
+  onOpen: () => void
+  onRemove: () => void
+}
+
+const RecentsRow = ({ path, active, onOpen, onRemove }: RecentsRowProps): React.JSX.Element => {
+  // Display name: basename minus .md extension, like regular file rows.
+  const base = path.split('/').pop() ?? path
+  const displayName = base.replace(/\.md$/i, '')
+  return (
+    <div className="group/row relative flex items-center">
+      <button
+        onClick={onOpen}
+        title={path}
+        className={cn(
+          'flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-sm',
+          'hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
+          active && 'bg-sidebar-accent text-sidebar-accent-foreground font-medium'
+        )}
+      >
+        <FileTextIcon className="size-3.5 shrink-0 text-muted-foreground" />
+        <TruncatedName>{displayName}</TruncatedName>
+      </button>
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation()
+          onRemove()
+        }}
+        aria-label={`Remove ${displayName} from recents`}
+        className={cn(
+          'absolute right-1 inline-flex items-center justify-center rounded-sm size-5',
+          'opacity-0 group-hover/row:opacity-100 bg-sidebar-accent text-muted-foreground',
+          'hover:text-foreground'
+        )}
+      >
+        <XIcon className="size-3" />
+      </button>
+    </div>
+  )
+}
+
+type RecentsSectionProps = {
+  expanded: boolean
+  onToggleExpanded: () => void
+}
+
+const RecentsSection = ({
+  expanded,
+  onToggleExpanded
+}: RecentsSectionProps): React.JSX.Element => {
+  const recentFiles = useWorkspace((s) => s.recentFiles)
+  const activeTabId = useWorkspace((s) => s.activeTabId)
+  const openFile = useWorkspace((s) => s.openFile)
+  const openFileDialog = useWorkspace((s) => s.openFileDialog)
+  const removeRecentFile = useWorkspace((s) => s.removeRecentFile)
+  const clearRecentFiles = useWorkspace((s) => s.clearRecentFiles)
+  const [menuOpen, setMenuOpen] = useState(false)
+
+  return (
+    <div className="mb-3 rounded-md">
+      <div className="group flex items-center gap-1 px-2 pt-1 pb-0.5">
+        <button
+          onClick={onToggleExpanded}
+          className="flex flex-1 items-center gap-1 text-left text-[11px] font-semibold tracking-wide text-muted-foreground uppercase hover:text-foreground"
+        >
+          <ChevronRightIcon
+            className={cn(
+              'size-3 shrink-0 transition-transform duration-150',
+              expanded && 'rotate-90'
+            )}
+          />
+          <TruncatedName>Recents</TruncatedName>
+        </button>
+
+        <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className={cn(
+                'size-5 opacity-0 group-hover:opacity-100',
+                menuOpen && 'opacity-100'
+              )}
+              aria-label="Recents options"
+            >
+              <MoreHorizontalIcon className="size-3" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent side="right" align="start">
+            <DropdownMenuItem onSelect={() => void openFileDialog()}>
+              <FolderOpenIcon className="size-3.5" />
+              Open file…
+            </DropdownMenuItem>
+            {recentFiles.length > 0 && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem variant="destructive" onSelect={clearRecentFiles}>
+                  <TrashIcon className="size-3.5" />
+                  Clear recents
+                </DropdownMenuItem>
+              </>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+
+      {expanded && (
+        <>
+          {recentFiles.length === 0 && (
+            <div className="px-2 py-1 text-[11px] text-muted-foreground">
+              Open any markdown file to see it here
+            </div>
+          )}
+          {recentFiles.map((path) => (
+            <RecentsRow
+              key={path}
+              path={path}
+              active={path === activeTabId}
+              onOpen={() => void openFile(path)}
+              onRemove={() => removeRecentFile(path)}
+            />
+          ))}
+        </>
+      )}
+    </div>
+  )
+}
+
 const Sidebar = (): React.JSX.Element => {
   const {
     sections,
@@ -1070,6 +1207,10 @@ const Sidebar = (): React.JSX.Element => {
       className="flex h-full flex-col bg-sidebar text-sidebar-foreground outline-none"
     >
       <ScrollArea className="min-h-0 flex-1 px-1 pt-2">
+        <RecentsSection
+          expanded={!sidebarCollapsedPaths.has(RECENTS_ID)}
+          onToggleExpanded={() => toggleSidebarCollapsedPath(RECENTS_ID)}
+        />
         {sections.map((section) => (
           <SectionView
             key={section.id}

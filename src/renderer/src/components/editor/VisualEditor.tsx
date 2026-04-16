@@ -14,6 +14,7 @@ import { Tab } from '@/extensions/tab'
 import { HtmlPaste } from '@/extensions/html-paste'
 import { ListCommands } from '@/extensions/list-commands'
 import { VariableHighlighter } from '@/extensions/variable-highlighter'
+import { TodoCommentHighlighter } from '@/extensions/todo-comment-highlighter'
 import { getActiveEditor, setActiveEditor } from '@/lib/active-editor'
 import { serializeSliceToText } from '@/lib/serialize-clipboard-text'
 import TableMenu from './TableMenu'
@@ -171,6 +172,7 @@ const VisualEditor = ({ value, onChange, isActive }: Props): React.JSX.Element =
       TableCell,
       HtmlPaste,
       VariableHighlighter,
+      TodoCommentHighlighter,
       Markdown.configure({
         html: false,
         tightLists: true,

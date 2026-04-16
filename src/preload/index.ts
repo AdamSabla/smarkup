@@ -80,6 +80,9 @@ export type WindowInit = {
 
 const api = {
   openDirectory: (): Promise<string | null> => ipcRenderer.invoke('dialog:openDirectory'),
+  /** Prompt the user for any file on disk. Returns the chosen absolute path
+   *  or null if they cancelled. Used by the sidebar's "Open file…" entry. */
+  openFile: (): Promise<string | null> => ipcRenderer.invoke('dialog:openFile'),
   readDirectory: (path: string): Promise<FileEntry[]> =>
     ipcRenderer.invoke('fs:readDirectory', path),
   readFile: (path: string): Promise<string> => ipcRenderer.invoke('fs:readFile', path),
@@ -149,6 +152,17 @@ const api = {
     ipcRenderer.on('app:toggleVariablesPanel', handler)
     return () => {
       ipcRenderer.off('app:toggleVariablesPanel', handler)
+    }
+  },
+  /** Main sends a file path here when the OS asks us to open a file
+   *  ("Open With…" in Finder, file double-click on Win/Linux, or the
+   *  File → Open… menu item). The renderer routes it through
+   *  `useWorkspace.openFile`. */
+  onOpenFileFromDisk: (callback: (path: string) => void): (() => void) => {
+    const handler = (_event: unknown, path: string): void => callback(path)
+    ipcRenderer.on('app:openFileFromDisk', handler)
+    return () => {
+      ipcRenderer.off('app:openFileFromDisk', handler)
     }
   },
 

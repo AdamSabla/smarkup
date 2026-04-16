@@ -164,3 +164,22 @@
 .smarkup-variable-flash-fade {
   opacity: 0;
 }
+
+/* --- TODO chip flash highlight ---------------------------------------- */
+/*
+ * Yellow counterpart to .smarkup-variable-flash, drawn over a TODO match for
+ * ~0.6s when the user clicks the floating TODO chip. Rendered by renderFlash()
+ * in lib/todos.ts at the match's viewport rects.
+ */
+.smarkup-todo-flash {
+  position: fixed;
+  pointer-events: none;
+  z-index: 9999;
+  background: #facc15;
+  opacity: 0.55;
+  border-radius: 4px;
+  transition: opacity 600ms ease-out;
+}
+.smarkup-todo-flash-fade {
+  opacity: 0;
+}

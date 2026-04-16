@@ -8,6 +8,7 @@ import CommandPalette from '@/components/CommandPalette'
 import KeyboardShortcuts from '@/components/KeyboardShortcuts'
 import UnsavedChangesDialog from '@/components/UnsavedChangesDialog'
 import FolderDropZone from '@/components/FolderDropZone'
+import Toast from '@/components/Toast'
 import VariablesPanel from '@/components/VariablesPanel'
 import SplitContainer from '@/components/editor/SplitContainer'
 import { useShortcuts } from '@/hooks/useShortcuts'
@@ -72,6 +73,16 @@ const App = (): React.JSX.Element => {
     })
   }, [])
 
+  // Main forwards file paths here when the OS asks us to open a file —
+  // "Open With…" in Finder, file double-click on Win/Linux, File → Open…,
+  // or a `.md` dropped onto the window. Routing through the store's
+  // `openFile` action adds it to Recents and swaps it into the active pane.
+  useEffect(() => {
+    return window.api.onOpenFileFromDisk((path) => {
+      void useWorkspace.getState().openFile(path)
+    })
+  }, [])
+
   useShortcuts()
   useUpdateSubscription()
   useTheme()
@@ -113,6 +124,7 @@ const App = (): React.JSX.Element => {
       <KeyboardShortcuts />
       <UnsavedChangesDialog />
       <FolderDropZone />
+      <Toast />
     </div>
   )
 }

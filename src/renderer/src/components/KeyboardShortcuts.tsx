@@ -15,6 +15,7 @@ const shortcuts: { section: string; items: { label: string; keys: string }[] }[]
     section: 'General',
     items: [
       { label: 'New draft', keys: `${mod} N` },
+      { label: 'Open file…', keys: `${mod} O` },
       { label: 'Save', keys: `${mod} S` },
       { label: 'Quick open', keys: `${mod} P` },
       { label: 'Command palette', keys: `${mod} K` },

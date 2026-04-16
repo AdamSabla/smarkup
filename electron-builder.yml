@@ -11,6 +11,29 @@ files:
   - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
 asarUnpack:
   - resources/**
+# Register smarkup as a handler for common markdown extensions so "Open With…"
+# in Finder and file-double-click on Windows/Linux route through the app.
+fileAssociations:
+  - ext: md
+    name: Markdown Document
+    description: Markdown Document
+    role: Editor
+    rank: Alternate
+  - ext: markdown
+    name: Markdown Document
+    description: Markdown Document
+    role: Editor
+    rank: Alternate
+  - ext: mkdn
+    name: Markdown Document
+    description: Markdown Document
+    role: Editor
+    rank: Alternate
+  - ext: mdown
+    name: Markdown Document
+    description: Markdown Document
+    role: Editor
+    rank: Alternate
 win:
   executableName: smarkup
   icon: build/icon.ico

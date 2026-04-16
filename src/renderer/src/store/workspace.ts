@@ -208,6 +208,17 @@ export type PendingClose =
 
 export type UnsavedChoice = 'save' | 'discard' | 'cancel'
 
+/**
+ * A transient banner shown near the bottom of the window. Used for
+ * non-blocking notices (e.g. a stale recents entry that was auto-removed).
+ * A fresh `id` each time lets the component restart its auto-dismiss timer.
+ */
+export type Toast = {
+  id: number
+  kind: 'info' | 'error'
+  message: string
+}
+
 type WorkspaceState = {
   // --- Persistent settings (mirrored from disk) ---
   draftsFolder: string | null
@@ -272,6 +283,8 @@ type WorkspaceState = {
   autoRenameInFlight: Set<string>
   /** A close action waiting on the user to resolve unsaved changes. */
   pendingClose: PendingClose | null
+  /** Transient bottom-of-window notice (stale file, etc.). Null when hidden. */
+  toast: Toast | null
   hydrated: boolean
 
   // --- Actions ---
@@ -290,6 +303,12 @@ type WorkspaceState = {
   renameFolder: (oldPath: string, newName: string) => Promise<string>
 
   openFile: (path: string) => Promise<void>
+  /** Remove a path from the recent files list. */
+  removeRecentFile: (path: string) => void
+  /** Clear all entries from the recent files list. */
+  clearRecentFiles: () => void
+  /** Prompt the user for any file and open it (routed through openFile). */
+  openFileDialog: () => Promise<void>
   createDraft: () => Promise<void>
   /**
    * If the active tab is in `autoNamedPaths`, derive a new filename from
@@ -359,6 +378,11 @@ type WorkspaceState = {
 
   setUpdateStatus: (status: UpdateStatus) => void
   checkForUpdates: () => Promise<void>
+
+  /** Show a transient notice at the bottom of the window. */
+  showToast: (message: string, kind?: 'info' | 'error') => void
+  /** Hide the current toast if any. */
+  dismissToast: () => void
 }
 
 const MAX_RECENT_FILES = 20
@@ -483,6 +507,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   autoNamedPaths: new Set<string>(),
   autoRenameInFlight: new Set<string>(),
   pendingClose: null,
+  toast: null,
   hydrated: false,
 
   hydrate: async () => {
@@ -718,21 +743,43 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   },
 
   openFile: async (path) => {
-    // Track recent file regardless of whether it's already open
-    const prevRecent = get().recentFiles
-    const nextRecent = [path, ...prevRecent.filter((p) => p !== path)].slice(0, MAX_RECENT_FILES)
-    if (nextRecent[0] !== prevRecent[0] || nextRecent.length !== prevRecent.length) {
-      set({ recentFiles: nextRecent })
-      void persistSettings({ recentFiles: nextRecent })
+    const bumpRecent = (): void => {
+      const prevRecent = get().recentFiles
+      const nextRecent = [path, ...prevRecent.filter((p) => p !== path)].slice(0, MAX_RECENT_FILES)
+      if (nextRecent[0] !== prevRecent[0] || nextRecent.length !== prevRecent.length) {
+        set({ recentFiles: nextRecent })
+        void persistSettings({ recentFiles: nextRecent })
+      }
     }
 
     const existing = get().tabs.find((t) => t.path === path)
     if (existing) {
+      bumpRecent()
       get().setActiveTab(existing.id)
       return
     }
-    const content = await window.api.readFile(path)
-    const name = await window.api.basename(path)
+
+    // Try to read before mutating state so a stale path (file deleted since
+    // it landed in recents) doesn't linger in the list. If the read fails
+    // we drop the entry from recents and surface a toast.
+    let content: string
+    let name: string
+    try {
+      content = await window.api.readFile(path)
+      name = await window.api.basename(path)
+    } catch {
+      const prev = get().recentFiles
+      if (prev.includes(path)) {
+        const next = prev.filter((p) => p !== path)
+        set({ recentFiles: next })
+        void persistSettings({ recentFiles: next })
+      }
+      const basename = path.split('/').pop() || path
+      get().showToast(`Can't open “${basename}” — file no longer exists`, 'error')
+      return
+    }
+
+    bumpRecent()
     const tab: OpenFile = {
       id: path,
       path,
@@ -750,6 +797,25 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         tabId: tab.id
       })
     }))
+  },
+
+  removeRecentFile: (path) => {
+    const prev = get().recentFiles
+    if (!prev.includes(path)) return
+    const next = prev.filter((p) => p !== path)
+    set({ recentFiles: next })
+    void persistSettings({ recentFiles: next })
+  },
+
+  clearRecentFiles: () => {
+    if (get().recentFiles.length === 0) return
+    set({ recentFiles: [] })
+    void persistSettings({ recentFiles: [] })
+  },
+
+  openFileDialog: async () => {
+    const chosen = await window.api.openFile()
+    if (chosen) await get().openFile(chosen)
   },
 
   createDraft: async () => {
@@ -1466,5 +1532,17 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   checkForUpdates: async () => {
     const status = await window.api.checkForUpdates()
     set({ updateStatus: status })
+  },
+
+  showToast: (message, kind = 'info') => {
+    // A fresh id each time lets the Toast component restart its
+    // auto-dismiss timer even when an existing toast is still on screen.
+    set({ toast: { id: ++toastIdCounter, kind, message } })
+  },
+
+  dismissToast: () => {
+    if (get().toast) set({ toast: null })
   }
 }))
+
+let toastIdCounter = 0
