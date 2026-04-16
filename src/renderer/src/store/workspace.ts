@@ -26,6 +26,26 @@ export type PaneNode = LeafPane | SplitPane
 let paneIdCounter = 0
 const nextPaneId = (): string => `pane-${++paneIdCounter}`
 
+/**
+ * External-reload coordination state (module-level because it's purely
+ * volatile — no component needs to render from it, and Zustand re-render
+ * churn would be wasteful).
+ *
+ * - `lastTypedAt`: per-tab timestamp of the most recent *user* content edit.
+ *   Used to defer reloading a file under a cursor mid-sentence when an
+ *   external editor (or AI agent) writes while we're typing.
+ * - `pendingReloads`: per-path debounced reload timers. Replaced on every
+ *   new watcher event for the same path, and cancelled on save/close.
+ *
+ * See `doReload` / `scheduleReload` at the bottom of this file.
+ */
+const lastTypedAt = new Map<string, number>()
+const pendingReloads = new Map<string, ReturnType<typeof setTimeout>>()
+/** If the user typed within this window, defer the external reload until
+ *  typing pauses. 1.5s is long enough to cover a sentence, short enough
+ *  that an agent's writes still land quickly when the user pauses. */
+const TYPING_DEFER_MS = 1500
+
 /** Find the leaf pane showing a given tabId */
 const findLeafByTabId = (node: PaneNode, tabId: string): LeafPane | null => {
   if (node.type === 'leaf') return node.tabId === tabId ? node : null
@@ -259,6 +279,8 @@ type WorkspaceState = {
   commandPaletteOpen: boolean
   /** Keyboard shortcuts modal */
   shortcutsOpen: boolean
+  /** ⌘F find/replace bar (per-window, attached to the active pane's editor) */
+  findBarOpen: boolean
   /** Tab id currently being renamed inline (⌘R) */
   renamingTabId: string | null
   /** Remembered scroll anchor per tab id (volatile, not persisted to disk).
@@ -281,6 +303,13 @@ type WorkspaceState = {
    * Volatile — never persisted.
    */
   autoRenameInFlight: Set<string>
+  /**
+   * Open tabs (by absolute path) whose file was deleted externally while
+   * the tab had unsaved edits. These stay open so the user can Save as…
+   * or Discard — the in-editor OrphanBanner renders based on this.
+   * Volatile — never persisted.
+   */
+  orphanedPaths: Set<string>
   /** A close action waiting on the user to resolve unsaved changes. */
   pendingClose: PendingClose | null
   /** Transient bottom-of-window notice (stale file, etc.). Null when hidden. */
@@ -342,6 +371,11 @@ type WorkspaceState = {
   saveActive: () => Promise<void>
   /** Save a specific tab by id (writes to disk and clears its dirty state). */
   saveTab: (tabId: string) => Promise<void>
+  /** Save an orphaned (externally deleted) tab to a user-picked location.
+   *  Migrates the tab's path/id to the new location on success. */
+  saveOrphanedTabAs: (tabId: string) => Promise<void>
+  /** Discard an orphaned tab, dropping its in-memory edits. */
+  discardOrphanedTab: (tabId: string) => void
 
   // --- Pane actions ---
   splitPane: (paneId: string, direction: 'horizontal' | 'vertical', tabId: string | null) => void
@@ -368,6 +402,8 @@ type WorkspaceState = {
   closeCommandPalette: () => void
   openShortcuts: () => void
   closeShortcuts: () => void
+  openFindBar: () => void
+  closeFindBar: () => void
   saveScrollPosition: (tabId: string, value: number | { line: number; offsetPx: number }) => void
   saveCursorPosition: (tabId: string, anchor: number, head: number) => void
   startRenamingTab: () => void
@@ -385,7 +421,7 @@ type WorkspaceState = {
   dismissToast: () => void
 }
 
-const MAX_RECENT_FILES = 20
+const MAX_RECENT_FILES = 50
 
 const DRAFTS_ID = 'drafts'
 
@@ -500,12 +536,14 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   quickOpenOpen: false,
   commandPaletteOpen: false,
   shortcutsOpen: false,
+  findBarOpen: false,
   renamingTabId: null,
   scrollPositions: {},
   cursorPositions: {},
   sidebarCollapsedPaths: new Set<string>(),
   autoNamedPaths: new Set<string>(),
   autoRenameInFlight: new Set<string>(),
+  orphanedPaths: new Set<string>(),
   pendingClose: null,
   toast: null,
   hydrated: false,
@@ -638,7 +676,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   },
 
   handleWatchEvent: async (payload) => {
-    const { sections, tabs, activeTabId, autoRenameInFlight } = get()
+    const { sections, autoRenameInFlight } = get()
     const parent =
       sections.find((sec) => sec.path === payload.folder) ??
       sections.find((sec) => sec.isDrafts && sec.path === payload.folder)
@@ -646,35 +684,120 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       await get().refreshSection(parent.id)
     }
 
-    // If any unlinked file is currently open in a tab, close it silently
     for (const evt of payload.events) {
-      // Suppress events for paths we're currently renaming ourselves —
-      // otherwise the unlink half of our own rename would close the tab.
+      // Suppress events for paths we're renaming ourselves — the unlink/add
+      // half of our own rename would otherwise close or duplicate the tab.
       if (autoRenameInFlight.has(evt.path)) continue
-      if (evt.type === 'unlink') {
-        const tab = tabs.find((t) => t.path === evt.path)
-        if (tab) {
+      if (evt.type === 'rename' && evt.fromPath && autoRenameInFlight.has(evt.fromPath)) continue
+
+      if (evt.type === 'rename' && evt.fromPath) {
+        // Inode-correlated rename from the watcher: silently migrate any
+        // open tab's path/id, then surface a small toast so the user knows
+        // why the tab title changed.
+        const oldPath = evt.fromPath
+        const newPath = evt.path
+        const tab = get().tabs.find((t) => t.path === oldPath)
+        if (!tab) continue
+
+        // Any pending deferred reload was keyed by the old path — cancel it;
+        // the rename effectively replaces the file's identity.
+        cancelPendingReload(oldPath)
+
+        const newName = newPath.split('/').pop() ?? tab.name
+        set((s) => {
+          const nextTabs = s.tabs.map((t) =>
+            t.path === oldPath ? { ...t, id: newPath, path: newPath, name: newName } : t
+          )
+          const nextActive = s.activeTabId === oldPath ? newPath : s.activeTabId
+          const nextPane = remapPaneTabId(s.paneRoot, oldPath, newPath)
+
+          const nextScroll = { ...s.scrollPositions }
+          if (oldPath in nextScroll) {
+            nextScroll[newPath] = nextScroll[oldPath]
+            delete nextScroll[oldPath]
+          }
+          const nextCursor = { ...s.cursorPositions }
+          if (oldPath in nextCursor) {
+            nextCursor[newPath] = nextCursor[oldPath]
+            delete nextCursor[oldPath]
+          }
+          const nextRecent = s.recentFiles.map((p) => (p === oldPath ? newPath : p))
+          const nextAutoNamed = new Set(s.autoNamedPaths)
+          if (nextAutoNamed.has(oldPath)) {
+            nextAutoNamed.delete(oldPath)
+            nextAutoNamed.add(newPath)
+          }
+          const nextModes = { ...s.fileEditorModes }
+          if (oldPath in nextModes) {
+            nextModes[newPath] = nextModes[oldPath]
+            delete nextModes[oldPath]
+          }
+          const nextOrphans = new Set(s.orphanedPaths)
+          if (nextOrphans.has(oldPath)) {
+            nextOrphans.delete(oldPath)
+            nextOrphans.add(newPath)
+          }
+          return {
+            tabs: nextTabs,
+            activeTabId: nextActive,
+            paneRoot: nextPane,
+            scrollPositions: nextScroll,
+            cursorPositions: nextCursor,
+            recentFiles: nextRecent,
+            autoNamedPaths: nextAutoNamed,
+            fileEditorModes: nextModes,
+            orphanedPaths: nextOrphans
+          }
+        })
+        void persistSettings({
+          autoNamedPaths: Array.from(get().autoNamedPaths),
+          recentFiles: get().recentFiles,
+          fileEditorModes: get().fileEditorModes
+        })
+
+        // Move any module-level bookkeeping keyed by tab id.
+        if (lastTypedAt.has(oldPath)) {
+          const v = lastTypedAt.get(oldPath)!
+          lastTypedAt.delete(oldPath)
+          lastTypedAt.set(newPath, v)
+        }
+
+        const oldName = oldPath.split('/').pop() ?? oldPath
+        get().showToast(`${oldName} → ${newName}`)
+      } else if (evt.type === 'unlink') {
+        const tab = get().tabs.find((t) => t.path === evt.path)
+        if (!tab) continue
+        cancelPendingReload(evt.path)
+        const dirty = tab.content !== tab.savedContent
+        if (dirty) {
+          // Keep the tab open so the user can Save as… or Discard. The
+          // OrphanBanner renders based on `orphanedPaths`, and autosave
+          // is suppressed for orphaned paths (see useAutoSave).
           set((s) => {
+            const next = new Set(s.orphanedPaths)
+            next.add(evt.path)
+            return { orphanedPaths: next }
+          })
+        } else {
+          // Clean tab — silently close and tell the user why.
+          const name = tab.name
+          set((s) => {
+            const idx = s.tabs.findIndex((t) => t.id === tab.id)
             const nextTabs = s.tabs.filter((t) => t.id !== tab.id)
-            const nextActive = activeTabId === tab.id ? (nextTabs[0]?.id ?? null) : s.activeTabId
+            const nextActive =
+              s.activeTabId === tab.id
+                ? (nextTabs[Math.min(idx, nextTabs.length - 1)]?.id ?? null)
+                : s.activeTabId
             return { tabs: nextTabs, activeTabId: nextActive }
           })
+          lastTypedAt.delete(evt.path)
+          get().showToast(`${name} was deleted externally`)
         }
       } else if (evt.type === 'change') {
-        // External edit — reload the file's content if it's open and clean
-        const tab = tabs.find((t) => t.path === evt.path)
-        if (tab && tab.content === tab.savedContent) {
-          try {
-            const content = await window.api.readFile(evt.path)
-            set((s) => ({
-              tabs: s.tabs.map((t) =>
-                t.id === tab.id ? { ...t, content, savedContent: content } : t
-              )
-            }))
-          } catch {
-            // ignore
-          }
-        }
+        // Silent auto-reload — runs for both clean and dirty tabs. `doReload`
+        // handles self-write suppression (content already matches disk) and
+        // defers the apply if the user typed very recently.
+        void doReload(evt.path)
       }
     }
   },
@@ -1106,7 +1229,13 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     }
   },
 
-  closeTab: (id) =>
+  closeTab: (id) => {
+    // Clean up module-level bookkeeping keyed by path.
+    const closing = get().tabs.find((t) => t.id === id)
+    if (closing) {
+      cancelPendingReload(closing.path)
+      lastTypedAt.delete(closing.path)
+    }
     set((s) => {
       const idx = s.tabs.findIndex((t) => t.id === id)
       if (idx === -1) return s
@@ -1140,14 +1269,21 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       const { [id]: _, ...restScroll } = s.scrollPositions
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { [id]: _c, ...restCursor } = s.cursorPositions
+      let nextOrphans = s.orphanedPaths
+      if (closing && s.orphanedPaths.has(closing.path)) {
+        nextOrphans = new Set(s.orphanedPaths)
+        nextOrphans.delete(closing.path)
+      }
       return {
         tabs: nextTabs,
         activeTabId: nextActive,
         paneRoot: updatePaneTree(s.paneRoot),
         scrollPositions: restScroll,
-        cursorPositions: restCursor
+        cursorPositions: restCursor,
+        orphanedPaths: nextOrphans
       }
-    }),
+    })
+  },
 
   closeOtherTabs: (id) =>
     set((s) => {
@@ -1196,10 +1332,21 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     const tab = tabs.find((t) => t.id === activeTabId)
     if (!tab) return
     if (tab.content === tab.savedContent) return
+    // Cancel any deferred external reload — our write will otherwise race
+    // with it and either clobber the user's buffer or reload stale content.
+    cancelPendingReload(tab.path)
     await window.api.writeFile(tab.path, tab.content)
-    set((s) => ({
-      tabs: s.tabs.map((t) => (t.id === tab.id ? { ...t, savedContent: tab.content } : t))
-    }))
+    set((s) => {
+      const next: Partial<WorkspaceState> = {
+        tabs: s.tabs.map((t) => (t.id === tab.id ? { ...t, savedContent: tab.content } : t))
+      }
+      if (s.orphanedPaths.has(tab.path)) {
+        const nextOrphans = new Set(s.orphanedPaths)
+        nextOrphans.delete(tab.path)
+        next.orphanedPaths = nextOrphans
+      }
+      return next as Partial<WorkspaceState>
+    })
     const sections = get().sections
     const parent = sections.find((sec) => sectionContainsFile(sec, tab.path))
     if (parent) await get().refreshSection(parent.id)
@@ -1210,10 +1357,81 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     if (!tab) return
     if (tab.content === tab.savedContent) return
     const pending = tab.content
+    cancelPendingReload(tab.path)
     await window.api.writeFile(tab.path, pending)
-    set((s) => ({
-      tabs: s.tabs.map((t) => (t.id === tabId ? { ...t, savedContent: pending } : t))
-    }))
+    set((s) => {
+      const next: Partial<WorkspaceState> = {
+        tabs: s.tabs.map((t) => (t.id === tabId ? { ...t, savedContent: pending } : t))
+      }
+      if (s.orphanedPaths.has(tab.path)) {
+        const nextOrphans = new Set(s.orphanedPaths)
+        nextOrphans.delete(tab.path)
+        next.orphanedPaths = nextOrphans
+      }
+      return next as Partial<WorkspaceState>
+    })
+  },
+
+  saveOrphanedTabAs: async (tabId) => {
+    const tab = get().tabs.find((t) => t.id === tabId)
+    if (!tab) return
+    const chosen = await window.api.saveFileDialog(tab.name)
+    if (!chosen) return
+    cancelPendingReload(tab.path)
+    await window.api.writeFile(chosen, tab.content)
+    const oldPath = tab.path
+    const newName = chosen.split('/').pop() ?? tab.name
+    set((s) => {
+      const nextTabs = s.tabs.map((t) =>
+        t.path === oldPath
+          ? { ...t, id: chosen, path: chosen, name: newName, savedContent: tab.content }
+          : t
+      )
+      const nextActive = s.activeTabId === oldPath ? chosen : s.activeTabId
+      const nextPane = remapPaneTabId(s.paneRoot, oldPath, chosen)
+      const nextOrphans = new Set(s.orphanedPaths)
+      nextOrphans.delete(oldPath)
+      const nextScroll = { ...s.scrollPositions }
+      if (oldPath in nextScroll) {
+        nextScroll[chosen] = nextScroll[oldPath]
+        delete nextScroll[oldPath]
+      }
+      const nextCursor = { ...s.cursorPositions }
+      if (oldPath in nextCursor) {
+        nextCursor[chosen] = nextCursor[oldPath]
+        delete nextCursor[oldPath]
+      }
+      return {
+        tabs: nextTabs,
+        activeTabId: nextActive,
+        paneRoot: nextPane,
+        orphanedPaths: nextOrphans,
+        scrollPositions: nextScroll,
+        cursorPositions: nextCursor
+      }
+    })
+    if (lastTypedAt.has(oldPath)) {
+      lastTypedAt.delete(oldPath)
+    }
+    await get().refreshAllSections()
+  },
+
+  discardOrphanedTab: (tabId) => {
+    const tab = get().tabs.find((t) => t.id === tabId)
+    if (!tab) return
+    cancelPendingReload(tab.path)
+    lastTypedAt.delete(tab.path)
+    set((s) => {
+      const idx = s.tabs.findIndex((t) => t.id === tabId)
+      const nextTabs = s.tabs.filter((t) => t.id !== tabId)
+      const nextActive =
+        s.activeTabId === tabId
+          ? (nextTabs[Math.min(idx, nextTabs.length - 1)]?.id ?? null)
+          : s.activeTabId
+      const nextOrphans = new Set(s.orphanedPaths)
+      nextOrphans.delete(tab.path)
+      return { tabs: nextTabs, activeTabId: nextActive, orphanedPaths: nextOrphans }
+    })
   },
 
   // --- Close-with-unsaved-changes flow ---------------------------------
@@ -1418,9 +1636,18 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   },
 
   updateTabContent: (tabId, content) =>
-    set((s) => ({
-      tabs: s.tabs.map((t) => (t.id === tabId ? { ...t, content } : t))
-    })),
+    set((s) => {
+      const tab = s.tabs.find((t) => t.id === tabId)
+      // Only record a typing timestamp when content actually changed —
+      // otherwise a no-op setContent from reconciliation would defer the
+      // very reload that just ran.
+      if (tab && tab.content !== content) {
+        lastTypedAt.set(tab.path, Date.now())
+      }
+      return {
+        tabs: s.tabs.map((t) => (t.id === tabId ? { ...t, content } : t))
+      }
+    }),
 
   toggleSidebar: async () => {
     const next = !get().sidebarVisible
@@ -1491,6 +1718,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   closeCommandPalette: () => set({ commandPaletteOpen: false }),
   openShortcuts: () => set({ shortcutsOpen: true }),
   closeShortcuts: () => set({ shortcutsOpen: false }),
+  openFindBar: () => set({ findBarOpen: true }),
+  closeFindBar: () => set({ findBarOpen: false }),
   saveScrollPosition: (tabId, value) =>
     set((s) => ({
       scrollPositions: { ...s.scrollPositions, [tabId]: value }
@@ -1546,3 +1775,75 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
 }))
 
 let toastIdCounter = 0
+
+/**
+ * Apply an external change to an open tab. Called for every watcher `change`
+ * event on a path we have open. Does three things:
+ *
+ * 1. Suppresses our own writes by content equality (if disk matches what we
+ *    last saved, there's nothing to do — the watcher is echoing our write).
+ * 2. Defers the reload if the user typed within `TYPING_DEFER_MS`; retries
+ *    automatically via `scheduleReload` so the apply lands the moment the
+ *    user pauses.
+ * 3. Otherwise overwrites both `content` and `savedContent` in one go, which
+ *    keeps the dirty indicator honest and lets CodeMirror's own undo stack
+ *    recover the replaced buffer if the external write was surprising.
+ */
+const doReload = async (path: string): Promise<void> => {
+  const tab = useWorkspace.getState().tabs.find((t) => t.path === path)
+  if (!tab) return
+
+  let disk: string
+  try {
+    disk = await window.api.readFile(path)
+  } catch {
+    // Read failed (permissions, transient, etc.) — nothing safe to do here;
+    // a follow-up watcher event will retry.
+    return
+  }
+
+  // Self-write suppression: if disk already matches what we last saved, this
+  // is the echo of our own writeFile. No state change needed.
+  if (disk === tab.savedContent && disk === tab.content) return
+
+  // If the user typed very recently, don't yank the buffer out from under
+  // them mid-keystroke. Schedule a retry for when typing has paused.
+  const typedAt = lastTypedAt.get(path)
+  if (typedAt !== undefined && Date.now() - typedAt < TYPING_DEFER_MS) {
+    scheduleReload(path)
+    return
+  }
+
+  // Re-read state because the async readFile may have been overtaken by a
+  // user edit — we want the *current* tab id, not a stale closure.
+  const current = useWorkspace.getState().tabs.find((t) => t.path === path)
+  if (!current) return
+
+  useWorkspace.setState((s) => ({
+    tabs: s.tabs.map((t) => (t.id === current.id ? { ...t, content: disk, savedContent: disk } : t))
+  }))
+}
+
+/** Debounce-retry a reload until the user has stopped typing. Replaces any
+ *  previously-scheduled reload for the same path. */
+const scheduleReload = (path: string): void => {
+  const existing = pendingReloads.get(path)
+  if (existing) clearTimeout(existing)
+  const typedAt = lastTypedAt.get(path) ?? 0
+  const wait = Math.max(50, TYPING_DEFER_MS - (Date.now() - typedAt))
+  const timer = setTimeout(() => {
+    pendingReloads.delete(path)
+    void doReload(path)
+  }, wait)
+  pendingReloads.set(path, timer)
+}
+
+/** Cancel any pending deferred reload for `path`. Called before we save
+ *  or close a tab, so a stale watcher event doesn't fire into emptiness. */
+const cancelPendingReload = (path: string): void => {
+  const t = pendingReloads.get(path)
+  if (t) {
+    clearTimeout(t)
+    pendingReloads.delete(path)
+  }
+}

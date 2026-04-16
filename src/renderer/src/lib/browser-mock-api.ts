@@ -61,6 +61,7 @@ const mockApi: SmarkupApi = {
   // No native file dialog in browser preview — the in-memory FS doesn't need
   // one and `window.showOpenFilePicker` isn't worth the polyfill effort.
   openFile: async () => null,
+  saveFileDialog: async () => null,
 
   readDirectory: async () => listEntries(),
 

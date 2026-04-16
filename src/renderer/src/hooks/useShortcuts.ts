@@ -24,7 +24,8 @@ export const useShortcuts = (): void => {
     openQuickOpen,
     openCommandPalette,
     startRenamingTab,
-    openShortcuts
+    openShortcuts,
+    openFindBar
   } = useWorkspace()
 
   // Tab-switch shortcuts (cmd+opt+arrow, ctrl+tab) must run in the capture
@@ -138,6 +139,14 @@ export const useShortcuts = (): void => {
         return
       }
 
+      // Find/replace: cmd/ctrl+f — opens the FindBar (or re-focuses if it's
+      // already open; the bar itself listens for ⌘F to re-select its input).
+      if (key === 'f' && !e.shiftKey && !e.altKey) {
+        e.preventDefault()
+        openFindBar()
+        return
+      }
+
       // Toggle editor mode: cmd/ctrl+; — toggles the active file's effective
       // mode (per-file override), not the global default.
       if (e.key === ';' && !e.shiftKey && !e.altKey) {
@@ -169,6 +178,7 @@ export const useShortcuts = (): void => {
     openQuickOpen,
     openCommandPalette,
     startRenamingTab,
-    openShortcuts
+    openShortcuts,
+    openFindBar
   ])
 }

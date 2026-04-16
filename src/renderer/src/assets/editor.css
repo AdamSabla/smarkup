@@ -436,3 +436,56 @@
   border-radius: 4px;
   padding: 0 4px;
 }
+
+/* --- Sticky heading breadcrumb (RawEditor) ---------------------------- */
+/*
+ * Stack of parent headings pinned to the top of the raw markdown editor,
+ * mirroring VS Code's "sticky scroll". Only mounted when scaled headings is
+ * off (RawEditor extension array gates this) — stacking lines of widely
+ * different sizes looks chaotic. Lives inside .cm-editor as a top Panel,
+ * outside .cm-scroller, so it never shifts editor content.
+ */
+.cm-sticky-stack {
+  background: var(--background);
+  border-bottom: 1px solid color-mix(in srgb, var(--foreground) 12%, transparent);
+  padding: 4px 48px; /* horizontal matches .cm-scroller's 48px content padding */
+  font-family:
+    ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+  font-size: 14px;
+  user-select: none;
+}
+.cm-sticky-line {
+  color: #f87171; /* HEADING_RED — matches the source-line heading color */
+  font-weight: 600;
+  line-height: 1.5;
+  cursor: pointer;
+  padding: 0 4px;
+  border-radius: 3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: background-color 80ms;
+}
+.cm-sticky-line:hover {
+  background: color-mix(in srgb, var(--foreground) 8%, transparent);
+}
+/* Per-level indent reads as visual ancestry — deeper headings sit further
+ * right, so the chain looks like a folder breadcrumb. */
+.cm-sticky-line[data-level='1'] {
+  padding-left: 4px;
+}
+.cm-sticky-line[data-level='2'] {
+  padding-left: 16px;
+}
+.cm-sticky-line[data-level='3'] {
+  padding-left: 28px;
+}
+.cm-sticky-line[data-level='4'] {
+  padding-left: 40px;
+}
+.cm-sticky-line[data-level='5'] {
+  padding-left: 52px;
+}
+.cm-sticky-line[data-level='6'] {
+  padding-left: 64px;
+}

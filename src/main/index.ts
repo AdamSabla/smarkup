@@ -239,6 +239,23 @@ const registerFileHandlers = (): void => {
     return result.filePaths[0]
   })
 
+  // "Save as…" entry used by the OrphanBanner when an externally-deleted
+  // dirty tab needs a new home. Returns the absolute path the user chose,
+  // or null if they cancelled.
+  ipcMain.handle('dialog:saveFile', async (event, defaultName: string) => {
+    const win = BrowserWindow.fromWebContents(event.sender)
+    if (!win) return null
+    const result = await dialog.showSaveDialog(win, {
+      defaultPath: defaultName,
+      filters: [
+        { name: 'Markdown', extensions: ['md', 'markdown', 'mkdn', 'mdown'] },
+        { name: 'All Files', extensions: ['*'] }
+      ]
+    })
+    if (result.canceled || !result.filePath) return null
+    return result.filePath
+  })
+
   ipcMain.handle('fs:readDirectory', async (_event, dirPath: string) => {
     return readDirectoryEntries(dirPath)
   })

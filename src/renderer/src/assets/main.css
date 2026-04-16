@@ -183,3 +183,36 @@
 .smarkup-todo-flash-fade {
   opacity: 0;
 }
+
+/* --- Find/replace match highlights ------------------------------------ */
+/*
+ * Two layers per editor:
+ *   - all matches: soft yellow background (Chrome-style)
+ *   - the current match: stronger orange so the user sees which one is
+ *     selected as they hit Enter / ‹ ›
+ *
+ * The visual editor uses our `.smarkup-search-match[-current]` classes
+ * (rendered by extensions/search-highlight.ts). CodeMirror's @codemirror/search
+ * package paints `.cm-searchMatch` / `.cm-searchMatch-selected` on every
+ * match in the raw editor — restyled here so both editors look identical.
+ */
+.smarkup-search-match,
+.cm-searchMatch {
+  background: rgba(250, 204, 21, 0.35); /* tailwind yellow-400 @ 35% */
+  border-radius: 2px;
+}
+.smarkup-search-match-current,
+.cm-searchMatch-selected {
+  background: #fb923c; /* tailwind orange-400 */
+  color: #1f2937; /* tailwind gray-800 — readable on the orange */
+  border-radius: 2px;
+}
+.dark .smarkup-search-match,
+.dark .cm-searchMatch {
+  background: rgba(250, 204, 21, 0.28);
+}
+.dark .smarkup-search-match-current,
+.dark .cm-searchMatch-selected {
+  background: #fb923c;
+  color: #1f2937;
+}

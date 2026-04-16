@@ -7,11 +7,14 @@ import {
   keymap,
   Decoration,
   DecorationSet,
+  Panel,
   ViewPlugin,
-  ViewUpdate
+  ViewUpdate,
+  showPanel
 } from '@codemirror/view'
 import { Prec, RangeSetBuilder } from '@codemirror/state'
 import { HighlightStyle, syntaxHighlighting } from '@codemirror/language'
+import { search } from '@codemirror/search'
 import { tags } from '@lezer/highlight'
 import { useWorkspace } from '@/store/workspace'
 import { getActiveRawEditor, setActiveRawEditor } from '@/lib/active-raw-editor'
@@ -203,6 +206,148 @@ const todoCommentHighlighter = ViewPlugin.fromClass(
   { decorations: (v) => v.decorations }
 )
 
+// ---------------------------------------------------------------------------
+// Sticky heading breadcrumb
+// ---------------------------------------------------------------------------
+// As the user scrolls down, the heading hierarchy of the current position
+// stacks at the top of the editor — H1 first, then H2 under it, etc., down
+// to whatever level the cursor is currently nested in. Clicking a row jumps
+// the editor back to that heading. Disabled when scaled headings is on,
+// since stacking lines of wildly different sizes looks chaotic.
+//
+// Implementation: a CodeMirror Panel (sits above scrollDOM, doesn't shift
+// content). Heading list is built once per doc edit by walking the lezer
+// syntax tree, so headings inside fenced code blocks aren't picked up.
+// Active chain is recomputed on scroll (rAF-throttled) and on viewport
+// updates; DOM is only re-rendered when the chain actually changes.
+
+type HeadingEntry = {
+  level: number // 1–6
+  text: string // display text, with `#` markers stripped
+  pos: number // line.from of the heading line (for scrollIntoView)
+  lineNumber: number // 1-indexed
+}
+
+const HEADING_LINE_RE = /^(#{1,6})\s+(.*)$/
+
+const collectHeadings = (view: EditorView): HeadingEntry[] => {
+  // Per-line regex scan. We deliberately don't use lezer's syntax tree here
+  // because it parses lazily — right after a big doc swap (paste, file load)
+  // the ATX heading nodes may not exist yet, leaving the breadcrumb empty
+  // until the next edit. The cost of regex scanning the whole doc on every
+  // edit is negligible (microseconds) and matches what `headingHighlighter`
+  // already does for syntax coloring.
+  const out: HeadingEntry[] = []
+  const doc = view.state.doc
+  for (let i = 1; i <= doc.lines; i++) {
+    const line = doc.line(i)
+    const m = line.text.match(HEADING_LINE_RE)
+    if (!m) continue
+    const body = m[2].trim()
+    out.push({
+      level: m[1].length,
+      // Keep the `#` markers in the rendered text so the breadcrumb mirrors
+      // the source line (matches the user's mental model of "this is the
+      // heading I just scrolled past"). Non-breaking space when the heading
+      // is empty so the row still has a clickable target.
+      text: body ? `${m[1]} ${body}` : `${m[1]}\u00a0`,
+      pos: line.from,
+      lineNumber: line.number
+    })
+  }
+  return out
+}
+
+const stickyChainsEqual = (a: HeadingEntry[], b: HeadingEntry[]): boolean => {
+  if (a.length !== b.length) return false
+  for (let i = 0; i < a.length; i++) {
+    if (a[i].pos !== b[i].pos || a[i].text !== b[i].text) return false
+  }
+  return true
+}
+
+const stickyHeadingPanel = (view: EditorView): Panel => {
+  const dom = document.createElement('div')
+  dom.className = 'cm-sticky-stack'
+  dom.style.display = 'none'
+
+  let headings = collectHeadings(view)
+  let lastChain: HeadingEntry[] = []
+  let renderPending = false
+
+  const computeChain = (): HeadingEntry[] => {
+    const block = view.lineBlockAtHeight(view.scrollDOM.scrollTop)
+    const firstVisibleLine = view.state.doc.lineAt(block.from).number
+    const chain: HeadingEntry[] = []
+    for (const h of headings) {
+      if (h.lineNumber >= firstVisibleLine) break
+      // A new heading at level L invalidates any existing chain entry at
+      // level >= L (those are now siblings or descendants of a new scope).
+      while (chain.length > 0 && chain[chain.length - 1].level >= h.level) chain.pop()
+      chain.push(h)
+    }
+    return chain
+  }
+
+  const renderNow = (): void => {
+    renderPending = false
+    const chain = computeChain()
+    if (stickyChainsEqual(chain, lastChain)) return
+    lastChain = chain
+
+    dom.replaceChildren()
+    for (const h of chain) {
+      const row = document.createElement('div')
+      row.className = 'cm-sticky-line'
+      row.dataset.level = String(h.level)
+      row.textContent = h.text
+      row.title = h.text
+      // mousedown + preventDefault keeps editor focus and prevents the
+      // click from moving the caret — pure scroll, matching Home/End.
+      row.addEventListener('mousedown', (e) => {
+        e.preventDefault()
+        view.dispatch({
+          effects: EditorView.scrollIntoView(h.pos, { y: 'start', yMargin: 4 })
+        })
+      })
+      dom.appendChild(row)
+    }
+    dom.style.display = chain.length === 0 ? 'none' : ''
+  }
+
+  // Defer renders to a microtask so they always run *after* the current
+  // CodeMirror update/measure cycle exits — `lineBlockAtHeight` will throw
+  // "Reading the editor layout isn't allowed during an update" otherwise.
+  // Microtasks (unlike rAF) aren't throttled when the tab is backgrounded,
+  // and they coalesce naturally because we early-return when one is queued.
+  const scheduleRender = (): void => {
+    if (renderPending) return
+    renderPending = true
+    queueMicrotask(renderNow)
+  }
+
+  view.scrollDOM.addEventListener('scroll', scheduleRender, { passive: true })
+  scheduleRender() // initial paint
+
+  return {
+    dom,
+    top: true,
+    update(update) {
+      if (update.docChanged) {
+        headings = collectHeadings(update.view)
+      }
+      if (update.docChanged || update.geometryChanged || update.viewportChanged) {
+        scheduleRender()
+      }
+    },
+    destroy() {
+      view.scrollDOM.removeEventListener('scroll', scheduleRender)
+    }
+  }
+}
+
+const stickyHeadingBreadcrumb = showPanel.of(stickyHeadingPanel)
+
 type Props = {
   tabId: string
   value: string
@@ -240,7 +385,10 @@ const RawEditor = ({ value, onChange, isActive }: Props): React.JSX.Element => {
       cancelAnimationFrame(scrollAnim)
       const start = el.scrollTop
       const delta = target - start
-      if (Math.abs(delta) < 1) { el.scrollTop = target; return }
+      if (Math.abs(delta) < 1) {
+        el.scrollTop = target
+        return
+      }
       const t0 = performance.now()
       const step = (now: number): void => {
         const p = Math.min((now - t0) / duration, 1)
@@ -392,7 +540,12 @@ const RawEditor = ({ value, onChange, isActive }: Props): React.JSX.Element => {
       placeholderHighlighter,
       inlineCodeHighlighter,
       todoCommentHighlighter,
-      ...(rawHeadingSizes ? [headingHighlighter] : []),
+      // Provide the search state field (decorations, current match) without
+      // the panel. We drive it via setSearchQuery / findNext from our own
+      // FindBar — basicSetup's searchKeymap is disabled below so Cmd+F never
+      // reaches CM6's default `openSearchPanel` handler.
+      search({ top: true }),
+      ...(rawHeadingSizes ? [headingHighlighter] : [stickyHeadingBreadcrumb]),
       ...(rawWordWrap ? [EditorView.lineWrapping] : []),
       EditorView.theme({
         '&': {
@@ -487,7 +640,11 @@ const RawEditor = ({ value, onChange, isActive }: Props): React.JSX.Element => {
         lineNumbers: false,
         foldGutter: false,
         highlightActiveLine: true,
-        highlightActiveLineGutter: false
+        highlightActiveLineGutter: false,
+        // Suppress CM6's built-in search keymap (Cmd+F → openSearchPanel) and
+        // the panel it ships. We render our own FindBar UI and drive the
+        // search state field directly via `setSearchQuery` / `findNext`.
+        searchKeymap: false
       }}
       className="h-full"
       height="100%"

@@ -835,6 +835,12 @@ type RecentsSectionProps = {
   onToggleExpanded: () => void
 }
 
+// Show the most-recent N first, then load 10 more per "Show more" click.
+// MAX_RECENT_FILES in the store caps the total to 50, so the button naturally
+// disappears once the user has paged through everything.
+const RECENTS_INITIAL = 10
+const RECENTS_PAGE = 10
+
 const RecentsSection = ({
   expanded,
   onToggleExpanded
@@ -846,6 +852,10 @@ const RecentsSection = ({
   const removeRecentFile = useWorkspace((s) => s.removeRecentFile)
   const clearRecentFiles = useWorkspace((s) => s.clearRecentFiles)
   const [menuOpen, setMenuOpen] = useState(false)
+  const [visibleCount, setVisibleCount] = useState(RECENTS_INITIAL)
+
+  const visible = recentFiles.slice(0, visibleCount)
+  const hasMore = recentFiles.length > visibleCount
 
   return (
     <div className="mb-3 rounded-md">
@@ -902,7 +912,7 @@ const RecentsSection = ({
               Open any markdown file to see it here
             </div>
           )}
-          {recentFiles.map((path) => (
+          {visible.map((path) => (
             <RecentsRow
               key={path}
               path={path}
@@ -911,6 +921,14 @@ const RecentsSection = ({
               onRemove={() => removeRecentFile(path)}
             />
           ))}
+          {hasMore && (
+            <button
+              onClick={() => setVisibleCount((n) => n + RECENTS_PAGE)}
+              className="block w-full rounded-md px-2 py-1 text-left text-[11px] text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
+            >
+              Show {Math.min(RECENTS_PAGE, recentFiles.length - visibleCount)} more
+            </button>
+          )}
         </>
       )}
     </div>

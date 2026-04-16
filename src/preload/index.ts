@@ -60,6 +60,10 @@ export type WatchEvent = {
   folder: string
   path: string
   type: 'add' | 'unlink' | 'change' | 'rename'
+  /** For `rename` only — the previous path of the file (inode-correlated
+   *  in the main-process watcher). Present so the renderer can migrate any
+   *  open tab's id/path instead of closing-and-reopening. */
+  fromPath?: string
 }
 
 export type WatchPayload = {
@@ -83,6 +87,11 @@ const api = {
   /** Prompt the user for any file on disk. Returns the chosen absolute path
    *  or null if they cancelled. Used by the sidebar's "Open file…" entry. */
   openFile: (): Promise<string | null> => ipcRenderer.invoke('dialog:openFile'),
+  /** Show a native "Save as…" dialog. Returns the chosen absolute path or
+   *  null if the user cancelled. Used by the OrphanBanner to rescue a tab
+   *  whose file was deleted externally. */
+  saveFileDialog: (defaultName: string): Promise<string | null> =>
+    ipcRenderer.invoke('dialog:saveFile', defaultName),
   readDirectory: (path: string): Promise<FileEntry[]> =>
     ipcRenderer.invoke('fs:readDirectory', path),
   readFile: (path: string): Promise<string> => ipcRenderer.invoke('fs:readFile', path),

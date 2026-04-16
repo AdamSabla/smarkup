@@ -28,6 +28,7 @@ const shortcuts: { section: string; items: { label: string; keys: string }[] }[]
     section: 'Editor',
     items: [
       { label: 'Toggle visual / raw mode', keys: `${mod} ;` },
+      { label: 'Find / replace', keys: `${mod} F` },
       { label: 'Rename file', keys: `${mod} R` },
       { label: 'Split pane', keys: `${mod} \\` },
       { label: 'Toggle bullet list', keys: `${mod} Shift 8` },

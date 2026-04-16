@@ -11,6 +11,7 @@ export const useAutoSave = (): void => {
   const autoSaveDelayMs = useWorkspace((s) => s.autoSaveDelayMs)
   const activeTabId = useWorkspace((s) => s.activeTabId)
   const tabs = useWorkspace((s) => s.tabs)
+  const orphanedPaths = useWorkspace((s) => s.orphanedPaths)
   const saveActive = useWorkspace((s) => s.saveActive)
 
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -18,9 +19,13 @@ export const useAutoSave = (): void => {
   const content = activeTab?.content
   const savedContent = activeTab?.savedContent
   const dirty = activeTab && content !== savedContent
+  // If the tab's file was deleted externally, pause autosave. Autosaving
+  // would silently re-create the file at its old path and the OrphanBanner
+  // would disappear — the user should explicitly choose Save as… or Discard.
+  const isOrphan = activeTab ? orphanedPaths.has(activeTab.path) : false
 
   useEffect(() => {
-    if (!autoSave || !dirty) {
+    if (!autoSave || !dirty || isOrphan) {
       if (timerRef.current) {
         clearTimeout(timerRef.current)
         timerRef.current = null
@@ -40,5 +45,5 @@ export const useAutoSave = (): void => {
         timerRef.current = null
       }
     }
-  }, [autoSave, autoSaveDelayMs, dirty, content, saveActive])
+  }, [autoSave, autoSaveDelayMs, dirty, content, isOrphan, saveActive])
 }
