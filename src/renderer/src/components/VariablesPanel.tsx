@@ -117,7 +117,7 @@ const VariablesPanel = (): React.JSX.Element | null => {
       className="flex max-h-48 shrink-0 flex-col border-t bg-background"
       aria-label="Variables panel"
     >
-      <div className="flex items-center justify-between border-b px-3 py-1.5">
+      <div className="flex items-center justify-between px-3 py-1.5">
         <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
           Variables {groups.length > 0 ? `(${groups.length})` : ''}
         </span>

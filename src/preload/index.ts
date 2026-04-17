@@ -176,6 +176,69 @@ const api = {
       ipcRenderer.off('app:openDiffPicker', handler)
     }
   },
+  onNewDraft: (callback: () => void): (() => void) => {
+    const handler = (): void => callback()
+    ipcRenderer.on('app:newDraft', handler)
+    return () => {
+      ipcRenderer.off('app:newDraft', handler)
+    }
+  },
+  onSave: (callback: () => void): (() => void) => {
+    const handler = (): void => callback()
+    ipcRenderer.on('app:save', handler)
+    return () => {
+      ipcRenderer.off('app:save', handler)
+    }
+  },
+  onSaveAs: (callback: () => void): (() => void) => {
+    const handler = (): void => callback()
+    ipcRenderer.on('app:saveAs', handler)
+    return () => {
+      ipcRenderer.off('app:saveAs', handler)
+    }
+  },
+  onDuplicateFile: (callback: () => void): (() => void) => {
+    const handler = (): void => callback()
+    ipcRenderer.on('app:duplicateFile', handler)
+    return () => {
+      ipcRenderer.off('app:duplicateFile', handler)
+    }
+  },
+  onRenameFile: (callback: () => void): (() => void) => {
+    const handler = (): void => callback()
+    ipcRenderer.on('app:renameFile', handler)
+    return () => {
+      ipcRenderer.off('app:renameFile', handler)
+    }
+  },
+  onReopenClosedTab: (callback: () => void): (() => void) => {
+    const handler = (): void => callback()
+    ipcRenderer.on('app:reopenClosedTab', handler)
+    return () => {
+      ipcRenderer.off('app:reopenClosedTab', handler)
+    }
+  },
+  onOpenSettings: (callback: () => void): (() => void) => {
+    const handler = (): void => callback()
+    ipcRenderer.on('app:openSettings', handler)
+    return () => {
+      ipcRenderer.off('app:openSettings', handler)
+    }
+  },
+  onToggleSidebar: (callback: () => void): (() => void) => {
+    const handler = (): void => callback()
+    ipcRenderer.on('app:toggleSidebar', handler)
+    return () => {
+      ipcRenderer.off('app:toggleSidebar', handler)
+    }
+  },
+  onOpenFindBar: (callback: () => void): (() => void) => {
+    const handler = (): void => callback()
+    ipcRenderer.on('app:openFindBar', handler)
+    return () => {
+      ipcRenderer.off('app:openFindBar', handler)
+    }
+  },
   /** Main sends a file path here when the OS asks us to open a file
    *  ("Open With…" in Finder, file double-click on Win/Linux, or the
    *  File → Open… menu item). The renderer routes it through

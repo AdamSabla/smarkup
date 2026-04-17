@@ -158,6 +158,15 @@ const mockApi: SmarkupApi = {
   onShowShortcuts: () => () => undefined,
   onToggleVariablesPanel: () => () => undefined,
   onOpenDiffPicker: () => () => undefined,
+  onNewDraft: () => () => undefined,
+  onSave: () => () => undefined,
+  onSaveAs: () => () => undefined,
+  onDuplicateFile: () => () => undefined,
+  onRenameFile: () => () => undefined,
+  onReopenClosedTab: () => () => undefined,
+  onOpenSettings: () => () => undefined,
+  onToggleSidebar: () => () => undefined,
+  onOpenFindBar: () => () => undefined,
   onOpenFileFromDisk: () => () => undefined,
 
   // Window management: no-op in browser mode (single window only)

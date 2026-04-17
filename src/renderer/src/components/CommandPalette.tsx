@@ -28,7 +28,8 @@ import {
   Trash2Icon,
   TrashIcon,
   KeyboardIcon,
-  XIcon
+  XIcon,
+  RotateCcwIcon
 } from 'lucide-react'
 import { useShallow } from 'zustand/react/shallow'
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog'
@@ -39,7 +40,8 @@ import {
   CommandInput,
   CommandItem,
   CommandList,
-  CommandSeparator
+  CommandSeparator,
+  CommandShortcut
 } from '@/components/ui/command'
 import Spinner from '@/components/ui/spinner'
 import { useWorkspace, type FolderNode } from '@/store/workspace'
@@ -50,6 +52,8 @@ type FileItem = {
   displayName: string
   folder: string
 }
+
+const isMac = navigator.userAgent.toLowerCase().includes('mac')
 
 type Page = 'commands' | 'movePicker' | 'createFolder'
 
@@ -96,7 +100,9 @@ const CommandPaletteBody = (): React.JSX.Element => {
     moveTargetsLoading,
     refreshMoveTargets,
     sections,
-    startRenamingTab
+    startRenamingTab,
+    reopenClosedTab,
+    closedTabsStack
   } = useWorkspace(
     useShallow((s) => ({
       closeCommandPalette: s.closeCommandPalette,
@@ -136,7 +142,9 @@ const CommandPaletteBody = (): React.JSX.Element => {
       moveTargetsLoading: s.moveTargetsLoading,
       refreshMoveTargets: s.refreshMoveTargets,
       sections: s.sections,
-      startRenamingTab: s.startRenamingTab
+      startRenamingTab: s.startRenamingTab,
+      reopenClosedTab: s.reopenClosedTab,
+      closedTabsStack: s.closedTabsStack
     }))
   )
 
@@ -215,7 +223,7 @@ const CommandPaletteBody = (): React.JSX.Element => {
     () =>
       new Fuse(fileItems, {
         keys: ['displayName', 'folder'],
-        threshold: 0.4,
+        threshold: 0.25,
         includeScore: true,
         ignoreLocation: true
       }),
@@ -352,7 +360,11 @@ const CommandPaletteBody = (): React.JSX.Element => {
                       ? '.' + activeTab.name.split('.').pop()!
                       : ''
                     const base = activeTab.name.replace(/\.[^.]+$/, '')
-                    const copyName = `${base} copy${ext}`
+                    // If the base name ends with a number, bump it; otherwise append " copy"
+                    const trailingNum = base.match(/^(.*?)(\d+)$/)
+                    const copyName = trailingNum
+                      ? `${trailingNum[1]}${Number(trailingNum[2]) + 1}${ext}`
+                      : `${base} copy${ext}`
                     const newPath = await window.api.createFile(dir, copyName)
                     await window.api.writeFile(newPath, activeTab.content)
                     void openFile(newPath)
@@ -362,6 +374,7 @@ const CommandPaletteBody = (): React.JSX.Element => {
                   }}
                 >
                   <CopyPlusIcon /> Duplicate file
+                  <CommandShortcut>{isMac ? '⌘⇧D' : 'Ctrl+Shift+D'}</CommandShortcut>
                 </CommandItem>
                 <CommandItem onSelect={() => goTo('movePicker')}>
                   <MoveIcon /> Move file…
@@ -435,6 +448,18 @@ const CommandPaletteBody = (): React.JSX.Element => {
                 >
                   <XIcon /> Close all tabs
                 </CommandItem>
+                {closedTabsStack.length > 0 && (
+                  <CommandItem
+                    value="reopen closed tab undo"
+                    onSelect={() => {
+                      dismiss()
+                      void reopenClosedTab()
+                    }}
+                  >
+                    <RotateCcwIcon /> Reopen closed tab
+                    <CommandShortcut>{isMac ? '⌘⇧T' : 'Ctrl+Shift+T'}</CommandShortcut>
+                  </CommandItem>
+                )}
               </CommandGroup>
             </>
           )}
@@ -468,6 +493,7 @@ const CommandPaletteBody = (): React.JSX.Element => {
               <EyeIcon /> Switch to {effectiveMode === 'visual' ? 'Raw' : 'Visual'} mode
             </CommandItem>
             <CommandItem
+              value="compare files diff"
               onSelect={() => {
                 openDiffPicker()
                 dismiss()

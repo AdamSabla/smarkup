@@ -131,7 +131,7 @@ const createWindow = (init?: WindowInit): BrowserWindow => {
           height: 36
         }
       : undefined,
-    trafficLightPosition: isMac ? { x: 14, y: 12 } : undefined,
+    trafficLightPosition: isMac ? { x: 14, y: 10 } : undefined,
     vibrancy: isMac ? 'sidebar' : undefined,
     visualEffectState: isMac ? 'followWindow' : undefined,
     backgroundColor: isMac ? '#00000000' : nativeTheme.shouldUseDarkColors ? '#171717' : '#ffffff',
@@ -634,6 +634,15 @@ app.whenReady().then(() => {
       label: 'File',
       submenu: [
         {
+          label: 'New Draft',
+          accelerator: 'CmdOrCtrl+N',
+          click: (_menuItem, browserWindow): void => {
+            const win =
+              (browserWindow as BrowserWindow | undefined) ?? BrowserWindow.getFocusedWindow()
+            if (win) win.webContents.send('app:newDraft')
+          }
+        },
+        {
           label: 'Open…',
           accelerator: 'CmdOrCtrl+O',
           click: async (_menuItem, browserWindow): Promise<void> => {
@@ -649,6 +658,54 @@ app.whenReady().then(() => {
             })
             if (result.canceled || result.filePaths.length === 0) return
             win.webContents.send('app:openFileFromDisk', result.filePaths[0])
+          }
+        },
+        {
+          label: 'Reopen Closed Tab',
+          accelerator: 'CmdOrCtrl+Shift+T',
+          click: (_menuItem, browserWindow): void => {
+            const win =
+              (browserWindow as BrowserWindow | undefined) ?? BrowserWindow.getFocusedWindow()
+            if (win) win.webContents.send('app:reopenClosedTab')
+          }
+        },
+        { type: 'separator' as const },
+        {
+          label: 'Save',
+          accelerator: 'CmdOrCtrl+S',
+          click: (_menuItem, browserWindow): void => {
+            const win =
+              (browserWindow as BrowserWindow | undefined) ?? BrowserWindow.getFocusedWindow()
+            if (win) win.webContents.send('app:save')
+          }
+        },
+        {
+          label: 'Save As…',
+          accelerator: 'CmdOrCtrl+Shift+S',
+          click: (_menuItem, browserWindow): void => {
+            const win =
+              (browserWindow as BrowserWindow | undefined) ?? BrowserWindow.getFocusedWindow()
+            if (win) win.webContents.send('app:saveAs')
+          }
+        },
+        { type: 'separator' as const },
+        {
+          label: 'Duplicate File',
+          accelerator: 'CmdOrCtrl+Shift+D',
+          click: (_menuItem, browserWindow): void => {
+            const win =
+              (browserWindow as BrowserWindow | undefined) ?? BrowserWindow.getFocusedWindow()
+            if (win) win.webContents.send('app:duplicateFile')
+          }
+        },
+        {
+          label: 'Rename…',
+          accelerator: 'CmdOrCtrl+R',
+          registerAccelerator: false,
+          click: (_menuItem, browserWindow): void => {
+            const win =
+              (browserWindow as BrowserWindow | undefined) ?? BrowserWindow.getFocusedWindow()
+            if (win) win.webContents.send('app:renameFile')
           }
         },
         { type: 'separator' as const },
@@ -671,14 +728,13 @@ app.whenReady().then(() => {
       label: 'View',
       submenu: [
         {
-          label: 'Keyboard Shortcuts',
-          accelerator: 'CmdOrCtrl+Shift+/',
+          label: 'Toggle Sidebar',
+          accelerator: 'CmdOrCtrl+.',
           click: (): void => {
             const win = BrowserWindow.getFocusedWindow()
-            if (win) win.webContents.send('app:showShortcuts')
+            if (win) win.webContents.send('app:toggleSidebar')
           }
         },
-        { type: 'separator' as const },
         {
           label: 'Show Variables Panel',
           accelerator: 'CmdOrCtrl+Shift+V',
@@ -687,13 +743,37 @@ app.whenReady().then(() => {
             if (win) win.webContents.send('app:toggleVariablesPanel')
           }
         },
-        { type: 'separator' as const },
         {
           label: 'Compare Files\u2026',
-          accelerator: 'CmdOrCtrl+Shift+D',
           click: (): void => {
             const win = BrowserWindow.getFocusedWindow()
             if (win) win.webContents.send('app:openDiffPicker')
+          }
+        },
+        { type: 'separator' as const },
+        {
+          label: 'Find / Replace',
+          accelerator: 'CmdOrCtrl+F',
+          click: (): void => {
+            const win = BrowserWindow.getFocusedWindow()
+            if (win) win.webContents.send('app:openFindBar')
+          }
+        },
+        {
+          label: 'Settings',
+          accelerator: 'CmdOrCtrl+,',
+          click: (): void => {
+            const win = BrowserWindow.getFocusedWindow()
+            if (win) win.webContents.send('app:openSettings')
+          }
+        },
+        {
+          label: 'Keyboard Shortcuts',
+          accelerator: 'CmdOrCtrl+Shift+/',
+          registerAccelerator: false,
+          click: (): void => {
+            const win = BrowserWindow.getFocusedWindow()
+            if (win) win.webContents.send('app:showShortcuts')
           }
         },
         { type: 'separator' as const },

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import TopBar from '@/components/TopBar'
 import Sidebar from '@/components/Sidebar'
+import SidebarHeader from '@/components/SidebarHeader'
 import UpdateBanner from '@/components/UpdateBanner'
 import SettingsDialog from '@/components/SettingsDialog'
 import QuickOpen from '@/components/QuickOpen'
@@ -91,6 +91,70 @@ const App = (): React.JSX.Element => {
     })
   }, [])
 
+  // File menu actions routed from the native menu bar
+  useEffect(() => {
+    return window.api.onNewDraft(() => {
+      void useWorkspace.getState().createDraft()
+    })
+  }, [])
+  useEffect(() => {
+    return window.api.onSave(() => {
+      void useWorkspace.getState().saveActive()
+    })
+  }, [])
+  useEffect(() => {
+    return window.api.onSaveAs(() => {
+      void useWorkspace.getState().saveActiveAs()
+    })
+  }, [])
+  useEffect(() => {
+    return window.api.onDuplicateFile(() => {
+      const s = useWorkspace.getState()
+      const tab = s.activeTabId ? s.tabs.find((t) => t.id === s.activeTabId) : undefined
+      if (!tab || tab.path.startsWith('draft://')) return
+      ;(async (): Promise<void> => {
+        const dir = await window.api.dirname(tab.path)
+        const ext = tab.name.includes('.') ? '.' + tab.name.split('.').pop()! : ''
+        const base = tab.name.replace(/\.[^.]+$/, '')
+        const trailingNum = base.match(/^(.*?)(\d+)$/)
+        const copyName = trailingNum
+          ? `${trailingNum[1]}${Number(trailingNum[2]) + 1}${ext}`
+          : `${base} copy${ext}`
+        const newPath = await window.api.createFile(dir, copyName)
+        await window.api.writeFile(newPath, tab.content)
+        void useWorkspace.getState().openFile(newPath)
+        requestAnimationFrame(() => useWorkspace.getState().startRenamingTab())
+      })()
+    })
+  }, [])
+  useEffect(() => {
+    return window.api.onRenameFile(() => {
+      if (useWorkspace.getState().activeTabId) {
+        useWorkspace.getState().startRenamingTab()
+      }
+    })
+  }, [])
+  useEffect(() => {
+    return window.api.onReopenClosedTab(() => {
+      void useWorkspace.getState().reopenClosedTab()
+    })
+  }, [])
+  useEffect(() => {
+    return window.api.onOpenSettings(() => {
+      useWorkspace.getState().openSettings()
+    })
+  }, [])
+  useEffect(() => {
+    return window.api.onToggleSidebar(() => {
+      void useWorkspace.getState().toggleSidebar()
+    })
+  }, [])
+  useEffect(() => {
+    return window.api.onOpenFindBar(() => {
+      useWorkspace.getState().openFindBar()
+    })
+  }, [])
+
   useShortcuts()
   useUpdateSubscription()
   useTheme()
@@ -101,13 +165,15 @@ const App = (): React.JSX.Element => {
 
   return (
     <div className="flex h-full w-full flex-col bg-background text-foreground">
-      <TopBar />
       <UpdateBanner />
       <div className="flex min-h-0 flex-1">
         {sidebarVisible && (
           <>
-            <div className="h-full shrink-0 overflow-hidden" style={{ width: sidebarWidth }}>
-              <Sidebar />
+            <div className="flex h-full shrink-0 flex-col overflow-hidden" style={{ width: sidebarWidth }}>
+              <SidebarHeader />
+              <div className="min-h-0 flex-1 overflow-hidden">
+                <Sidebar />
+              </div>
             </div>
             <div
               className="relative flex w-px shrink-0 cursor-col-resize items-center justify-center bg-border after:absolute after:inset-y-0 after:left-1/2 after:w-1 after:-translate-x-1/2 hover:bg-ring/40"

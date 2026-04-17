@@ -59,6 +59,7 @@ const DiffPickerDialog = (): React.JSX.Element => {
                 value={leftPath || null}
                 onSelect={setLeftPath}
                 className="flex-1"
+                variant="outlined"
               />
               <Button variant="outline" size="sm" onClick={() => void handleBrowse('left')}>
                 Browse...
@@ -74,6 +75,7 @@ const DiffPickerDialog = (): React.JSX.Element => {
                 value={rightPath || null}
                 onSelect={setRightPath}
                 className="flex-1"
+                variant="outlined"
               />
               <Button variant="outline" size="sm" onClick={() => void handleBrowse('right')}>
                 Browse...

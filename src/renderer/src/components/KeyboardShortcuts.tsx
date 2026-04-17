@@ -23,7 +23,7 @@ const shortcuts: { section: string; items: { label: string; keys: string }[] }[]
       { label: 'Settings', keys: `${mod} ,` },
       { label: 'Keyboard shortcuts', keys: `${mod} Shift /` },
       { label: 'Toggle variables panel', keys: `${mod} Shift V` },
-      { label: 'Compare files', keys: `${mod} Shift D` }
+      { label: 'Duplicate file', keys: `${mod} Shift D` }
     ]
   },
   {
@@ -43,6 +43,7 @@ const shortcuts: { section: string; items: { label: string; keys: string }[] }[]
     section: 'Tabs & Sidebar',
     items: [
       { label: 'Close tab / pane', keys: `${mod} W` },
+      { label: 'Reopen closed tab', keys: `${mod} Shift T` },
       { label: 'Close all tabs', keys: `${mod} Shift W` },
       { label: 'Next tab', keys: 'Ctrl Tab' },
       { label: 'Previous tab', keys: 'Ctrl Shift Tab' },

@@ -357,7 +357,7 @@ const DiffView = ({ diffTab }: Props): React.JSX.Element => {
               onSelect={(path) => void replaceDiffFile(diffTab.id, 'left', path)}
             />
           </div>
-          <div className="min-h-0 flex-1">
+          <div className="min-h-0 flex-1 overflow-hidden">
             <CodeMirror
               value={leftContent}
               onChange={onLeftChange}
@@ -397,7 +397,7 @@ const DiffView = ({ diffTab }: Props): React.JSX.Element => {
               align="right"
             />
           </div>
-          <div className="min-h-0 flex-1">
+          <div className="min-h-0 flex-1 overflow-hidden">
             <CodeMirror
               value={rightContent}
               onChange={onRightChange}

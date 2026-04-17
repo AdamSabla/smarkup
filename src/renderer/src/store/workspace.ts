@@ -13,7 +13,12 @@ import { deriveFilenameFromContent } from '@/lib/derive-filename'
 export type EditorMode = 'visual' | 'raw'
 
 // --- Pane tree types for split-screen ---
-export type LeafPane = { type: 'leaf'; id: string; tabId: string | null }
+export type LeafPane = {
+  type: 'leaf'
+  id: string
+  tabIds: string[]           // ordered tab references for this pane
+  activeTabId: string | null // which tab is visible in this pane
+}
 export type SplitPane = {
   type: 'split'
   id: string
@@ -46,10 +51,34 @@ const pendingReloads = new Map<string, ReturnType<typeof setTimeout>>()
  *  that an agent's writes still land quickly when the user pauses. */
 const TYPING_DEFER_MS = 1500
 
-/** Find the leaf pane showing a given tabId */
+/** Find the leaf pane whose active tab matches a given tabId */
 const findLeafByTabId = (node: PaneNode, tabId: string): LeafPane | null => {
-  if (node.type === 'leaf') return node.tabId === tabId ? node : null
+  if (node.type === 'leaf') return node.tabIds.includes(tabId) ? node : null
   return findLeafByTabId(node.children[0], tabId) ?? findLeafByTabId(node.children[1], tabId)
+}
+
+/** Find a leaf pane by its pane id */
+const findLeafById = (node: PaneNode, paneId: string): LeafPane | null => {
+  if (node.type === 'leaf') return node.id === paneId ? node : null
+  if (node.type === 'split') {
+    return findLeafById(node.children[0], paneId) ?? findLeafById(node.children[1], paneId)
+  }
+  return null
+}
+
+/** Collect all tab ids referenced by any leaf in the pane tree */
+const collectAllPaneTabIds = (node: PaneNode): Set<string> => {
+  if (node.type === 'leaf') return new Set(node.tabIds)
+  const left = collectAllPaneTabIds(node.children[0])
+  const right = collectAllPaneTabIds(node.children[1])
+  for (const id of right) left.add(id)
+  return left
+}
+
+/** Derive the global activeTabId from the active pane */
+const deriveActiveTabId = (paneRoot: PaneNode, activePaneId: string): string | null => {
+  const leaf = findLeafById(paneRoot, activePaneId)
+  return leaf?.activeTabId ?? null
 }
 
 /** Find a node by its id */
@@ -78,16 +107,33 @@ const replaceNode = (root: PaneNode, targetId: string, replacement: PaneNode): P
   }
 }
 
+/**
+ * Collapse empty leaf panes in splits. If a split has an empty leaf child,
+ * replace the split with the non-empty sibling. Recurses so nested collapses
+ * work. Returns the collapsed tree and the id of the leaf the activePaneId
+ * should fall back to if the active pane was removed.
+ */
+const collapseEmptyPanes = (node: PaneNode): PaneNode => {
+  if (node.type === 'leaf') return node
+  const left = collapseEmptyPanes(node.children[0])
+  const right = collapseEmptyPanes(node.children[1])
+  // If either child is an empty leaf, collapse to the other child
+  if (left.type === 'leaf' && left.tabIds.length === 0) return right
+  if (right.type === 'leaf' && right.tabIds.length === 0) return left
+  if (left === node.children[0] && right === node.children[1]) return node
+  return { ...node, children: [left, right] as [PaneNode, PaneNode] }
+}
+
 /** Rewrite the state so every tab/pane/activeTab reference to `oldPath`
  *  (or any descendant path `oldPath + '/...'`) points at the new location.
  *  Used after a folder rename/move — the folder's subtree of files all get
  *  new absolute paths in one shot, and the tab ids must follow. */
 const remapPathPrefix = (
-  s: { tabs: OpenFile[]; activeTabId: string | null; paneRoot: PaneNode },
+  s: { tabs: OpenFile[]; paneRoot: PaneNode; activePaneId: string },
   oldPath: string,
   newPath: string
 ): { tabs: OpenFile[]; activeTabId: string | null; paneRoot: PaneNode } => {
-  if (oldPath === newPath) return s
+  if (oldPath === newPath) return { tabs: s.tabs, activeTabId: deriveActiveTabId(s.paneRoot, s.activePaneId), paneRoot: s.paneRoot }
   const prefix = oldPath + '/'
   const map = (p: string): string =>
     p === oldPath ? newPath : p.startsWith(prefix) ? newPath + p.slice(oldPath.length) : p
@@ -98,7 +144,7 @@ const remapPathPrefix = (
     paneRoot = remapPaneTabId(paneRoot, t.id, mapped)
     return { ...t, id: mapped, path: mapped, name: mapped.split('/').pop() ?? t.name }
   })
-  const activeTabId = s.activeTabId ? map(s.activeTabId) : s.activeTabId
+  const activeTabId = deriveActiveTabId(paneRoot, s.activePaneId)
   return { tabs, activeTabId, paneRoot }
 }
 
@@ -168,13 +214,21 @@ const remapFileEditorModes = (
   return changed ? next : modes
 }
 
-/** Rewrite any leaf whose `tabId` matches `oldTabId` to reference `newTabId`.
+/** Rewrite any leaf whose `tabIds` contain `oldTabId` to reference `newTabId`.
  *  Used after rename/move, where the tab's id changes but the pane leaf
  *  still holds the stale id — without this, the pane points at a tab that
  *  no longer exists and the editor falls back to the empty state. */
 const remapPaneTabId = (root: PaneNode, oldTabId: string, newTabId: string): PaneNode => {
   if (root.type === 'leaf') {
-    return root.tabId === oldTabId ? { ...root, tabId: newTabId } : root
+    const idx = root.tabIds.indexOf(oldTabId)
+    if (idx === -1) return root
+    const nextTabIds = [...root.tabIds]
+    nextTabIds[idx] = newTabId
+    return {
+      ...root,
+      tabIds: nextTabIds,
+      activeTabId: root.activeTabId === oldTabId ? newTabId : root.activeTabId
+    }
   }
   return {
     ...root,
@@ -251,6 +305,13 @@ export type DiffTab = {
   leftPath: string  // absolute path — must have a matching tab in `tabs`
   rightPath: string // absolute path — must have a matching tab in `tabs`
 }
+
+/** Entry in the "reopen closed tab" stack. */
+type ClosedTabEntry =
+  | { kind: 'file'; path: string; content: string; savedContent: string }
+  | { kind: 'diff'; leftPath: string; rightPath: string }
+
+const MAX_CLOSED_TABS = 20
 
 let diffIdCounter = 0
 const nextDiffId = (): string => `diff:${++diffIdCounter}`
@@ -342,6 +403,9 @@ type WorkspaceState = {
   /** Transient bottom-of-window notice (stale file, etc.). Null when hidden. */
   toast: Toast | null
   hydrated: boolean
+
+  // --- Closed tab history (for reopen) ---
+  closedTabsStack: ClosedTabEntry[]
 
   // --- Diff/compare view state ---
   diffTabs: DiffTab[]
@@ -470,6 +534,9 @@ type WorkspaceState = {
   /** Hide the current toast if any. */
   dismissToast: () => void
 
+  // --- Reopen closed tab ---
+  reopenClosedTab: () => Promise<void>
+
   // --- Diff/compare view actions ---
   openDiffPicker: (prefill?: { leftPath?: string }) => void
   closeDiffPicker: () => void
@@ -587,7 +654,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   moveTargetsLoading: false,
   tabs: [],
   activeTabId: null,
-  paneRoot: { type: 'leaf', id: 'root', tabId: null },
+  paneRoot: { type: 'leaf', id: 'root', tabIds: [], activeTabId: null },
   activePaneId: 'root',
   updateStatus: { kind: 'idle' },
   settingsOpen: false,
@@ -606,6 +673,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   toast: null,
   hydrated: false,
 
+  closedTabsStack: [],
   diffTabs: [],
   diffPickerOpen: false,
   diffPickerPrefill: null,
@@ -670,7 +738,12 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     set({
       tabs: restoredTabs,
       activeTabId,
-      paneRoot: { type: 'leaf', id: 'root', tabId: activeTabId },
+      paneRoot: {
+        type: 'leaf',
+        id: 'root',
+        tabIds: restoredTabs.map((t) => t.id),
+        activeTabId
+      },
       activePaneId: 'root',
       hydrated: true
     })
@@ -801,7 +874,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
           }
           return {
             tabs: nextTabs,
-            activeTabId: nextActive,
+            activeTabId: deriveActiveTabId(nextPane, s.activePaneId),
             paneRoot: nextPane,
             scrollPositions: nextScroll,
             cursorPositions: nextCursor,
@@ -843,15 +916,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         } else {
           // Clean tab — silently close and tell the user why.
           const name = tab.name
-          set((s) => {
-            const idx = s.tabs.findIndex((t) => t.id === tab.id)
-            const nextTabs = s.tabs.filter((t) => t.id !== tab.id)
-            const nextActive =
-              s.activeTabId === tab.id
-                ? (nextTabs[Math.min(idx, nextTabs.length - 1)]?.id ?? null)
-                : s.activeTabId
-            return { tabs: nextTabs, activeTabId: nextActive }
-          })
+          get().closeTab(tab.id)
           lastTypedAt.delete(evt.path)
           get().showToast(`${name} was deleted externally`)
         }
@@ -999,13 +1064,15 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       savedContent: content
     }
     const { paneRoot, activePaneId } = get()
+    const activeLeaf = findLeafById(paneRoot, activePaneId)
+    if (!activeLeaf) return
     set((s) => ({
       tabs: [...s.tabs, tab],
       activeTabId: tab.id,
       paneRoot: replaceNode(paneRoot, activePaneId, {
-        type: 'leaf',
-        id: activePaneId,
-        tabId: tab.id
+        ...activeLeaf,
+        tabIds: [...activeLeaf.tabIds, tab.id],
+        activeTabId: tab.id
       })
     }))
   },
@@ -1120,8 +1187,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       const nextTabs = s.tabs.map((t) =>
         t.path === oldPath ? { ...t, id: renamedPath, path: renamedPath, name: nextName } : t
       )
-      const nextActive = s.activeTabId === oldPath ? renamedPath : s.activeTabId
       const nextPane = remapPaneTabId(s.paneRoot, oldPath, renamedPath)
+      const nextActive = deriveActiveTabId(nextPane, s.activePaneId)
 
       const nextScroll = { ...s.scrollPositions }
       if (oldPath in nextScroll) {
@@ -1193,15 +1260,13 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         nextModes[newPath] = nextModes[oldPath]
         delete nextModes[oldPath]
       }
+      const nextPane = remapPaneTabId(s.paneRoot, oldPath, newPath)
       return {
         tabs: s.tabs.map((t) =>
           t.path === oldPath ? { ...t, id: newPath, path: newPath, name: safeName } : t
         ),
-        activeTabId: s.activeTabId === oldPath ? newPath : s.activeTabId,
-        // Pane leaves reference tabs by id; the tab's id is the path, which
-        // just changed — rewrite any matching leaf so the pane keeps showing
-        // the file instead of falling back to the empty state.
-        paneRoot: remapPaneTabId(s.paneRoot, oldPath, newPath),
+        activeTabId: deriveActiveTabId(nextPane, s.activePaneId),
+        paneRoot: nextPane,
         renamingTabId: s.renamingTabId === oldPath ? null : s.renamingTabId,
         autoNamedPaths: nextAutoNamed,
         fileEditorModes: nextModes,
@@ -1227,13 +1292,30 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
           : s.fileEditorModes
       if (idx === -1) return { autoNamedPaths: nextAutoNamed, fileEditorModes: nextModes }
       const nextTabs = s.tabs.filter((t) => t.path !== path)
-      const nextActive =
-        s.activeTabId === path
-          ? (nextTabs[Math.min(idx, nextTabs.length - 1)]?.id ?? null)
-          : s.activeTabId
+      // Remove from all panes
+      const removeFromPanes = (node: PaneNode): PaneNode => {
+        if (node.type === 'leaf') {
+          if (!node.tabIds.includes(path)) return node
+          const nextTabIds = node.tabIds.filter((id) => id !== path)
+          let nextActiveTabId = node.activeTabId
+          if (node.activeTabId === path) {
+            const oldIdx = node.tabIds.indexOf(path)
+            nextActiveTabId = nextTabIds.length > 0
+              ? nextTabIds[Math.min(oldIdx, nextTabIds.length - 1)]
+              : null
+          }
+          return { ...node, tabIds: nextTabIds, activeTabId: nextActiveTabId }
+        }
+        return {
+          ...node,
+          children: [removeFromPanes(node.children[0]), removeFromPanes(node.children[1])] as [PaneNode, PaneNode]
+        }
+      }
+      const nextPane = removeFromPanes(s.paneRoot)
       return {
         tabs: nextTabs,
-        activeTabId: nextActive,
+        activeTabId: deriveActiveTabId(nextPane, s.activePaneId),
+        paneRoot: nextPane,
         autoNamedPaths: nextAutoNamed,
         fileEditorModes: nextModes
       }
@@ -1260,14 +1342,15 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         nextModes[newPath] = nextModes[path]
         delete nextModes[path]
       }
+      const nextPane = remapPaneTabId(s.paneRoot, path, newPath)
       return {
         tabs: s.tabs.map((t) =>
           t.path === path
             ? { ...t, id: newPath, path: newPath, name: newPath.split('/').pop() ?? t.name }
             : t
         ),
-        activeTabId: s.activeTabId === path ? newPath : s.activeTabId,
-        paneRoot: remapPaneTabId(s.paneRoot, path, newPath),
+        activeTabId: deriveActiveTabId(nextPane, s.activePaneId),
+        paneRoot: nextPane,
         autoNamedPaths: nextAutoNamed,
         fileEditorModes: nextModes
       }
@@ -1304,18 +1387,42 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
 
   setActiveTab: (id) => {
     const { paneRoot, activePaneId } = get()
-    // If a pane already shows this tab, focus that pane
-    const existingLeaf = findLeafByTabId(paneRoot, id)
-    if (existingLeaf) {
-      set({ activeTabId: id, activePaneId: existingLeaf.id })
-    } else {
-      // Update the active pane to show this tab
+    const activeLeaf = findLeafById(paneRoot, activePaneId)
+
+    // If the tab is in the active pane, just switch to it
+    if (activeLeaf && activeLeaf.tabIds.includes(id)) {
       set({
         activeTabId: id,
         paneRoot: replaceNode(paneRoot, activePaneId, {
-          type: 'leaf',
-          id: activePaneId,
-          tabId: id
+          ...activeLeaf,
+          activeTabId: id
+        })
+      })
+      return
+    }
+
+    // If a different pane has this tab, focus that pane
+    const existingLeaf = findLeafByTabId(paneRoot, id)
+    if (existingLeaf) {
+      set({
+        activeTabId: id,
+        activePaneId: existingLeaf.id,
+        paneRoot: replaceNode(paneRoot, existingLeaf.id, {
+          ...existingLeaf,
+          activeTabId: id
+        })
+      })
+      return
+    }
+
+    // Tab not in any pane — add it to the active pane
+    if (activeLeaf) {
+      set({
+        activeTabId: id,
+        paneRoot: replaceNode(paneRoot, activePaneId, {
+          ...activeLeaf,
+          tabIds: [...activeLeaf.tabIds, id],
+          activeTabId: id
         })
       })
     }
@@ -1328,26 +1435,36 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       cancelPendingReload(closing.path)
       lastTypedAt.delete(closing.path)
     }
-    set((s) => {
-      const idx = s.tabs.findIndex((t) => t.id === id)
-      if (idx === -1) return s
-      const nextTabs = s.tabs.filter((t) => t.id !== id)
-      let nextActive = s.activeTabId
-      if (s.activeTabId === id) {
-        if (nextTabs.length === 0) {
-          nextActive = null
-        } else {
-          const neighbor = nextTabs[Math.min(idx, nextTabs.length - 1)]
-          nextActive = neighbor.id
-        }
+    // Push to closed-tabs stack (skip drafts — they can't be reopened)
+    if (closing && !closing.path.startsWith('draft://')) {
+      const entry: ClosedTabEntry = {
+        kind: 'file',
+        path: closing.path,
+        content: closing.content,
+        savedContent: closing.savedContent,
       }
-      // Update any pane showing this tab to show null (or the next active)
+      set((s) => ({
+        closedTabsStack: [entry, ...s.closedTabsStack].slice(0, MAX_CLOSED_TABS),
+      }))
+    }
+    set((s) => {
+      // Remove tab from every pane's tabIds, pick neighbor as next active per pane
+      const removingIds = new Set([id])
+      const nextDiffTabs = s.diffTabs
+
       const updatePaneTree = (node: PaneNode): PaneNode => {
         if (node.type === 'leaf') {
-          if (node.tabId === id) {
-            return { ...node, tabId: node.id === s.activePaneId ? nextActive : null }
+          const hadAny = node.tabIds.some((tid) => removingIds.has(tid))
+          if (!hadAny) return node
+          const nextTabIds = node.tabIds.filter((tid) => !removingIds.has(tid))
+          let nextActiveTabId = node.activeTabId
+          if (node.activeTabId && removingIds.has(node.activeTabId)) {
+            const oldIdx = node.tabIds.indexOf(node.activeTabId)
+            nextActiveTabId = nextTabIds.length > 0
+              ? nextTabIds[Math.min(oldIdx, nextTabIds.length - 1)]
+              : null
           }
-          return node
+          return { ...node, tabIds: nextTabIds, activeTabId: nextActiveTabId }
         }
         return {
           ...node,
@@ -1357,6 +1474,34 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
           ]
         }
       }
+
+      const updatedPaneRoot = updatePaneTree(s.paneRoot)
+
+      // Auto-collapse empty panes in splits (so closing the last tab in a
+      // pane removes the pane automatically)
+      const nextPaneRoot = collapseEmptyPanes(updatedPaneRoot)
+
+      // If the active pane was collapsed away, fall back to the first leaf
+      let nextActivePaneId = s.activePaneId
+      if (!findLeafById(nextPaneRoot, nextActivePaneId)) {
+        const leafIds = collectLeafIds(nextPaneRoot)
+        nextActivePaneId = leafIds[0] ?? 'root'
+      }
+
+      // GC: remove from tabs[] if no pane or diff tab references it
+      const stillReferenced = collectAllPaneTabIds(nextPaneRoot)
+      // Keep tabs that are used by any remaining diff tab
+      for (const dt of nextDiffTabs) {
+        const leftTab = s.tabs.find((t) => t.path === dt.leftPath)
+        const rightTab = s.tabs.find((t) => t.path === dt.rightPath)
+        if (leftTab) stillReferenced.add(leftTab.id)
+        if (rightTab) stillReferenced.add(rightTab.id)
+      }
+      const nextTabs = s.tabs.filter((t) => stillReferenced.has(t.id))
+
+      // Derive new global activeTabId from the active pane
+      const nextActive = deriveActiveTabId(nextPaneRoot, nextActivePaneId)
+
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { [id]: _, ...restScroll } = s.scrollPositions
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -1366,39 +1511,11 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         nextOrphans = new Set(s.orphanedPaths)
         nextOrphans.delete(closing.path)
       }
-      // Auto-close any diff tabs that reference the closing file
-      const closingPath = closing?.path
-      const affectedDiffs = closingPath
-        ? s.diffTabs.filter((d) => d.leftPath === closingPath || d.rightPath === closingPath)
-        : []
-      const nextDiffTabs = closingPath
-        ? s.diffTabs.filter((d) => d.leftPath !== closingPath && d.rightPath !== closingPath)
-        : s.diffTabs
-      const affectedDiffIds = new Set(affectedDiffs.map((d) => d.id))
-      // Update pane tree: also clear panes showing affected diff tabs
-      const updatePaneTreeForDiffs = (node: PaneNode): PaneNode => {
-        if (node.type === 'leaf') {
-          if (node.tabId && affectedDiffIds.has(node.tabId)) {
-            return { ...node, tabId: node.id === s.activePaneId ? nextActive : null }
-          }
-          return node
-        }
-        return {
-          ...node,
-          children: [updatePaneTreeForDiffs(node.children[0]), updatePaneTreeForDiffs(node.children[1])] as [
-            PaneNode,
-            PaneNode
-          ]
-        }
-      }
-      const paneAfterTab = updatePaneTree(s.paneRoot)
-      const paneAfterDiff = affectedDiffs.length > 0 ? updatePaneTreeForDiffs(paneAfterTab) : paneAfterTab
-      // If activeTabId was a diff tab we're closing, fall back
-      const finalActive = affectedDiffIds.has(nextActive ?? '') ? (nextTabs[0]?.id ?? null) : nextActive
       return {
         tabs: nextTabs,
-        activeTabId: finalActive,
-        paneRoot: paneAfterDiff,
+        activeTabId: nextActive,
+        activePaneId: nextActivePaneId,
+        paneRoot: nextPaneRoot,
         scrollPositions: restScroll,
         cursorPositions: restCursor,
         orphanedPaths: nextOrphans,
@@ -1411,41 +1528,78 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     set((s) => {
       const keep = s.tabs.find((t) => t.id === id)
       if (!keep) return s
+      // In the active pane, keep only the specified tab. Other panes are cleared.
+      const updatePaneTree = (node: PaneNode): PaneNode => {
+        if (node.type === 'leaf') {
+          if (node.tabIds.includes(id)) {
+            return { ...node, tabIds: [id], activeTabId: id }
+          }
+          return { ...node, tabIds: [], activeTabId: null }
+        }
+        return {
+          ...node,
+          children: [updatePaneTree(node.children[0]), updatePaneTree(node.children[1])] as [PaneNode, PaneNode]
+        }
+      }
+      const nextPaneRoot = updatePaneTree(s.paneRoot)
       const keptScroll = s.scrollPositions[id]
       const keptCursor = s.cursorPositions[id]
       return {
         tabs: [keep],
         activeTabId: keep.id,
+        paneRoot: nextPaneRoot,
+        diffTabs: [],
         scrollPositions: keptScroll !== undefined ? { [id]: keptScroll } : {},
         cursorPositions: keptCursor !== undefined ? { [id]: keptCursor } : {}
       }
     }),
 
   closeAllTabs: () =>
-    set({ tabs: [], activeTabId: null, scrollPositions: {}, cursorPositions: {} }),
+    set((s) => {
+      const clearPanes = (node: PaneNode): PaneNode => {
+        if (node.type === 'leaf') return { ...node, tabIds: [], activeTabId: null }
+        return {
+          ...node,
+          children: [clearPanes(node.children[0]), clearPanes(node.children[1])] as [PaneNode, PaneNode]
+        }
+      }
+      return {
+        tabs: [],
+        activeTabId: null,
+        paneRoot: clearPanes(s.paneRoot),
+        diffTabs: [],
+        scrollPositions: {},
+        cursorPositions: {}
+      }
+    }),
 
   reorderTabs: (fromIndex, toIndex) =>
     set((s) => {
+      const leaf = findLeafById(s.paneRoot, s.activePaneId)
+      if (!leaf) return s
       if (
         fromIndex < 0 ||
         toIndex < 0 ||
-        fromIndex >= s.tabs.length ||
-        toIndex >= s.tabs.length ||
+        fromIndex >= leaf.tabIds.length ||
+        toIndex >= leaf.tabIds.length ||
         fromIndex === toIndex
       ) {
         return s
       }
-      const next = [...s.tabs]
+      const next = [...leaf.tabIds]
       const [moved] = next.splice(fromIndex, 1)
       next.splice(toIndex, 0, moved)
-      return { tabs: next }
+      return {
+        paneRoot: replaceNode(s.paneRoot, s.activePaneId, { ...leaf, tabIds: next })
+      }
     }),
 
   updateActiveContent: (content) =>
     set((s) => {
-      if (!s.activeTabId) return s
+      const activeId = deriveActiveTabId(s.paneRoot, s.activePaneId)
+      if (!activeId) return s
       return {
-        tabs: s.tabs.map((t) => (t.id === s.activeTabId ? { ...t, content } : t))
+        tabs: s.tabs.map((t) => (t.id === activeId ? { ...t, content } : t))
       }
     }),
 
@@ -1520,8 +1674,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
           ? { ...t, id: chosen, path: chosen, name: newName, savedContent: tab.content }
           : t
       )
-      const nextActive = s.activeTabId === oldPath ? chosen : s.activeTabId
       const nextPane = remapPaneTabId(s.paneRoot, oldPath, chosen)
+      const nextActive = deriveActiveTabId(nextPane, s.activePaneId)
       const nextOrphans = new Set(s.orphanedPaths)
       nextOrphans.delete(oldPath)
       const nextScroll = { ...s.scrollPositions }
@@ -1554,16 +1708,12 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     if (!tab) return
     cancelPendingReload(tab.path)
     lastTypedAt.delete(tab.path)
+    // Route through closeTab which handles pane cleanup and GC
+    get().closeTab(tabId)
     set((s) => {
-      const idx = s.tabs.findIndex((t) => t.id === tabId)
-      const nextTabs = s.tabs.filter((t) => t.id !== tabId)
-      const nextActive =
-        s.activeTabId === tabId
-          ? (nextTabs[Math.min(idx, nextTabs.length - 1)]?.id ?? null)
-          : s.activeTabId
       const nextOrphans = new Set(s.orphanedPaths)
       nextOrphans.delete(tab.path)
-      return { tabs: nextTabs, activeTabId: nextActive, orphanedPaths: nextOrphans }
+      return { orphanedPaths: nextOrphans }
     })
   },
 
@@ -1712,11 +1862,17 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     const target = findNodeById(paneRoot, paneId)
     if (!target || target.type !== 'leaf') return
     const newLeafId = nextPaneId()
+    const newLeaf: LeafPane = {
+      type: 'leaf',
+      id: newLeafId,
+      tabIds: tabId ? [tabId] : [],
+      activeTabId: tabId
+    }
     const replacement: SplitPane = {
       type: 'split',
       id: nextPaneId(),
       direction,
-      children: [{ ...target }, { type: 'leaf', id: newLeafId, tabId }],
+      children: [{ ...target }, newLeaf],
       sizes: [50, 50]
     }
     set({
@@ -1730,37 +1886,52 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     const { paneRoot } = get()
     // If it's the root leaf, don't close — just clear it
     if (paneRoot.type === 'leaf') {
-      set({ paneRoot: { ...paneRoot, tabId: null }, activeTabId: null })
+      set({
+        paneRoot: { ...paneRoot, tabIds: [], activeTabId: null },
+        activeTabId: null
+      })
+      // GC tabs no longer referenced by any pane
+      set((s) => {
+        const referenced = collectAllPaneTabIds(s.paneRoot)
+        return { tabs: s.tabs.filter((t) => referenced.has(t.id)) }
+      })
       return
     }
     const parent = findParent(paneRoot, paneId)
     if (!parent) return
-    // The sibling replaces the parent
     const sibling = parent.children[0].id === paneId ? parent.children[1] : parent.children[0]
     const newRoot = replaceNode(paneRoot, parent.id, sibling)
-    // Focus the first leaf of the sibling
     const leaves = collectLeafIds(sibling)
     const newActivePaneId = leaves[0] ?? 'root'
-    const newActiveLeaf = findNodeById(newRoot, newActivePaneId)
-    const newActiveTabId = newActiveLeaf?.type === 'leaf' ? newActiveLeaf.tabId : get().activeTabId
+    const newActiveLeaf = findLeafById(newRoot, newActivePaneId)
+    const newActiveTabId = newActiveLeaf?.activeTabId ?? get().activeTabId
     set({
       paneRoot: newRoot,
       activePaneId: newActivePaneId,
       activeTabId: newActiveTabId ?? get().activeTabId
     })
+    // GC tabs no longer referenced by any pane
+    set((s) => {
+      const referenced = collectAllPaneTabIds(s.paneRoot)
+      return { tabs: s.tabs.filter((t) => referenced.has(t.id)) }
+    })
   },
 
   setActivePane: (paneId) => {
     const { paneRoot } = get()
-    const node = findNodeById(paneRoot, paneId)
-    if (!node || node.type !== 'leaf') return
-    set({ activePaneId: paneId, activeTabId: node.tabId ?? get().activeTabId })
+    const leaf = findLeafById(paneRoot, paneId)
+    if (!leaf) return
+    set({ activePaneId: paneId, activeTabId: leaf.activeTabId ?? get().activeTabId })
   },
 
   setPaneTab: (paneId, tabId) => {
     const { paneRoot } = get()
+    const leaf = findLeafById(paneRoot, paneId)
+    if (!leaf) return
+    // Add the tab to the pane's tab list if not already there, and make it active
+    const nextTabIds = leaf.tabIds.includes(tabId) ? leaf.tabIds : [...leaf.tabIds, tabId]
     set({
-      paneRoot: replaceNode(paneRoot, paneId, { type: 'leaf', id: paneId, tabId }),
+      paneRoot: replaceNode(paneRoot, paneId, { ...leaf, tabIds: nextTabIds, activeTabId: tabId }),
       activePaneId: paneId,
       activeTabId: tabId
     })
@@ -1917,6 +2088,53 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     if (get().toast) set({ toast: null })
   },
 
+  // --- Reopen closed tab ---
+
+  reopenClosedTab: async () => {
+    const { closedTabsStack } = get()
+    if (closedTabsStack.length === 0) return
+
+    const [entry, ...rest] = closedTabsStack
+    set({ closedTabsStack: rest })
+
+    if (entry.kind === 'file') {
+      // Check if already open
+      const existing = get().tabs.find((t) => t.path === entry.path)
+      if (existing) {
+        get().setActiveTab(existing.id)
+        return
+      }
+      // Try to read the current content from disk; fall back to the snapshot
+      let content = entry.content
+      let savedContent = entry.savedContent
+      let name: string
+      try {
+        content = await window.api.readFile(entry.path)
+        savedContent = content
+        name = await window.api.basename(entry.path)
+      } catch {
+        // File was deleted — restore from snapshot with dirty state
+        name = entry.path.split('/').pop() ?? entry.path
+      }
+      const tab: OpenFile = { id: entry.path, path: entry.path, name, content, savedContent }
+      const { paneRoot, activePaneId } = get()
+      const activeLeaf = findLeafById(paneRoot, activePaneId)
+      if (!activeLeaf) return
+      set((s) => ({
+        tabs: [...s.tabs, tab],
+        activeTabId: tab.id,
+        paneRoot: replaceNode(s.paneRoot, activePaneId, {
+          ...activeLeaf,
+          tabIds: [...activeLeaf.tabIds, tab.id],
+          activeTabId: tab.id,
+        }),
+      }))
+    } else {
+      // Reopen a diff tab
+      await get().openDiff(entry.leftPath, entry.rightPath)
+    }
+  },
+
   // --- Diff/compare view actions ---
 
   openDiffPicker: (prefill) => {
@@ -1928,52 +2146,106 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   },
 
   openDiff: async (leftPath, rightPath) => {
-    const { tabs, openFile } = get()
-    // Ensure both files are open as tabs
-    if (!tabs.find((t) => t.path === leftPath)) await openFile(leftPath)
-    if (!tabs.find((t) => t.path === rightPath)) await openFile(rightPath)
+    // Load files into the tabs pool (so DiffView can read their content)
+    // but DON'T add them to any pane's tabIds — only the diff tab is visible.
+    const loadIntoPool = async (path: string): Promise<void> => {
+      if (get().tabs.find((t) => t.path === path)) return
+      let content: string
+      let name: string
+      try {
+        content = await window.api.readFile(path)
+        name = await window.api.basename(path)
+      } catch {
+        const basename = path.split('/').pop() || path
+        get().showToast(`Can't open "${basename}" — file no longer exists`, 'error')
+        return
+      }
+      const tab: OpenFile = { id: path, path, name, content, savedContent: content }
+      set((s) => ({ tabs: [...s.tabs, tab] }))
+    }
+
+    await loadIntoPool(leftPath)
+    await loadIntoPool(rightPath)
 
     const diffId = nextDiffId()
     const diffTab: DiffTab = { id: diffId, leftPath, rightPath }
 
-    const { activePaneId, paneRoot } = get()
-    const pane = findNodeById(paneRoot, activePaneId)
-    const newRoot = pane
-      ? replaceNode(paneRoot, activePaneId, { ...pane, tabId: diffId } as LeafPane)
-      : paneRoot
-
+    // Add only the diff tab to the active pane
+    const { paneRoot, activePaneId } = get()
+    const activeLeaf = findLeafById(paneRoot, activePaneId)
+    if (!activeLeaf) return
     set((s) => ({
       diffTabs: [...s.diffTabs, diffTab],
       activeTabId: diffId,
-      paneRoot: newRoot,
+      paneRoot: replaceNode(s.paneRoot, activePaneId, {
+        ...activeLeaf,
+        tabIds: [...activeLeaf.tabIds, diffId],
+        activeTabId: diffId
+      }),
       diffPickerOpen: false,
       diffPickerPrefill: null,
     }))
   },
 
   closeDiffTab: (diffId) => {
-    const { diffTabs, paneRoot, tabs } = get()
+    const { diffTabs } = get()
     const dt = diffTabs.find((d) => d.id === diffId)
     if (!dt) return
 
-    // Fall back to the first regular tab or null
-    const fallbackTabId = tabs.length > 0 ? tabs[0].id : null
-
-    // Update every pane that was showing this diff tab
-    let newRoot = paneRoot
-    const leaves = collectLeafIds(paneRoot)
-    for (const leafId of leaves) {
-      const leaf = findNodeById(paneRoot, leafId) as LeafPane | null
-      if (leaf?.tabId === diffId) {
-        newRoot = replaceNode(newRoot, leafId, { ...leaf, tabId: fallbackTabId })
-      }
-    }
-
+    // Push to closed-tabs stack
+    const entry: ClosedTabEntry = { kind: 'diff', leftPath: dt.leftPath, rightPath: dt.rightPath }
     set((s) => ({
-      diffTabs: s.diffTabs.filter((d) => d.id !== diffId),
-      paneRoot: newRoot,
-      activeTabId: s.activeTabId === diffId ? fallbackTabId : s.activeTabId,
+      closedTabsStack: [entry, ...s.closedTabsStack].slice(0, MAX_CLOSED_TABS),
     }))
+
+    set((s) => {
+      // Remove the diff tab from every pane's tabIds
+      const removeFromPanes = (node: PaneNode): PaneNode => {
+        if (node.type === 'leaf') {
+          if (!node.tabIds.includes(diffId)) return node
+          const nextTabIds = node.tabIds.filter((id) => id !== diffId)
+          let nextActiveTabId = node.activeTabId
+          if (node.activeTabId === diffId) {
+            const oldIdx = node.tabIds.indexOf(diffId)
+            nextActiveTabId = nextTabIds.length > 0
+              ? nextTabIds[Math.min(oldIdx, nextTabIds.length - 1)]
+              : null
+          }
+          return { ...node, tabIds: nextTabIds, activeTabId: nextActiveTabId }
+        }
+        return {
+          ...node,
+          children: [removeFromPanes(node.children[0]), removeFromPanes(node.children[1])] as [PaneNode, PaneNode]
+        }
+      }
+      const updatedPaneRoot = removeFromPanes(s.paneRoot)
+      const nextPaneRoot = collapseEmptyPanes(updatedPaneRoot)
+      const nextDiffTabs = s.diffTabs.filter((d) => d.id !== diffId)
+
+      // GC: remove source-file tabs that are no longer in any pane or diff
+      const stillReferenced = collectAllPaneTabIds(nextPaneRoot)
+      for (const d of nextDiffTabs) {
+        const leftTab = s.tabs.find((t) => t.path === d.leftPath)
+        const rightTab = s.tabs.find((t) => t.path === d.rightPath)
+        if (leftTab) stillReferenced.add(leftTab.id)
+        if (rightTab) stillReferenced.add(rightTab.id)
+      }
+      const nextTabs = s.tabs.filter((t) => stillReferenced.has(t.id))
+
+      let nextActivePaneId = s.activePaneId
+      if (!findLeafById(nextPaneRoot, nextActivePaneId)) {
+        const leafIds = collectLeafIds(nextPaneRoot)
+        nextActivePaneId = leafIds[0] ?? 'root'
+      }
+
+      return {
+        tabs: nextTabs,
+        diffTabs: nextDiffTabs,
+        paneRoot: nextPaneRoot,
+        activePaneId: nextActivePaneId,
+        activeTabId: deriveActiveTabId(nextPaneRoot, nextActivePaneId),
+      }
+    })
   },
 
   swapDiffSides: (diffId) => {
@@ -1985,9 +2257,21 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   },
 
   replaceDiffFile: async (diffId, side, newPath) => {
-    const { tabs, openFile } = get()
-    // Ensure the new file is open as a tab
-    if (!tabs.find((t) => t.path === newPath)) await openFile(newPath)
+    // Load file into the tabs pool (without adding to any pane)
+    if (!get().tabs.find((t) => t.path === newPath)) {
+      let content: string
+      let name: string
+      try {
+        content = await window.api.readFile(newPath)
+        name = await window.api.basename(newPath)
+      } catch {
+        const basename = newPath.split('/').pop() || newPath
+        get().showToast(`Can't open "${basename}" — file no longer exists`, 'error')
+        return
+      }
+      const tab: OpenFile = { id: newPath, path: newPath, name, content, savedContent: content }
+      set((s) => ({ tabs: [...s.tabs, tab] }))
+    }
     set((s) => ({
       diffTabs: s.diffTabs.map((d) => {
         if (d.id !== diffId) return d

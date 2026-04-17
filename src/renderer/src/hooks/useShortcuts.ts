@@ -1,8 +1,14 @@
 import { useEffect } from 'react'
-import { resolveEditorMode, useWorkspace } from '@/store/workspace'
+import { resolveEditorMode, useWorkspace, type PaneNode, type LeafPane } from '@/store/workspace'
 
 const isMac = navigator.userAgent.toLowerCase().includes('mac')
 const mod = (e: KeyboardEvent): boolean => (isMac ? e.metaKey : e.ctrlKey)
+
+/** Find a leaf by pane id */
+const findLeaf = (node: PaneNode, id: string): LeafPane | null => {
+  if (node.type === 'leaf') return node.id === id ? node : null
+  return findLeaf(node.children[0], id) ?? findLeaf(node.children[1], id)
+}
 
 export const useShortcuts = (): void => {
   const {
@@ -28,7 +34,9 @@ export const useShortcuts = (): void => {
     startRenamingTab,
     openShortcuts,
     openFindBar,
-    openDiffPicker
+    openDiffPicker,
+    openFile,
+    reopenClosedTab
   } = useWorkspace()
 
   // Tab-switch shortcuts (cmd+opt+arrow, ctrl+tab) must run in the capture
@@ -43,17 +51,19 @@ export const useShortcuts = (): void => {
       ) {
         e.preventDefault()
         e.stopPropagation()
-        if (tabs.length === 0) return
-        const idx = tabs.findIndex((t) => t.id === activeTabId)
+        // Cycle within the active pane's tabs
+        const leaf = findLeaf(paneRoot, activePaneId)
+        if (!leaf || leaf.tabIds.length === 0) return
+        const idx = leaf.tabIds.indexOf(leaf.activeTabId ?? '')
         const dir = e.key === 'ArrowLeft' || e.shiftKey ? -1 : 1
-        const next = tabs[(idx + dir + tabs.length) % tabs.length]
-        setActiveTab(next.id)
+        const nextIdx = (idx + dir + leaf.tabIds.length) % leaf.tabIds.length
+        setActiveTab(leaf.tabIds[nextIdx])
       }
     }
 
     window.addEventListener('keydown', captureHandler, true)
     return () => window.removeEventListener('keydown', captureHandler, true)
-  }, [tabs, activeTabId, setActiveTab])
+  }, [paneRoot, activePaneId, setActiveTab])
 
   useEffect(() => {
     const handler = (e: KeyboardEvent): void => {
@@ -65,6 +75,13 @@ export const useShortcuts = (): void => {
       if ((key === 'n' || key === 't') && !e.shiftKey && !e.altKey) {
         e.preventDefault()
         void createDraft()
+        return
+      }
+
+      // Reopen closed tab: cmd/ctrl+shift+t
+      if (key === 't' && e.shiftKey && !e.altKey) {
+        e.preventDefault()
+        void reopenClosedTab()
         return
       }
 
@@ -105,16 +122,15 @@ export const useShortcuts = (): void => {
         return
       }
 
-      // Close tab / close pane: cmd/ctrl+w
+      // Close tab: cmd/ctrl+w — close the active tab in the active pane.
+      // Empty panes in splits are auto-collapsed by the store's closeTab action.
+      // If the pane is already empty in a split, close it directly.
       if (key === 'w' && !e.shiftKey && !e.altKey) {
         e.preventDefault()
-        // If we're in a split, close the pane instead of the tab.
-        // (Panes are stateless views over a tab — closing a pane doesn't
-        // lose any unsaved work, so no prompt is needed here.)
-        if (paneRoot.type === 'split') {
-          closePane(activePaneId)
-        } else if (activeTabId) {
+        if (activeTabId) {
           requestCloseTab(activeTabId)
+        } else if (paneRoot.type === 'split') {
+          closePane(activePaneId)
         }
         return
       }
@@ -129,8 +145,9 @@ export const useShortcuts = (): void => {
       }
 
       // Split pane: cmd/ctrl+\ (horizontal split)
+      // Disabled when a diff tab is active — the diff view is already a split.
       if (e.key === '\\' && !e.shiftKey && !e.altKey) {
-        if (activeTabId) {
+        if (activeTabId && !activeTabId.startsWith('diff:')) {
           e.preventDefault()
           splitPane(activePaneId, 'horizontal', activeTabId)
         }
@@ -166,10 +183,26 @@ export const useShortcuts = (): void => {
         return
       }
 
-      // Compare files: cmd/ctrl+shift+d
+      // Duplicate file: cmd/ctrl+shift+d
       if (key === 'd' && e.shiftKey && !e.altKey) {
         e.preventDefault()
-        openDiffPicker()
+        const activeTab = activeTabId ? tabs.find((t) => t.id === activeTabId) : undefined
+        if (!activeTab || activeTab.path.startsWith('draft://')) return
+        ;(async (): Promise<void> => {
+          const dir = await window.api.dirname(activeTab.path)
+          const ext = activeTab.name.includes('.')
+            ? '.' + activeTab.name.split('.').pop()!
+            : ''
+          const base = activeTab.name.replace(/\.[^.]+$/, '')
+          const trailingNum = base.match(/^(.*?)(\d+)$/)
+          const copyName = trailingNum
+            ? `${trailingNum[1]}${Number(trailingNum[2]) + 1}${ext}`
+            : `${base} copy${ext}`
+          const newPath = await window.api.createFile(dir, copyName)
+          await window.api.writeFile(newPath, activeTab.content)
+          void openFile(newPath)
+          requestAnimationFrame(() => startRenamingTab())
+        })()
         return
       }
 
@@ -208,6 +241,8 @@ export const useShortcuts = (): void => {
     startRenamingTab,
     openShortcuts,
     openFindBar,
-    openDiffPicker
+    openDiffPicker,
+    openFile,
+    reopenClosedTab
   ])
 }
