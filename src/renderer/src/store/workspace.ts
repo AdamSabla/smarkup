@@ -843,7 +843,6 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
           const nextTabs = s.tabs.map((t) =>
             t.path === oldPath ? { ...t, id: newPath, path: newPath, name: newName } : t
           )
-          const nextActive = s.activeTabId === oldPath ? newPath : s.activeTabId
           const nextPane = remapPaneTabId(s.paneRoot, oldPath, newPath)
 
           const nextScroll = { ...s.scrollPositions }

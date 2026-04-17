@@ -311,7 +311,7 @@ const CommandPaletteBody = (): React.JSX.Element => {
                   </CommandItem>
                 ))}
               </CommandGroup>
-              <CommandSeparator forceMount />
+              <CommandSeparator />
             </>
           )}
 
