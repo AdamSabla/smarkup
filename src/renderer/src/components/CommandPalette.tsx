@@ -1,12 +1,15 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import Fuse from 'fuse.js'
 import {
   ArrowLeftIcon,
   ClipboardIcon,
   ColumnsIcon,
   CopyIcon,
+  CopyPlusIcon,
   EyeIcon,
   FileClockIcon,
   FilePlusIcon,
+  FileTextIcon,
   FolderIcon,
   FolderPlusIcon,
   MonitorIcon,
@@ -39,8 +42,14 @@ import {
   CommandSeparator
 } from '@/components/ui/command'
 import Spinner from '@/components/ui/spinner'
-import { useWorkspace } from '@/store/workspace'
+import { useWorkspace, type FolderNode } from '@/store/workspace'
 import { useActiveEditor } from '@/lib/active-editor'
+
+type FileItem = {
+  path: string
+  displayName: string
+  folder: string
+}
 
 type Page = 'commands' | 'movePicker' | 'createFolder'
 
@@ -81,10 +90,13 @@ const CommandPaletteBody = (): React.JSX.Element => {
     setRawWordWrap,
     splitPane,
     activePaneId,
+    openDiffPicker,
     commandPaletteOpen,
     moveTargets,
     moveTargetsLoading,
-    refreshMoveTargets
+    refreshMoveTargets,
+    sections,
+    startRenamingTab
   } = useWorkspace(
     useShallow((s) => ({
       closeCommandPalette: s.closeCommandPalette,
@@ -118,10 +130,13 @@ const CommandPaletteBody = (): React.JSX.Element => {
       setRawWordWrap: s.setRawWordWrap,
       splitPane: s.splitPane,
       activePaneId: s.activePaneId,
+      openDiffPicker: s.openDiffPicker,
       commandPaletteOpen: s.commandPaletteOpen,
       moveTargets: s.moveTargets,
       moveTargetsLoading: s.moveTargetsLoading,
-      refreshMoveTargets: s.refreshMoveTargets
+      refreshMoveTargets: s.refreshMoveTargets,
+      sections: s.sections,
+      startRenamingTab: s.startRenamingTab
     }))
   )
 
@@ -169,6 +184,52 @@ const CommandPaletteBody = (): React.JSX.Element => {
     }
   }, [page, moveTargets.length, moveTargetsLoading, refreshMoveTargets])
 
+  // Build a Fuse index of all sidebar files so the command palette can also
+  // search files (like QuickOpen) — not just commands.
+  const fileItems = useMemo<FileItem[]>(() => {
+    const result: FileItem[] = []
+    const collectFromNode = (node: FolderNode, rootLabel: string): void => {
+      for (const file of node.files) {
+        result.push({
+          path: file.path,
+          displayName: file.name.replace(/\.md$/i, ''),
+          folder: rootLabel
+        })
+      }
+      for (const sub of node.subfolders) collectFromNode(sub, rootLabel)
+    }
+    for (const section of sections) {
+      for (const file of section.files) {
+        result.push({
+          path: file.path,
+          displayName: file.name.replace(/\.md$/i, ''),
+          folder: section.label
+        })
+      }
+      for (const sub of section.subfolders) collectFromNode(sub, section.label)
+    }
+    return result
+  }, [sections])
+
+  const fileFuse = useMemo(
+    () =>
+      new Fuse(fileItems, {
+        keys: ['displayName', 'folder'],
+        threshold: 0.4,
+        includeScore: true,
+        ignoreLocation: true
+      }),
+    [fileItems]
+  )
+
+  const fileResults = useMemo<FileItem[]>(() => {
+    if (!query.trim()) return []
+    return fileFuse
+      .search(query)
+      .map((r) => r.item)
+      .slice(0, 5)
+  }, [query, fileFuse])
+
   const dismiss = (): void => {
     closeCommandPalette()
   }
@@ -194,9 +255,9 @@ const CommandPaletteBody = (): React.JSX.Element => {
       <Command label="Command palette">
         <CommandInput placeholder="Type a command…" value={query} onValueChange={setQuery} />
         <CommandList>
-          <CommandEmpty>No commands match.</CommandEmpty>
+          {fileResults.length === 0 && <CommandEmpty>No results found.</CommandEmpty>}
 
-          {recentFiles.length > 0 && (
+          {recentFiles.length > 0 && !query && (
             <>
               <CommandGroup heading="Recent files">
                 {recentFiles.slice(0, 5).map((path) => {
@@ -218,6 +279,31 @@ const CommandPaletteBody = (): React.JSX.Element => {
                 })}
               </CommandGroup>
               <CommandSeparator />
+            </>
+          )}
+
+          {fileResults.length > 0 && (
+            <>
+              <CommandGroup heading="Files" forceMount>
+                {fileResults.map((file) => (
+                  <CommandItem
+                    key={file.path}
+                    value={`__file__ ${file.displayName} ${file.path}`}
+                    forceMount
+                    onSelect={() => {
+                      void openFile(file.path)
+                      dismiss()
+                    }}
+                  >
+                    <FileTextIcon />
+                    <span className="truncate">{file.displayName}</span>
+                    <span className="ml-auto truncate text-xs text-muted-foreground">
+                      {file.folder}
+                    </span>
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+              <CommandSeparator forceMount />
             </>
           )}
 
@@ -247,6 +333,35 @@ const CommandPaletteBody = (): React.JSX.Element => {
                   }}
                 >
                   <SaveIcon /> Save
+                </CommandItem>
+                <CommandItem
+                  onSelect={async () => {
+                    const chosen = await window.api.saveFileDialog(activeTab.path)
+                    if (!chosen) return
+                    await window.api.writeFile(chosen, activeTab.content)
+                    void openFile(chosen)
+                    dismiss()
+                  }}
+                >
+                  <SaveAllIcon /> Save as…
+                </CommandItem>
+                <CommandItem
+                  onSelect={async () => {
+                    const dir = await window.api.dirname(activeTab.path)
+                    const ext = activeTab.name.includes('.')
+                      ? '.' + activeTab.name.split('.').pop()!
+                      : ''
+                    const base = activeTab.name.replace(/\.[^.]+$/, '')
+                    const copyName = `${base} copy${ext}`
+                    const newPath = await window.api.createFile(dir, copyName)
+                    await window.api.writeFile(newPath, activeTab.content)
+                    void openFile(newPath)
+                    dismiss()
+                    // Enter rename mode after a tick so the tab is mounted
+                    requestAnimationFrame(() => startRenamingTab())
+                  }}
+                >
+                  <CopyPlusIcon /> Duplicate file
                 </CommandItem>
                 <CommandItem onSelect={() => goTo('movePicker')}>
                   <MoveIcon /> Move file…
@@ -351,6 +466,14 @@ const CommandPaletteBody = (): React.JSX.Element => {
               }}
             >
               <EyeIcon /> Switch to {effectiveMode === 'visual' ? 'Raw' : 'Visual'} mode
+            </CommandItem>
+            <CommandItem
+              onSelect={() => {
+                openDiffPicker()
+                dismiss()
+              }}
+            >
+              <ColumnsIcon /> Compare Files...
             </CommandItem>
           </CommandGroup>
 

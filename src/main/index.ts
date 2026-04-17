@@ -688,6 +688,15 @@ app.whenReady().then(() => {
           }
         },
         { type: 'separator' as const },
+        {
+          label: 'Compare Files\u2026',
+          accelerator: 'CmdOrCtrl+Shift+D',
+          click: (): void => {
+            const win = BrowserWindow.getFocusedWindow()
+            if (win) win.webContents.send('app:openDiffPicker')
+          }
+        },
+        { type: 'separator' as const },
         { role: 'resetZoom' as const },
         { role: 'zoomIn' as const },
         { role: 'zoomOut' as const },

@@ -419,14 +419,20 @@ const FileList = ({
   onCancelRename,
   onFocusItem
 }: FileListProps): React.JSX.Element => {
-  const { openFile, activeTabId, renameFile, deleteFile } = useWorkspace()
+  const { openFile, activeTabId, diffTabs, renameFile, deleteFile } = useWorkspace()
+  const activeDiff = activeTabId?.startsWith('diff:')
+    ? diffTabs.find((d) => d.id === activeTabId)
+    : undefined
   return (
     <>
       {files.map((file) => (
         <FileRow
           key={file.path}
           file={file}
-          active={file.path === activeTabId}
+          active={
+            file.path === activeTabId ||
+            (activeDiff != null && (file.path === activeDiff.leftPath || file.path === activeDiff.rightPath))
+          }
           focused={file.path === focusedItem}
           renaming={renamingPath === file.path}
           onActivate={() => openFile(file.path)}
@@ -875,10 +881,14 @@ const RecentsSection = ({
 }: RecentsSectionProps): React.JSX.Element => {
   const recentFiles = useWorkspace((s) => s.recentFiles)
   const activeTabId = useWorkspace((s) => s.activeTabId)
+  const diffTabs = useWorkspace((s) => s.diffTabs)
   const openFile = useWorkspace((s) => s.openFile)
   const openFileDialog = useWorkspace((s) => s.openFileDialog)
   const removeRecentFile = useWorkspace((s) => s.removeRecentFile)
   const clearRecentFiles = useWorkspace((s) => s.clearRecentFiles)
+  const activeDiff = activeTabId?.startsWith('diff:')
+    ? diffTabs.find((d) => d.id === activeTabId)
+    : undefined
   const [menuOpen, setMenuOpen] = useState(false)
   const [visibleCount, setVisibleCount] = useState(RECENTS_INITIAL)
 
@@ -944,7 +954,10 @@ const RecentsSection = ({
             <RecentsRow
               key={path}
               path={path}
-              active={path === activeTabId}
+              active={
+                path === activeTabId ||
+                (activeDiff != null && (path === activeDiff.leftPath || path === activeDiff.rightPath))
+              }
               onOpen={() => void openFile(path)}
               onRemove={() => removeRecentFile(path)}
             />

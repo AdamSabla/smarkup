@@ -8,6 +8,7 @@ export const useShortcuts = (): void => {
   const {
     createDraft,
     saveActive,
+    saveActiveAs,
     requestCloseTab,
     requestCloseAllTabs,
     closePane,
@@ -26,7 +27,8 @@ export const useShortcuts = (): void => {
     openCommandPalette,
     startRenamingTab,
     openShortcuts,
-    openFindBar
+    openFindBar,
+    openDiffPicker
   } = useWorkspace()
 
   // Tab-switch shortcuts (cmd+opt+arrow, ctrl+tab) must run in the capture
@@ -70,6 +72,13 @@ export const useShortcuts = (): void => {
       if (key === 's' && !e.shiftKey && !e.altKey) {
         e.preventDefault()
         void saveActive()
+        return
+      }
+
+      // Save as: cmd/ctrl+shift+s
+      if (key === 's' && e.shiftKey && !e.altKey) {
+        e.preventDefault()
+        void saveActiveAs()
         return
       }
 
@@ -157,6 +166,13 @@ export const useShortcuts = (): void => {
         return
       }
 
+      // Compare files: cmd/ctrl+shift+d
+      if (key === 'd' && e.shiftKey && !e.altKey) {
+        e.preventDefault()
+        openDiffPicker()
+        return
+      }
+
       // Toggle editor mode: cmd/ctrl+; — toggles the active file's effective
       // mode (per-file override), not the global default.
       if (e.key === ';' && !e.shiftKey && !e.altKey) {
@@ -173,6 +189,7 @@ export const useShortcuts = (): void => {
   }, [
     createDraft,
     saveActive,
+    saveActiveAs,
     requestCloseTab,
     requestCloseAllTabs,
     closePane,
@@ -190,6 +207,7 @@ export const useShortcuts = (): void => {
     openCommandPalette,
     startRenamingTab,
     openShortcuts,
-    openFindBar
+    openFindBar,
+    openDiffPicker
   ])
 }

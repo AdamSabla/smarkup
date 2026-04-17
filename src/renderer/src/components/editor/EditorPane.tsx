@@ -5,6 +5,7 @@ import { countWords } from '@/lib/text-stats'
 import TodoChip from '@/components/TodoChip'
 import VisualEditor from './VisualEditor'
 import RawEditor from './RawEditor'
+import DiffView from './DiffView'
 import FindBar from './FindBar'
 import OrphanBanner from './OrphanBanner'
 
@@ -83,6 +84,7 @@ type EditorPaneProps = {
  */
 const EditorPane = ({ tabId, paneId }: EditorPaneProps): React.JSX.Element => {
   const tabs = useWorkspace((s) => s.tabs)
+  const diffTabs = useWorkspace((s) => s.diffTabs)
   const editorMode = useWorkspace((s) => s.editorMode)
   const fileEditorModes = useWorkspace((s) => s.fileEditorModes)
   const showWordCount = useWorkspace((s) => s.showWordCount)
@@ -90,15 +92,19 @@ const EditorPane = ({ tabId, paneId }: EditorPaneProps): React.JSX.Element => {
   const setActivePane = useWorkspace((s) => s.setActivePane)
   const activePaneId = useWorkspace((s) => s.activePaneId)
 
+  // Check if the active tab is a diff tab
+  const isDiffTab = tabId?.startsWith('diff:') ?? false
+  const activeDiffTab = isDiffTab ? diffTabs.find((d) => d.id === tabId) : undefined
+
   // Track which tabs have been visited so we keep their editors alive.
   // Keyed as `${tabId}::${mode}` so flipping a file's own mode swaps in the
   // other editor (the active tab's entry unmounts and the new-mode entry
   // takes its place); other tabs keep their mounted editors intact.
   const [mounted, setMounted] = useState<ReadonlySet<string>>(() => new Set())
 
-  const currentTab = tabId ? tabs.find((t) => t.id === tabId) : undefined
+  const currentTab = tabId && !isDiffTab ? tabs.find((t) => t.id === tabId) : undefined
   const currentMode = resolveEditorMode(currentTab?.path, fileEditorModes, editorMode)
-  const currentKey = tabId ? `${tabId}::${currentMode}` : null
+  const currentKey = tabId && !isDiffTab ? `${tabId}::${currentMode}` : null
 
   // Derive the set that SHOULD be mounted this render: previous set, plus the
   // current key, minus closed tabs and any stale mode-entries for the current
@@ -122,9 +128,21 @@ const EditorPane = ({ tabId, paneId }: EditorPaneProps): React.JSX.Element => {
     desiredMounted.size !== mounted.size || [...desiredMounted].some((k) => !mounted.has(k))
   if (mountedChanged) setMounted(desiredMounted)
 
-  const active = tabs.find((t) => t.id === tabId)
+  const active = isDiffTab ? undefined : tabs.find((t) => t.id === tabId)
   const activeContent = active?.content ?? ''
   const words = useMemo(() => countWords(activeContent), [activeContent])
+
+  // Diff tab — render DiffView directly (no keep-alive stack)
+  if (isDiffTab && activeDiffTab) {
+    return (
+      <div
+        className="relative flex h-full flex-col"
+        onMouseDown={() => { if (activePaneId !== paneId) setActivePane(paneId) }}
+      >
+        <DiffView diffTab={activeDiffTab} isActive={activePaneId === paneId} />
+      </div>
+    )
+  }
 
   if (!active) return <EmptyState />
 

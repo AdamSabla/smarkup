@@ -17,11 +17,13 @@ const shortcuts: { section: string; items: { label: string; keys: string }[] }[]
       { label: 'New draft', keys: `${mod} N` },
       { label: 'Open file…', keys: `${mod} O` },
       { label: 'Save', keys: `${mod} S` },
+      { label: 'Save as…', keys: `${mod} Shift S` },
       { label: 'Quick open', keys: `${mod} P` },
       { label: 'Command palette', keys: `${mod} K` },
       { label: 'Settings', keys: `${mod} ,` },
       { label: 'Keyboard shortcuts', keys: `${mod} Shift /` },
-      { label: 'Toggle variables panel', keys: `${mod} Shift V` }
+      { label: 'Toggle variables panel', keys: `${mod} Shift V` },
+      { label: 'Compare files', keys: `${mod} Shift D` }
     ]
   },
   {

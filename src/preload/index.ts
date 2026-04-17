@@ -169,6 +169,13 @@ const api = {
       ipcRenderer.off('app:toggleVariablesPanel', handler)
     }
   },
+  onOpenDiffPicker: (callback: () => void): (() => void) => {
+    const handler = (): void => callback()
+    ipcRenderer.on('app:openDiffPicker', handler)
+    return () => {
+      ipcRenderer.off('app:openDiffPicker', handler)
+    }
+  },
   /** Main sends a file path here when the OS asks us to open a file
    *  ("Open With…" in Finder, file double-click on Win/Linux, or the
    *  File → Open… menu item). The renderer routes it through

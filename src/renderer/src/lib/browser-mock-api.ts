@@ -157,6 +157,7 @@ const mockApi: SmarkupApi = {
   // App menu events: no-op in browser mode
   onShowShortcuts: () => () => undefined,
   onToggleVariablesPanel: () => () => undefined,
+  onOpenDiffPicker: () => () => undefined,
   onOpenFileFromDisk: () => () => undefined,
 
   // Window management: no-op in browser mode (single window only)

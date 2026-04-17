@@ -102,6 +102,23 @@ const remapPathPrefix = (
   return { tabs, activeTabId, paneRoot }
 }
 
+/** Same prefix-rewrite logic as remapPathPrefix, but for diff tab paths. */
+const remapDiffTabs = (diffs: DiffTab[], oldPath: string, newPath: string): DiffTab[] => {
+  if (oldPath === newPath || diffs.length === 0) return diffs
+  const prefix = oldPath + '/'
+  const map = (p: string): string =>
+    p === oldPath ? newPath : p.startsWith(prefix) ? newPath + p.slice(oldPath.length) : p
+  let changed = false
+  const next = diffs.map((d) => {
+    const l = map(d.leftPath)
+    const r = map(d.rightPath)
+    if (l === d.leftPath && r === d.rightPath) return d
+    changed = true
+    return { ...d, leftPath: l, rightPath: r }
+  })
+  return changed ? next : diffs
+}
+
 /** Same prefix-rewrite logic as remapPathPrefix, but for the autoNamedPaths
  *  set. Used after a folder rename/move so files inside still get auto-named. */
 const remapAutoNamedPaths = (paths: Set<string>, oldPath: string, newPath: string): Set<string> => {
@@ -228,6 +245,16 @@ export type PendingClose =
 
 export type UnsavedChoice = 'save' | 'discard' | 'cancel'
 
+// --- Diff/compare view types ---
+export type DiffTab = {
+  id: string        // e.g. "diff:1", "diff:2"
+  leftPath: string  // absolute path — must have a matching tab in `tabs`
+  rightPath: string // absolute path — must have a matching tab in `tabs`
+}
+
+let diffIdCounter = 0
+const nextDiffId = (): string => `diff:${++diffIdCounter}`
+
 /**
  * A transient banner shown near the bottom of the window. Used for
  * non-blocking notices (e.g. a stale recents entry that was auto-removed).
@@ -316,6 +343,11 @@ type WorkspaceState = {
   toast: Toast | null
   hydrated: boolean
 
+  // --- Diff/compare view state ---
+  diffTabs: DiffTab[]
+  diffPickerOpen: boolean
+  diffPickerPrefill: { leftPath?: string } | null
+
   // --- Actions ---
   hydrate: () => Promise<void>
   refreshAllSections: () => Promise<void>
@@ -385,6 +417,8 @@ type WorkspaceState = {
   reorderTabs: (fromIndex: number, toIndex: number) => void
   updateActiveContent: (content: string) => void
   saveActive: () => Promise<void>
+  /** Save a copy of the active tab to a user-chosen location via system dialog. */
+  saveActiveAs: () => Promise<void>
   /** Save a specific tab by id (writes to disk and clears its dirty state). */
   saveTab: (tabId: string) => Promise<void>
   /** Save an orphaned (externally deleted) tab to a user-picked location.
@@ -435,6 +469,14 @@ type WorkspaceState = {
   showToast: (message: string, kind?: 'info' | 'error') => void
   /** Hide the current toast if any. */
   dismissToast: () => void
+
+  // --- Diff/compare view actions ---
+  openDiffPicker: (prefill?: { leftPath?: string }) => void
+  closeDiffPicker: () => void
+  openDiff: (leftPath: string, rightPath: string) => Promise<void>
+  closeDiffTab: (diffId: string) => void
+  swapDiffSides: (diffId: string) => void
+  replaceDiffFile: (diffId: string, side: 'left' | 'right', newPath: string) => Promise<void>
 }
 
 const MAX_RECENT_FILES = 50
@@ -563,6 +605,10 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   pendingClose: null,
   toast: null,
   hydrated: false,
+
+  diffTabs: [],
+  diffPickerOpen: false,
+  diffPickerPrefill: null,
 
   hydrate: async () => {
     const settings = await window.api.loadSettings()
@@ -901,7 +947,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       const remapped = remapPathPrefix(s, oldPath, newPath)
       const nextAutoNamed = remapAutoNamedPaths(s.autoNamedPaths, oldPath, newPath)
       const nextModes = remapFileEditorModes(s.fileEditorModes, oldPath, newPath)
-      return { ...remapped, autoNamedPaths: nextAutoNamed, fileEditorModes: nextModes }
+      const nextDiffs = remapDiffTabs(s.diffTabs, oldPath, newPath)
+      return { ...remapped, autoNamedPaths: nextAutoNamed, fileEditorModes: nextModes, diffTabs: nextDiffs }
     })
     void persistSettings({
       autoNamedPaths: Array.from(get().autoNamedPaths),
@@ -1157,7 +1204,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         paneRoot: remapPaneTabId(s.paneRoot, oldPath, newPath),
         renamingTabId: s.renamingTabId === oldPath ? null : s.renamingTabId,
         autoNamedPaths: nextAutoNamed,
-        fileEditorModes: nextModes
+        fileEditorModes: nextModes,
+        diffTabs: remapDiffTabs(s.diffTabs, oldPath, newPath),
       }
     })
     void persistSettings({
@@ -1243,7 +1291,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       const remapped = remapPathPrefix(s, path, newPath)
       const nextAutoNamed = remapAutoNamedPaths(s.autoNamedPaths, path, newPath)
       const nextModes = remapFileEditorModes(s.fileEditorModes, path, newPath)
-      return { ...remapped, autoNamedPaths: nextAutoNamed, fileEditorModes: nextModes }
+      const nextDiffs = remapDiffTabs(s.diffTabs, path, newPath)
+      return { ...remapped, autoNamedPaths: nextAutoNamed, fileEditorModes: nextModes, diffTabs: nextDiffs }
     })
     void persistSettings({
       autoNamedPaths: Array.from(get().autoNamedPaths),
@@ -1317,13 +1366,43 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         nextOrphans = new Set(s.orphanedPaths)
         nextOrphans.delete(closing.path)
       }
+      // Auto-close any diff tabs that reference the closing file
+      const closingPath = closing?.path
+      const affectedDiffs = closingPath
+        ? s.diffTabs.filter((d) => d.leftPath === closingPath || d.rightPath === closingPath)
+        : []
+      const nextDiffTabs = closingPath
+        ? s.diffTabs.filter((d) => d.leftPath !== closingPath && d.rightPath !== closingPath)
+        : s.diffTabs
+      const affectedDiffIds = new Set(affectedDiffs.map((d) => d.id))
+      // Update pane tree: also clear panes showing affected diff tabs
+      const updatePaneTreeForDiffs = (node: PaneNode): PaneNode => {
+        if (node.type === 'leaf') {
+          if (node.tabId && affectedDiffIds.has(node.tabId)) {
+            return { ...node, tabId: node.id === s.activePaneId ? nextActive : null }
+          }
+          return node
+        }
+        return {
+          ...node,
+          children: [updatePaneTreeForDiffs(node.children[0]), updatePaneTreeForDiffs(node.children[1])] as [
+            PaneNode,
+            PaneNode
+          ]
+        }
+      }
+      const paneAfterTab = updatePaneTree(s.paneRoot)
+      const paneAfterDiff = affectedDiffs.length > 0 ? updatePaneTreeForDiffs(paneAfterTab) : paneAfterTab
+      // If activeTabId was a diff tab we're closing, fall back
+      const finalActive = affectedDiffIds.has(nextActive ?? '') ? (nextTabs[0]?.id ?? null) : nextActive
       return {
         tabs: nextTabs,
-        activeTabId: nextActive,
-        paneRoot: updatePaneTree(s.paneRoot),
+        activeTabId: finalActive,
+        paneRoot: paneAfterDiff,
         scrollPositions: restScroll,
         cursorPositions: restCursor,
-        orphanedPaths: nextOrphans
+        orphanedPaths: nextOrphans,
+        diffTabs: nextDiffTabs,
       }
     })
   },
@@ -1393,6 +1472,17 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     const sections = get().sections
     const parent = sections.find((sec) => sectionContainsFile(sec, tab.path))
     if (parent) await get().refreshSection(parent.id)
+  },
+
+  saveActiveAs: async () => {
+    const { tabs, activeTabId, openFile } = get()
+    const tab = tabs.find((t) => t.id === activeTabId)
+    if (!tab) return
+    // Pass the full path so the system dialog opens in the enclosing folder
+    const chosen = await window.api.saveFileDialog(tab.path)
+    if (!chosen) return
+    await window.api.writeFile(chosen, tab.content)
+    void openFile(chosen)
   },
 
   saveTab: async (tabId) => {
@@ -1766,9 +1856,9 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
 
   openSettings: () => set({ settingsOpen: true }),
   closeSettings: () => set({ settingsOpen: false }),
-  openQuickOpen: () => set({ quickOpenOpen: true }),
+  openQuickOpen: () => set({ quickOpenOpen: true, commandPaletteOpen: false }),
   closeQuickOpen: () => set({ quickOpenOpen: false }),
-  openCommandPalette: () => set({ commandPaletteOpen: true }),
+  openCommandPalette: () => set({ commandPaletteOpen: true, quickOpenOpen: false }),
   closeCommandPalette: () => set({ commandPaletteOpen: false }),
   openShortcuts: () => set({ shortcutsOpen: true }),
   closeShortcuts: () => set({ shortcutsOpen: false }),
@@ -1825,7 +1915,88 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
 
   dismissToast: () => {
     if (get().toast) set({ toast: null })
-  }
+  },
+
+  // --- Diff/compare view actions ---
+
+  openDiffPicker: (prefill) => {
+    set({ diffPickerOpen: true, diffPickerPrefill: prefill ?? null })
+  },
+
+  closeDiffPicker: () => {
+    set({ diffPickerOpen: false, diffPickerPrefill: null })
+  },
+
+  openDiff: async (leftPath, rightPath) => {
+    const { tabs, openFile } = get()
+    // Ensure both files are open as tabs
+    if (!tabs.find((t) => t.path === leftPath)) await openFile(leftPath)
+    if (!tabs.find((t) => t.path === rightPath)) await openFile(rightPath)
+
+    const diffId = nextDiffId()
+    const diffTab: DiffTab = { id: diffId, leftPath, rightPath }
+
+    const { activePaneId, paneRoot } = get()
+    const pane = findNodeById(paneRoot, activePaneId)
+    const newRoot = pane
+      ? replaceNode(paneRoot, activePaneId, { ...pane, tabId: diffId } as LeafPane)
+      : paneRoot
+
+    set((s) => ({
+      diffTabs: [...s.diffTabs, diffTab],
+      activeTabId: diffId,
+      paneRoot: newRoot,
+      diffPickerOpen: false,
+      diffPickerPrefill: null,
+    }))
+  },
+
+  closeDiffTab: (diffId) => {
+    const { diffTabs, paneRoot, tabs } = get()
+    const dt = diffTabs.find((d) => d.id === diffId)
+    if (!dt) return
+
+    // Fall back to the first regular tab or null
+    const fallbackTabId = tabs.length > 0 ? tabs[0].id : null
+
+    // Update every pane that was showing this diff tab
+    let newRoot = paneRoot
+    const leaves = collectLeafIds(paneRoot)
+    for (const leafId of leaves) {
+      const leaf = findNodeById(paneRoot, leafId) as LeafPane | null
+      if (leaf?.tabId === diffId) {
+        newRoot = replaceNode(newRoot, leafId, { ...leaf, tabId: fallbackTabId })
+      }
+    }
+
+    set((s) => ({
+      diffTabs: s.diffTabs.filter((d) => d.id !== diffId),
+      paneRoot: newRoot,
+      activeTabId: s.activeTabId === diffId ? fallbackTabId : s.activeTabId,
+    }))
+  },
+
+  swapDiffSides: (diffId) => {
+    set((s) => ({
+      diffTabs: s.diffTabs.map((d) =>
+        d.id === diffId ? { ...d, leftPath: d.rightPath, rightPath: d.leftPath } : d,
+      ),
+    }))
+  },
+
+  replaceDiffFile: async (diffId, side, newPath) => {
+    const { tabs, openFile } = get()
+    // Ensure the new file is open as a tab
+    if (!tabs.find((t) => t.path === newPath)) await openFile(newPath)
+    set((s) => ({
+      diffTabs: s.diffTabs.map((d) => {
+        if (d.id !== diffId) return d
+        return side === 'left'
+          ? { ...d, leftPath: newPath }
+          : { ...d, rightPath: newPath }
+      }),
+    }))
+  },
 }))
 
 let toastIdCounter = 0

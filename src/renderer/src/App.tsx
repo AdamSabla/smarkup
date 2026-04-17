@@ -10,6 +10,7 @@ import UnsavedChangesDialog from '@/components/UnsavedChangesDialog'
 import FolderDropZone from '@/components/FolderDropZone'
 import Toast from '@/components/Toast'
 import VariablesPanel from '@/components/VariablesPanel'
+import DiffPickerDialog from '@/components/DiffPickerDialog'
 import SplitContainer from '@/components/editor/SplitContainer'
 import { useShortcuts } from '@/hooks/useShortcuts'
 import { useUpdateSubscription } from '@/hooks/useUpdateSubscription'
@@ -83,6 +84,13 @@ const App = (): React.JSX.Element => {
     })
   }, [])
 
+  // View → Compare Files… in the native menu
+  useEffect(() => {
+    return window.api.onOpenDiffPicker(() => {
+      useWorkspace.getState().openDiffPicker()
+    })
+  }, [])
+
   useShortcuts()
   useUpdateSubscription()
   useTheme()
@@ -123,6 +131,7 @@ const App = (): React.JSX.Element => {
       <CommandPalette />
       <KeyboardShortcuts />
       <UnsavedChangesDialog />
+      <DiffPickerDialog />
       <FolderDropZone />
       <Toast />
     </div>
