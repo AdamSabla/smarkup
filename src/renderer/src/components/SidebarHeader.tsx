@@ -8,11 +8,7 @@ const SidebarHeader = (): React.JSX.Element => {
   const toggleSidebar = useWorkspace((s) => s.toggleSidebar)
 
   return (
-    <div
-      className={cn(
-        'drag-region flex h-8 shrink-0 items-center bg-tab-bar pl-1 select-none'
-      )}
-    >
+    <div className={cn('drag-region flex h-8 shrink-0 items-center bg-tab-bar pl-1 select-none')}>
       {isMac && <div className="w-[74px] shrink-0 self-stretch" />}
       <button
         onClick={() => void toggleSidebar()}

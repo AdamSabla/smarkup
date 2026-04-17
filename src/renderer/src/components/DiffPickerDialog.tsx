@@ -4,7 +4,7 @@ import {
   DialogContent,
   DialogDescription,
   DialogHeader,
-  DialogTitle,
+  DialogTitle
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { useWorkspace } from '@/store/workspace'
@@ -22,7 +22,9 @@ const DiffPickerDialog = (): React.JSX.Element => {
   // Reset selections when dialog opens
   useEffect(() => {
     if (open) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setLeftPath(prefill?.leftPath ?? '')
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setRightPath('')
     }
   }, [open, prefill])

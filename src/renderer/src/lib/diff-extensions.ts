@@ -1,11 +1,5 @@
-import {
-  EditorView,
-  Decoration,
-  type DecorationSet,
-  gutter,
-  GutterMarker,
-} from '@codemirror/view'
-import { StateField, StateEffect, RangeSetBuilder, RangeSet } from '@codemirror/state'
+import { EditorView, Decoration, type DecorationSet, gutter, GutterMarker } from '@codemirror/view'
+import { StateField, StateEffect, RangeSetBuilder, RangeSet, type Extension } from '@codemirror/state'
 import type { DiffResult, CharDiff } from './diff-engine'
 
 /* ------------------------------------------------------------------ */
@@ -51,12 +45,17 @@ const diffDecoField = StateField.define<DecorationSet>({
     if (tr.docChanged) return decos.map(tr.changes)
     return decos
   },
-  provide: (f) => EditorView.decorations.from(f),
+  provide: (f) => EditorView.decorations.from(f)
 })
 
 function buildDecoSet(
   data: SideDecorations,
-  doc: { length: number; lineAt(pos: number): { from: number; to: number }; lines: number; line(n: number): { from: number } },
+  doc: {
+    length: number
+    lineAt(pos: number): { from: number; to: number }
+    lines: number
+    line(n: number): { from: number }
+  }
 ): DecorationSet {
   const builder = new RangeSetBuilder<Decoration>()
 
@@ -68,7 +67,11 @@ function buildDecoSet(
     for (let line = lr.from; line < lr.to && line < doc.lines; line++) {
       const lineObj = doc.lineAt(lineStartPos(doc, line))
       const deco =
-        lr.type === 'added' ? addedLineDeco : lr.type === 'removed' ? removedLineDeco : changedLineDeco
+        lr.type === 'added'
+          ? addedLineDeco
+          : lr.type === 'removed'
+            ? removedLineDeco
+            : changedLineDeco
       allDecos.push({ from: lineObj.from, to: lineObj.from, deco, isLine: true })
     }
   }
@@ -82,7 +85,7 @@ function buildDecoSet(
         from,
         to,
         deco: cr.side === 'left' ? charRemovedMark : charAddedMark,
-        isLine: false,
+        isLine: false
       })
     }
   }
@@ -140,12 +143,12 @@ const diffGutterField = StateField.define<RangeSet<GutterMarker>>({
     }
     if (tr.docChanged) return markers.map(tr.changes)
     return markers
-  },
+  }
 })
 
 function buildGutterSet(
   data: SideDecorations,
-  doc: { length: number; lines: number; line(n: number): { from: number } },
+  doc: { length: number; lines: number; line(n: number): { from: number } }
 ): RangeSet<GutterMarker> {
   const marks: Array<{ pos: number; marker: GutterMarker }> = []
 
@@ -172,7 +175,7 @@ function buildGutterSet(
 
 const diffGutterExt = gutter({
   class: 'cm-diff-gutter',
-  markers: (v) => v.state.field(diffGutterField),
+  markers: (v) => v.state.field(diffGutterField)
 })
 
 /* ------------------------------------------------------------------ */
@@ -182,7 +185,7 @@ const diffGutterExt = gutter({
 /** Get the start position of a 0-based line number. */
 function lineStartPos(
   doc: { line(n: number): { from: number }; lines: number; length: number },
-  line: number,
+  line: number
 ): number {
   // CodeMirror lines are 1-based
   if (line <= 0) return 0
@@ -205,45 +208,45 @@ const diffTheme = EditorView.baseTheme({
   // Character-level highlights
   '.cm-diff-char-added': {
     backgroundColor: 'rgba(34, 197, 94, 0.35)',
-    borderRadius: '2px',
+    borderRadius: '2px'
   },
   '.cm-diff-char-removed': {
     backgroundColor: 'rgba(239, 68, 68, 0.35)',
-    borderRadius: '2px',
+    borderRadius: '2px'
   },
   // Diff gutter strip (narrow colored bar on the far left)
   '.cm-diff-gutter': {
     width: '3px',
-    minWidth: '3px',
+    minWidth: '3px'
   },
   '.cm-diff-gutter .cm-gutterElement': {
-    padding: '0 !important',
+    padding: '0 !important'
   },
   '.cm-diff-gutter .cm-activeLineGutter': {
-    backgroundColor: 'color-mix(in srgb, var(--foreground) 40%, transparent)',
+    backgroundColor: 'color-mix(in srgb, var(--foreground) 40%, transparent)'
   },
   '.cm-diff-gutter-added': {
     width: '3px',
     height: '100%',
-    backgroundColor: 'rgba(34, 197, 94, 0.7)',
+    backgroundColor: 'rgba(34, 197, 94, 0.7)'
   },
   '.cm-diff-gutter-removed': {
     width: '3px',
     height: '100%',
-    backgroundColor: 'rgba(239, 68, 68, 0.7)',
+    backgroundColor: 'rgba(239, 68, 68, 0.7)'
   },
   '.cm-diff-gutter-changed': {
     width: '3px',
     height: '100%',
-    backgroundColor: 'rgba(234, 179, 8, 0.7)',
-  },
+    backgroundColor: 'rgba(234, 179, 8, 0.7)'
+  }
 })
 
 /* ------------------------------------------------------------------ */
 /*  Public factory                                                     */
 /* ------------------------------------------------------------------ */
 
-export function createDiffExtension() {
+export function createDiffExtension(): Extension[] {
   return [diffDecoField, diffGutterField, diffGutterExt, diffTheme]
 }
 

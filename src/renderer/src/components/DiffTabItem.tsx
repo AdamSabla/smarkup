@@ -26,8 +26,7 @@ const DiffTabItem = ({ active, onActivate, onClose }: DiffTabItemProps): React.J
           <div
             className="pointer-events-none absolute -left-2 bottom-0 size-2"
             style={{
-              background:
-                'radial-gradient(circle at 0 0, transparent 7.5px, var(--background) 8px)'
+              background: 'radial-gradient(circle at 0 0, transparent 7.5px, var(--background) 8px)'
             }}
           />
           <div

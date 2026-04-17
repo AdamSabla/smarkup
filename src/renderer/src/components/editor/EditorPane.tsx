@@ -141,20 +141,18 @@ const EditorPane = ({ tabId, paneId }: EditorPaneProps): React.JSX.Element => {
   // Diff tab — render DiffView directly (no keep-alive stack)
   if (isDiffTab && activeDiffTab) {
     return (
-      <div
-        className="relative flex h-full flex-col"
-        onMouseDown={handleFocus}
-      >
+      <div className="relative flex h-full flex-col" onMouseDown={handleFocus}>
         <DiffView diffTab={activeDiffTab} isActive={activePaneId === paneId} />
       </div>
     )
   }
 
-  if (!active) return (
-    <div className="h-full" onMouseDown={handleFocus}>
-      <EmptyState />
-    </div>
-  )
+  if (!active)
+    return (
+      <div className="h-full" onMouseDown={handleFocus}>
+        <EmptyState />
+      </div>
+    )
 
   const isPaneActive = activePaneId === paneId
 

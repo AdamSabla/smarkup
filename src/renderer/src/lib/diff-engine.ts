@@ -68,7 +68,7 @@ export function computeDiff(leftText: string, rightText: string): DiffResult {
         leftStart: leftLine,
         leftEnd: leftLine + lines,
         rightStart: rightLine,
-        rightEnd: rightLine + lines,
+        rightEnd: rightLine + lines
       })
       leftLine += lines
       rightLine += lines
@@ -87,7 +87,7 @@ export function computeDiff(leftText: string, rightText: string): DiffResult {
         leftLine,
         rightLine,
         leftText,
-        rightText,
+        rightText
       )
       hunks.push({
         type: 'changed',
@@ -95,7 +95,7 @@ export function computeDiff(leftText: string, rightText: string): DiffResult {
         leftEnd: leftLine + removedLines,
         rightStart: rightLine,
         rightEnd: rightLine + addedLines,
-        charDiffs,
+        charDiffs
       })
       changeCount++
       leftLine += removedLines
@@ -129,7 +129,7 @@ function computeCharDiffs(
   leftLineStart: number,
   rightLineStart: number,
   leftDoc: string,
-  rightDoc: string,
+  rightDoc: string
 ): CharDiff[] {
   const charDiffs: CharDiff[] = []
   const wordChanges = diffWordsWithSpace(leftValue, rightValue)
@@ -144,10 +144,18 @@ function computeCharDiffs(
   for (const wc of wordChanges) {
     const len = wc.value.length
     if (wc.removed) {
-      charDiffs.push({ side: 'left', from: leftBaseOffset + leftPos, to: leftBaseOffset + leftPos + len })
+      charDiffs.push({
+        side: 'left',
+        from: leftBaseOffset + leftPos,
+        to: leftBaseOffset + leftPos + len
+      })
       leftPos += len
     } else if (wc.added) {
-      charDiffs.push({ side: 'right', from: rightBaseOffset + rightPos, to: rightBaseOffset + rightPos + len })
+      charDiffs.push({
+        side: 'right',
+        from: rightBaseOffset + rightPos,
+        to: rightBaseOffset + rightPos + len
+      })
       rightPos += len
     } else {
       leftPos += len
@@ -162,7 +170,11 @@ function computeCharDiffs(
 /*  Alignment map for scroll sync                                      */
 /* ------------------------------------------------------------------ */
 
-export function buildAlignmentMap(hunks: DiffHunk[], leftLineCount: number, rightLineCount: number): AlignmentMap {
+export function buildAlignmentMap(
+  hunks: DiffHunk[],
+  leftLineCount: number,
+  rightLineCount: number
+): AlignmentMap {
   const leftToRight = new Array<number>(leftLineCount).fill(-1)
   const rightToLeft = new Array<number>(rightLineCount).fill(-1)
 

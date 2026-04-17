@@ -36,13 +36,16 @@ const App = (): React.JSX.Element => {
   const startX = useRef(0)
   const startWidth = useRef(0)
 
-  const onPointerDown = useCallback((e: React.PointerEvent) => {
-    e.preventDefault()
-    dragging.current = true
-    startX.current = e.clientX
-    startWidth.current = sidebarWidth
-    ;(e.target as HTMLElement).setPointerCapture(e.pointerId)
-  }, [sidebarWidth])
+  const onPointerDown = useCallback(
+    (e: React.PointerEvent) => {
+      e.preventDefault()
+      dragging.current = true
+      startX.current = e.clientX
+      startWidth.current = sidebarWidth
+      ;(e.target as HTMLElement).setPointerCapture(e.pointerId)
+    },
+    [sidebarWidth]
+  )
 
   const onPointerMove = useCallback((e: React.PointerEvent) => {
     if (!dragging.current) return
@@ -169,7 +172,10 @@ const App = (): React.JSX.Element => {
       <div className="flex min-h-0 flex-1">
         {sidebarVisible && (
           <>
-            <div className="flex h-full shrink-0 flex-col overflow-hidden" style={{ width: sidebarWidth }}>
+            <div
+              className="flex h-full shrink-0 flex-col overflow-hidden"
+              style={{ width: sidebarWidth }}
+            >
               <SidebarHeader />
               <div className="min-h-0 flex-1 overflow-hidden">
                 <Sidebar />

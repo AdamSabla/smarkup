@@ -1,10 +1,5 @@
 import { useEffect } from 'react'
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle
-} from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { useWorkspace } from '@/store/workspace'
 
 const isMac = navigator.userAgent.toLowerCase().includes('mac')

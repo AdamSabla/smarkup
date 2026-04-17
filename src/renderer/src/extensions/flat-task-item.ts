@@ -239,8 +239,7 @@ export const FlatTaskItem = Node.create({
         default: false,
         keepOnSplit: false,
         parseHTML: (el: HTMLElement) =>
-          el.getAttribute('data-checked') === 'true' ||
-          el.getAttribute('aria-checked') === 'true'
+          el.getAttribute('data-checked') === 'true' || el.getAttribute('aria-checked') === 'true'
       }
     }
   },
@@ -490,11 +489,7 @@ export const FlatTaskItem = Node.create({
           parent: PMNode,
           index: number
         ) {
-          if (
-            index > 0 &&
-            parent.child(index - 1).type.name === 'flatTaskItem' &&
-            state.closed
-          ) {
+          if (index > 0 && parent.child(index - 1).type.name === 'flatTaskItem' && state.closed) {
             state.flushClose(1)
           }
           const indent = '  '.repeat(node.attrs.indent ?? 0)

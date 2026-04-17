@@ -4,7 +4,13 @@
  * stay in RawEditor since they're specific to regular editing.
  */
 
-import { EditorView, Decoration, type DecorationSet, ViewPlugin, type ViewUpdate } from '@codemirror/view'
+import {
+  EditorView,
+  Decoration,
+  type DecorationSet,
+  ViewPlugin,
+  type ViewUpdate
+} from '@codemirror/view'
 import { RangeSetBuilder } from '@codemirror/state'
 import { HighlightStyle } from '@codemirror/language'
 import { tags } from '@lezer/highlight'
@@ -24,7 +30,7 @@ export const markdownHighlight = HighlightStyle.define([
   { tag: tags.heading5, color: HEADING_RED, fontWeight: '600' },
   { tag: tags.heading6, color: HEADING_RED, fontWeight: '600' },
   { tag: tags.processingInstruction, color: HEADING_RED },
-  { tag: tags.strong, color: HEADING_RED, fontWeight: '700' },
+  { tag: tags.strong, color: HEADING_RED, fontWeight: '700' }
 ])
 
 /* ------------------------------------------------------------------ */
@@ -66,7 +72,7 @@ export const placeholderHighlighter = ViewPlugin.fromClass(
       return builder.finish()
     }
   },
-  { decorations: (v) => v.decorations },
+  { decorations: (v) => v.decorations }
 )
 
 export const inlineCodeHighlighter = ViewPlugin.fromClass(
@@ -95,7 +101,7 @@ export const inlineCodeHighlighter = ViewPlugin.fromClass(
       return builder.finish()
     }
   },
-  { decorations: (v) => v.decorations },
+  { decorations: (v) => v.decorations }
 )
 
 export const todoCommentHighlighter = ViewPlugin.fromClass(
@@ -120,11 +126,21 @@ export const todoCommentHighlighter = ViewPlugin.fromClass(
       const commentRe = /(?<!:)\/\/[^\n]*/g
       let m: RegExpExecArray | null
       while ((m = commentRe.exec(text))) {
-        hits.push({ from: from + m.index, to: from + m.index + m[0].length, deco: commentMark, order: 0 })
+        hits.push({
+          from: from + m.index,
+          to: from + m.index + m[0].length,
+          deco: commentMark,
+          order: 0
+        })
       }
       const todoRe = /\bTODO\b/g
       while ((m = todoRe.exec(text))) {
-        hits.push({ from: from + m.index, to: from + m.index + m[0].length, deco: todoMark, order: 1 })
+        hits.push({
+          from: from + m.index,
+          to: from + m.index + m[0].length,
+          deco: todoMark,
+          order: 1
+        })
       }
       hits.sort((a, b) => a.from - b.from || a.order - b.order)
       const builder = new RangeSetBuilder<Decoration>()
@@ -132,7 +148,7 @@ export const todoCommentHighlighter = ViewPlugin.fromClass(
       return builder.finish()
     }
   },
-  { decorations: (v) => v.decorations },
+  { decorations: (v) => v.decorations }
 )
 
 /* ------------------------------------------------------------------ */
@@ -143,22 +159,22 @@ export const sharedEditorTokenTheme = EditorView.theme({
   '.cm-placeholder-highlight': {
     color: '#e879f9',
     borderRadius: '3px',
-    backgroundColor: 'rgba(232, 121, 249, 0.12)',
+    backgroundColor: 'rgba(232, 121, 249, 0.12)'
   },
   '.cm-inline-code-highlight': {
     color: '#f87171',
     borderRadius: '3px',
-    backgroundColor: 'rgba(248, 113, 113, 0.12)',
+    backgroundColor: 'rgba(248, 113, 113, 0.12)'
   },
   '.cm-comment-highlight': {
     color: '#9ca3af',
-    fontStyle: 'italic',
+    fontStyle: 'italic'
   },
   '.cm-todo-highlight': {
     backgroundColor: '#facc15',
     color: '#000',
     fontWeight: '700',
     borderRadius: '4px',
-    padding: '0 4px',
-  },
+    padding: '0 4px'
+  }
 })

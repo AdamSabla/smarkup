@@ -16,7 +16,7 @@ export type EditorMode = 'visual' | 'raw'
 export type LeafPane = {
   type: 'leaf'
   id: string
-  tabIds: string[]           // ordered tab references for this pane
+  tabIds: string[] // ordered tab references for this pane
   activeTabId: string | null // which tab is visible in this pane
 }
 export type SplitPane = {
@@ -133,7 +133,12 @@ const remapPathPrefix = (
   oldPath: string,
   newPath: string
 ): { tabs: OpenFile[]; activeTabId: string | null; paneRoot: PaneNode } => {
-  if (oldPath === newPath) return { tabs: s.tabs, activeTabId: deriveActiveTabId(s.paneRoot, s.activePaneId), paneRoot: s.paneRoot }
+  if (oldPath === newPath)
+    return {
+      tabs: s.tabs,
+      activeTabId: deriveActiveTabId(s.paneRoot, s.activePaneId),
+      paneRoot: s.paneRoot
+    }
   const prefix = oldPath + '/'
   const map = (p: string): string =>
     p === oldPath ? newPath : p.startsWith(prefix) ? newPath + p.slice(oldPath.length) : p
@@ -301,8 +306,8 @@ export type UnsavedChoice = 'save' | 'discard' | 'cancel'
 
 // --- Diff/compare view types ---
 export type DiffTab = {
-  id: string        // e.g. "diff:1", "diff:2"
-  leftPath: string  // absolute path — must have a matching tab in `tabs`
+  id: string // e.g. "diff:1", "diff:2"
+  leftPath: string // absolute path — must have a matching tab in `tabs`
   rightPath: string // absolute path — must have a matching tab in `tabs`
 }
 
@@ -1012,7 +1017,12 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       const nextAutoNamed = remapAutoNamedPaths(s.autoNamedPaths, oldPath, newPath)
       const nextModes = remapFileEditorModes(s.fileEditorModes, oldPath, newPath)
       const nextDiffs = remapDiffTabs(s.diffTabs, oldPath, newPath)
-      return { ...remapped, autoNamedPaths: nextAutoNamed, fileEditorModes: nextModes, diffTabs: nextDiffs }
+      return {
+        ...remapped,
+        autoNamedPaths: nextAutoNamed,
+        fileEditorModes: nextModes,
+        diffTabs: nextDiffs
+      }
     })
     void persistSettings({
       autoNamedPaths: Array.from(get().autoNamedPaths),
@@ -1269,7 +1279,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         renamingTabId: s.renamingTabId === oldPath ? null : s.renamingTabId,
         autoNamedPaths: nextAutoNamed,
         fileEditorModes: nextModes,
-        diffTabs: remapDiffTabs(s.diffTabs, oldPath, newPath),
+        diffTabs: remapDiffTabs(s.diffTabs, oldPath, newPath)
       }
     })
     void persistSettings({
@@ -1299,15 +1309,17 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
           let nextActiveTabId = node.activeTabId
           if (node.activeTabId === path) {
             const oldIdx = node.tabIds.indexOf(path)
-            nextActiveTabId = nextTabIds.length > 0
-              ? nextTabIds[Math.min(oldIdx, nextTabIds.length - 1)]
-              : null
+            nextActiveTabId =
+              nextTabIds.length > 0 ? nextTabIds[Math.min(oldIdx, nextTabIds.length - 1)] : null
           }
           return { ...node, tabIds: nextTabIds, activeTabId: nextActiveTabId }
         }
         return {
           ...node,
-          children: [removeFromPanes(node.children[0]), removeFromPanes(node.children[1])] as [PaneNode, PaneNode]
+          children: [removeFromPanes(node.children[0]), removeFromPanes(node.children[1])] as [
+            PaneNode,
+            PaneNode
+          ]
         }
       }
       const nextPane = removeFromPanes(s.paneRoot)
@@ -1374,7 +1386,12 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       const nextAutoNamed = remapAutoNamedPaths(s.autoNamedPaths, path, newPath)
       const nextModes = remapFileEditorModes(s.fileEditorModes, path, newPath)
       const nextDiffs = remapDiffTabs(s.diffTabs, path, newPath)
-      return { ...remapped, autoNamedPaths: nextAutoNamed, fileEditorModes: nextModes, diffTabs: nextDiffs }
+      return {
+        ...remapped,
+        autoNamedPaths: nextAutoNamed,
+        fileEditorModes: nextModes,
+        diffTabs: nextDiffs
+      }
     })
     void persistSettings({
       autoNamedPaths: Array.from(get().autoNamedPaths),
@@ -1440,10 +1457,10 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         kind: 'file',
         path: closing.path,
         content: closing.content,
-        savedContent: closing.savedContent,
+        savedContent: closing.savedContent
       }
       set((s) => ({
-        closedTabsStack: [entry, ...s.closedTabsStack].slice(0, MAX_CLOSED_TABS),
+        closedTabsStack: [entry, ...s.closedTabsStack].slice(0, MAX_CLOSED_TABS)
       }))
     }
     set((s) => {
@@ -1459,9 +1476,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
           let nextActiveTabId = node.activeTabId
           if (node.activeTabId && removingIds.has(node.activeTabId)) {
             const oldIdx = node.tabIds.indexOf(node.activeTabId)
-            nextActiveTabId = nextTabIds.length > 0
-              ? nextTabIds[Math.min(oldIdx, nextTabIds.length - 1)]
-              : null
+            nextActiveTabId =
+              nextTabIds.length > 0 ? nextTabIds[Math.min(oldIdx, nextTabIds.length - 1)] : null
           }
           return { ...node, tabIds: nextTabIds, activeTabId: nextActiveTabId }
         }
@@ -1518,7 +1534,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         scrollPositions: restScroll,
         cursorPositions: restCursor,
         orphanedPaths: nextOrphans,
-        diffTabs: nextDiffTabs,
+        diffTabs: nextDiffTabs
       }
     })
   },
@@ -1537,7 +1553,10 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         }
         return {
           ...node,
-          children: [updatePaneTree(node.children[0]), updatePaneTree(node.children[1])] as [PaneNode, PaneNode]
+          children: [updatePaneTree(node.children[0]), updatePaneTree(node.children[1])] as [
+            PaneNode,
+            PaneNode
+          ]
         }
       }
       const nextPaneRoot = updatePaneTree(s.paneRoot)
@@ -1559,7 +1578,10 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         if (node.type === 'leaf') return { ...node, tabIds: [], activeTabId: null }
         return {
           ...node,
-          children: [clearPanes(node.children[0]), clearPanes(node.children[1])] as [PaneNode, PaneNode]
+          children: [clearPanes(node.children[0]), clearPanes(node.children[1])] as [
+            PaneNode,
+            PaneNode
+          ]
         }
       }
       return {
@@ -2125,8 +2147,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         paneRoot: replaceNode(s.paneRoot, activePaneId, {
           ...activeLeaf,
           tabIds: [...activeLeaf.tabIds, tab.id],
-          activeTabId: tab.id,
-        }),
+          activeTabId: tab.id
+        })
       }))
     } else {
       // Reopen a diff tab
@@ -2182,7 +2204,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         activeTabId: diffId
       }),
       diffPickerOpen: false,
-      diffPickerPrefill: null,
+      diffPickerPrefill: null
     }))
   },
 
@@ -2194,7 +2216,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     // Push to closed-tabs stack
     const entry: ClosedTabEntry = { kind: 'diff', leftPath: dt.leftPath, rightPath: dt.rightPath }
     set((s) => ({
-      closedTabsStack: [entry, ...s.closedTabsStack].slice(0, MAX_CLOSED_TABS),
+      closedTabsStack: [entry, ...s.closedTabsStack].slice(0, MAX_CLOSED_TABS)
     }))
 
     set((s) => {
@@ -2206,15 +2228,17 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
           let nextActiveTabId = node.activeTabId
           if (node.activeTabId === diffId) {
             const oldIdx = node.tabIds.indexOf(diffId)
-            nextActiveTabId = nextTabIds.length > 0
-              ? nextTabIds[Math.min(oldIdx, nextTabIds.length - 1)]
-              : null
+            nextActiveTabId =
+              nextTabIds.length > 0 ? nextTabIds[Math.min(oldIdx, nextTabIds.length - 1)] : null
           }
           return { ...node, tabIds: nextTabIds, activeTabId: nextActiveTabId }
         }
         return {
           ...node,
-          children: [removeFromPanes(node.children[0]), removeFromPanes(node.children[1])] as [PaneNode, PaneNode]
+          children: [removeFromPanes(node.children[0]), removeFromPanes(node.children[1])] as [
+            PaneNode,
+            PaneNode
+          ]
         }
       }
       const updatedPaneRoot = removeFromPanes(s.paneRoot)
@@ -2242,7 +2266,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         diffTabs: nextDiffTabs,
         paneRoot: nextPaneRoot,
         activePaneId: nextActivePaneId,
-        activeTabId: deriveActiveTabId(nextPaneRoot, nextActivePaneId),
+        activeTabId: deriveActiveTabId(nextPaneRoot, nextActivePaneId)
       }
     })
   },
@@ -2250,8 +2274,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   swapDiffSides: (diffId) => {
     set((s) => ({
       diffTabs: s.diffTabs.map((d) =>
-        d.id === diffId ? { ...d, leftPath: d.rightPath, rightPath: d.leftPath } : d,
-      ),
+        d.id === diffId ? { ...d, leftPath: d.rightPath, rightPath: d.leftPath } : d
+      )
     }))
   },
 
@@ -2274,12 +2298,10 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     set((s) => ({
       diffTabs: s.diffTabs.map((d) => {
         if (d.id !== diffId) return d
-        return side === 'left'
-          ? { ...d, leftPath: newPath }
-          : { ...d, rightPath: newPath }
-      }),
+        return side === 'left' ? { ...d, leftPath: newPath } : { ...d, rightPath: newPath }
+      })
     }))
-  },
+  }
 }))
 
 let toastIdCounter = 0

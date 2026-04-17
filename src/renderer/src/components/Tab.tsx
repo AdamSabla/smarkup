@@ -105,8 +105,7 @@ const Tab = ({
           <div
             className="pointer-events-none absolute -left-2 bottom-0 size-2"
             style={{
-              background:
-                'radial-gradient(circle at 0 0, transparent 7.5px, var(--background) 8px)'
+              background: 'radial-gradient(circle at 0 0, transparent 7.5px, var(--background) 8px)'
             }}
           />
           <div
@@ -194,9 +193,11 @@ const Tab = ({
           Reveal in {isMac ? 'Finder' : 'Explorer'}
         </ContextMenuItem>
         <ContextMenuSeparator />
-        <ContextMenuItem onSelect={() => {
-          useWorkspace.getState().openDiffPicker({ leftPath: tab.path })
-        }}>
+        <ContextMenuItem
+          onSelect={() => {
+            useWorkspace.getState().openDiffPicker({ leftPath: tab.path })
+          }}
+        >
           Compare with...
         </ContextMenuItem>
       </ContextMenuContent>

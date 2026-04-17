@@ -2,19 +2,13 @@ import { useEffect, useRef } from 'react'
 import { useWorkspace, type PaneNode } from '@/store/workspace'
 
 /** Collect all unique tab paths from the pane tree */
-const collectTabPaths = (
-  node: PaneNode,
-  tabs: { id: string; path: string }[]
-): string[] => {
+const collectTabPaths = (node: PaneNode, tabs: { id: string; path: string }[]): string[] => {
   if (node.type === 'leaf') {
     return node.tabIds
       .map((id) => tabs.find((t) => t.id === id)?.path)
       .filter((p): p is string => p != null)
   }
-  return [
-    ...collectTabPaths(node.children[0], tabs),
-    ...collectTabPaths(node.children[1], tabs)
-  ]
+  return [...collectTabPaths(node.children[0], tabs), ...collectTabPaths(node.children[1], tabs)]
 }
 
 /**

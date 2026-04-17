@@ -22,7 +22,7 @@ import {
   placeholderHighlighter,
   inlineCodeHighlighter,
   todoCommentHighlighter,
-  sharedEditorTokenTheme,
+  sharedEditorTokenTheme
 } from '@/lib/shared-cm-extensions'
 
 const headingDecos = [
@@ -62,7 +62,6 @@ const headingHighlighter = ViewPlugin.fromClass(
   },
   { decorations: (v) => v.decorations }
 )
-
 
 // ---------------------------------------------------------------------------
 // Sticky heading breadcrumb

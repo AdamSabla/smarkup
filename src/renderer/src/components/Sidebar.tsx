@@ -431,7 +431,8 @@ const FileList = ({
           file={file}
           active={
             file.path === activeTabId ||
-            (activeDiff != null && (file.path === activeDiff.leftPath || file.path === activeDiff.rightPath))
+            (activeDiff != null &&
+              (file.path === activeDiff.leftPath || file.path === activeDiff.rightPath))
           }
           focused={file.path === focusedItem}
           renaming={renamingPath === file.path}
@@ -527,7 +528,8 @@ const SubfolderView = ({
             'hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
             'text-muted-foreground',
             focused && 'ring-1 ring-inset ring-ring',
-            isDropTarget && 'bg-sidebar-accent/70 ring-1 ring-inset ring-primary/60 text-sidebar-accent-foreground'
+            isDropTarget &&
+              'bg-sidebar-accent/70 ring-1 ring-inset ring-primary/60 text-sidebar-accent-foreground'
           )}
         >
           <ChevronRightIcon
@@ -875,10 +877,7 @@ type RecentsSectionProps = {
 const RECENTS_INITIAL = 10
 const RECENTS_PAGE = 10
 
-const RecentsSection = ({
-  expanded,
-  onToggleExpanded
-}: RecentsSectionProps): React.JSX.Element => {
+const RecentsSection = ({ expanded, onToggleExpanded }: RecentsSectionProps): React.JSX.Element => {
   const recentFiles = useWorkspace((s) => s.recentFiles)
   const activeTabId = useWorkspace((s) => s.activeTabId)
   const diffTabs = useWorkspace((s) => s.diffTabs)
@@ -916,10 +915,7 @@ const RecentsSection = ({
             <Button
               variant="ghost"
               size="icon"
-              className={cn(
-                'size-5 opacity-0 group-hover:opacity-100',
-                menuOpen && 'opacity-100'
-              )}
+              className={cn('size-5 opacity-0 group-hover:opacity-100', menuOpen && 'opacity-100')}
               aria-label="Recents options"
             >
               <MoreHorizontalIcon className="size-3" />
@@ -956,7 +952,8 @@ const RecentsSection = ({
               path={path}
               active={
                 path === activeTabId ||
-                (activeDiff != null && (path === activeDiff.leftPath || path === activeDiff.rightPath))
+                (activeDiff != null &&
+                  (path === activeDiff.leftPath || path === activeDiff.rightPath))
               }
               onOpen={() => void openFile(path)}
               onRemove={() => removeRecentFile(path)}
@@ -1013,7 +1010,9 @@ const SortableSectionView = (props: SectionViewProps): React.JSX.Element => {
         'cursor-grab active:cursor-grabbing touch-none select-none',
         // Always a bit visible while dragging so the grabbed row stays legible;
         // otherwise reveal on section hover or keyboard focus.
-        isDragging ? 'opacity-100' : 'opacity-0 group-hover/section:opacity-100 focus-visible:opacity-100'
+        isDragging
+          ? 'opacity-100'
+          : 'opacity-0 group-hover/section:opacity-100 focus-visible:opacity-100'
       )}
     >
       <GripVerticalIcon className="size-3" />
@@ -1233,15 +1232,12 @@ const Sidebar = (): React.JSX.Element => {
   const [dragOverPath, setDragOverPath] = useState<string | null>(null)
   const [draggingPath, setDraggingPath] = useState<string | null>(null)
 
-  const onItemDragStart = useCallback(
-    (e: React.DragEvent, payload: DragPayload): void => {
-      e.dataTransfer.setData(DND_MIME, JSON.stringify(payload))
-      e.dataTransfer.effectAllowed = 'move'
-      dragPayloadRef.current = payload
-      setDraggingPath(payload.path)
-    },
-    []
-  )
+  const onItemDragStart = useCallback((e: React.DragEvent, payload: DragPayload): void => {
+    e.dataTransfer.setData(DND_MIME, JSON.stringify(payload))
+    e.dataTransfer.effectAllowed = 'move'
+    dragPayloadRef.current = payload
+    setDraggingPath(payload.path)
+  }, [])
 
   const onItemDragEnd = useCallback((): void => {
     dragPayloadRef.current = null
@@ -1354,68 +1350,68 @@ const Sidebar = (): React.JSX.Element => {
 
   return (
     <SidebarDndContext.Provider value={dndContextValue}>
-    <div
-      ref={sidebarRef}
-      tabIndex={-1}
-      onKeyDown={handleKeyDown}
-      onBlur={handleBlur}
-      className="flex h-full flex-col bg-sidebar text-sidebar-foreground outline-none"
-    >
-      <ScrollArea className="min-h-0 flex-1 px-1 pt-2">
-        <RecentsSection
-          expanded={!sidebarCollapsedPaths.has(RECENTS_ID)}
-          onToggleExpanded={() => toggleSidebarCollapsedPath(RECENTS_ID)}
-        />
-        {draftsSection && (
-          <SectionView
-            key={draftsSection.id}
-            section={draftsSection}
-            showAll={showAllSections.has(draftsSection.id)}
-            onToggleShowAll={() => toggleShowAll(draftsSection.id)}
-            {...sectionCommonProps}
+      <div
+        ref={sidebarRef}
+        tabIndex={-1}
+        onKeyDown={handleKeyDown}
+        onBlur={handleBlur}
+        className="flex h-full flex-col bg-sidebar text-sidebar-foreground outline-none"
+      >
+        <ScrollArea className="min-h-0 flex-1 px-1 pt-2">
+          <RecentsSection
+            expanded={!sidebarCollapsedPaths.has(RECENTS_ID)}
+            onToggleExpanded={() => toggleSidebarCollapsedPath(RECENTS_ID)}
           />
-        )}
-        <DndKitContext
-          sensors={sortableSensors}
-          collisionDetection={closestCenter}
-          onDragEnd={handleSectionDragEnd}
-        >
-          <SortableContext items={additionalFolders} strategy={verticalListSortingStrategy}>
-            {additionalSections.map((section) => (
-              <SortableSectionView
-                key={section.id}
-                section={section}
-                showAll={showAllSections.has(section.id)}
-                onToggleShowAll={() => toggleShowAll(section.id)}
-                onRemove={() => void removeFolder(section.path ?? section.id)}
-                {...sectionCommonProps}
-              />
-            ))}
-          </SortableContext>
-        </DndKitContext>
-      </ScrollArea>
+          {draftsSection && (
+            <SectionView
+              key={draftsSection.id}
+              section={draftsSection}
+              showAll={showAllSections.has(draftsSection.id)}
+              onToggleShowAll={() => toggleShowAll(draftsSection.id)}
+              {...sectionCommonProps}
+            />
+          )}
+          <DndKitContext
+            sensors={sortableSensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleSectionDragEnd}
+          >
+            <SortableContext items={additionalFolders} strategy={verticalListSortingStrategy}>
+              {additionalSections.map((section) => (
+                <SortableSectionView
+                  key={section.id}
+                  section={section}
+                  showAll={showAllSections.has(section.id)}
+                  onToggleShowAll={() => toggleShowAll(section.id)}
+                  onRemove={() => void removeFolder(section.path ?? section.id)}
+                  {...sectionCommonProps}
+                />
+              ))}
+            </SortableContext>
+          </DndKitContext>
+        </ScrollArea>
 
-      <div className="flex items-center gap-1 border-t border-border/50 px-2 py-1.5">
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-7 flex-1 justify-start gap-2 px-2 text-xs"
-          onClick={handleAddFolder}
-        >
-          <FolderPlusIcon className="size-3.5" />
-          Add folder
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="size-7"
-          onClick={openSettings}
-          aria-label="Settings"
-        >
-          <SettingsIcon className="size-3.5" />
-        </Button>
+        <div className="flex items-center gap-1 border-t border-border/50 px-2 py-1.5">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 flex-1 justify-start gap-2 px-2 text-xs"
+            onClick={handleAddFolder}
+          >
+            <FolderPlusIcon className="size-3.5" />
+            Add folder
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-7"
+            onClick={openSettings}
+            aria-label="Settings"
+          >
+            <SettingsIcon className="size-3.5" />
+          </Button>
+        </div>
       </div>
-    </div>
     </SidebarDndContext.Provider>
   )
 }

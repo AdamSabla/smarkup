@@ -10,7 +10,11 @@ type SplitContainerProps = {
   isLast?: boolean
 }
 
-const SplitContainer = ({ node, isFirst = true, isLast = true }: SplitContainerProps): React.JSX.Element => {
+const SplitContainer = ({
+  node,
+  isFirst = true,
+  isLast = true
+}: SplitContainerProps): React.JSX.Element => {
   const activePaneId = useWorkspace((s) => s.activePaneId)
   const resizePanes = useWorkspace((s) => s.resizePanes)
   const paneRoot = useWorkspace((s) => s.paneRoot)

@@ -7,13 +7,17 @@ import { syntaxHighlighting } from '@codemirror/language'
 import { cn } from '@/lib/utils'
 import { useWorkspace, type DiffTab } from '@/store/workspace'
 import { computeDiff, buildAlignmentMap, type DiffResult, type DiffHunk } from '@/lib/diff-engine'
-import { createDiffExtension, setDiffDecorations, buildSideDecorations } from '@/lib/diff-extensions'
+import {
+  createDiffExtension,
+  setDiffDecorations,
+  buildSideDecorations
+} from '@/lib/diff-extensions'
 import {
   markdownHighlight,
   placeholderHighlighter,
   inlineCodeHighlighter,
   todoCommentHighlighter,
-  sharedEditorTokenTheme,
+  sharedEditorTokenTheme
 } from '@/lib/shared-cm-extensions'
 import FileSearchPopover from '@/components/FileSearchPopover'
 import DiffStatusBar from './DiffStatusBar'
@@ -69,7 +73,7 @@ const DiffView = ({ diffTab }: Props): React.JSX.Element => {
 
   const diff = useMemo<DiffResult>(
     () => computeDiff(deferredLeft, deferredRight),
-    [deferredLeft, deferredRight],
+    [deferredLeft, deferredRight]
   )
 
   const alignment = useMemo(() => {
@@ -104,7 +108,7 @@ const DiffView = ({ diffTab }: Props): React.JSX.Element => {
         const scrollTop = source.scrollDOM.scrollTop
         const block = source.lineBlockAtHeight(scrollTop)
         const sourceLine = source.state.doc.lineAt(block.from).number - 1 // 0-based
-        const targetLine = sourceLine < map.length ? map[sourceLine] : map[map.length - 1] ?? 0
+        const targetLine = sourceLine < map.length ? map[sourceLine] : (map[map.length - 1] ?? 0)
         if (targetLine >= 0 && targetLine < target.state.doc.lines) {
           const targetPos = target.state.doc.line(targetLine + 1).from
           const targetBlock = target.lineBlockAt(targetPos)
@@ -167,6 +171,7 @@ const DiffView = ({ diffTab }: Props): React.JSX.Element => {
   // Cmd+S keymap to save focused side
   const saveKeymap = useMemo(
     () =>
+      // eslint-disable-next-line react-hooks/rules-of-hooks
       keymap.of([
         {
           key: 'Mod-s',
@@ -174,10 +179,10 @@ const DiffView = ({ diffTab }: Props): React.JSX.Element => {
             const tabId = focusedSideRef.current === 'left' ? leftTab?.id : rightTab?.id
             if (tabId) void saveTab(tabId)
             return true
-          },
-        },
+          }
+        }
       ]),
-    [leftTab?.id, rightTab?.id, saveTab],
+    [leftTab?.id, rightTab?.id, saveTab]
   )
 
   const baseExtensions = useMemo(
@@ -198,82 +203,79 @@ const DiffView = ({ diffTab }: Props): React.JSX.Element => {
           fontSize: '14px',
           height: '100%',
           backgroundColor: 'var(--background) !important',
-          color: 'var(--foreground) !important',
+          color: 'var(--foreground) !important'
         },
         '.cm-scroller': {
           fontFamily:
             'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace',
-          padding: '16px 20px',
+          padding: '16px 20px'
         },
         '.cm-content': {
-          caretColor: 'var(--foreground)',
+          caretColor: 'var(--foreground)'
         },
         '.cm-cursor, .cm-dropCursor': {
           borderLeftColor: 'var(--foreground)',
           borderLeftWidth: '2px',
           marginTop: '-1px',
-          height: 'calc(1em + 4px) !important',
+          height: 'calc(1em + 4px) !important'
         },
         '.cm-activeLine': {
-          backgroundColor: 'color-mix(in srgb, var(--foreground) 4%, transparent)',
+          backgroundColor: 'color-mix(in srgb, var(--foreground) 4%, transparent)'
         },
         '.cm-gutters': {
           backgroundColor: 'var(--background) !important',
-          borderRight: 'none',
+          borderRight: 'none'
         },
         '.cm-lineNumbers .cm-gutterElement': {
           color: 'color-mix(in srgb, var(--foreground) 30%, transparent)',
           fontSize: '12px',
           minWidth: '2.5em',
-          padding: '0 8px 0 4px',
+          padding: '0 8px 0 4px'
         },
         '.cm-lineNumbers .cm-activeLineGutter': {
-          color: 'var(--foreground)',
+          color: 'var(--foreground)'
         },
         '&.cm-focused': {
-          outline: 'none',
-        },
-      }),
+          outline: 'none'
+        }
+      })
     ],
-    [saveKeymap, rawWordWrap],
+    [saveKeymap, rawWordWrap]
   )
 
   const onLeftChange = useCallback(
     (val: string) => {
       if (leftTab) updateTabContent(leftTab.id, val)
     },
-    [leftTab?.id, updateTabContent],
+    [leftTab?.id, updateTabContent]
   )
 
   const onRightChange = useCallback(
     (val: string) => {
       if (rightTab) updateTabContent(rightTab.id, val)
     },
-    [rightTab?.id, updateTabContent],
+    [rightTab?.id, updateTabContent]
   )
 
   // Hunk navigation
   const diffHunks = diff.hunks.filter((h) => h.type !== 'equal')
 
-  const scrollToHunk = useCallback(
-    (hunk: DiffHunk) => {
-      const leftView = leftViewRef.current
-      const rightView = rightViewRef.current
-      if (!leftView || !rightView) return
+  const scrollToHunk = useCallback((hunk: DiffHunk) => {
+    const leftView = leftViewRef.current
+    const rightView = rightViewRef.current
+    if (!leftView || !rightView) return
 
-      if ('leftStart' in hunk) {
-        const line = Math.min(hunk.leftStart + 1, leftView.state.doc.lines)
-        const pos = leftView.state.doc.line(line).from
-        leftView.dispatch({ effects: EditorView.scrollIntoView(pos, { y: 'center' }) })
-      }
-      if ('rightStart' in hunk) {
-        const line = Math.min(hunk.rightStart + 1, rightView.state.doc.lines)
-        const pos = rightView.state.doc.line(line).from
-        rightView.dispatch({ effects: EditorView.scrollIntoView(pos, { y: 'center' }) })
-      }
-    },
-    [],
-  )
+    if ('leftStart' in hunk) {
+      const line = Math.min(hunk.leftStart + 1, leftView.state.doc.lines)
+      const pos = leftView.state.doc.line(line).from
+      leftView.dispatch({ effects: EditorView.scrollIntoView(pos, { y: 'center' }) })
+    }
+    if ('rightStart' in hunk) {
+      const line = Math.min(hunk.rightStart + 1, rightView.state.doc.lines)
+      const pos = rightView.state.doc.line(line).from
+      rightView.dispatch({ effects: EditorView.scrollIntoView(pos, { y: 'center' }) })
+    }
+  }, [])
 
   const currentHunkRef = useRef(0)
 
@@ -318,7 +320,9 @@ const DiffView = ({ diffTab }: Props): React.JSX.Element => {
           if (payload.kind === 'file' && MD_EXT_RE.test(payload.path)) {
             void replaceDiffFile(diffTab.id, side, payload.path)
           }
-        } catch { /* ignore malformed data */ }
+        } catch {
+          /* ignore malformed data */
+        }
         return
       }
 
@@ -332,7 +336,7 @@ const DiffView = ({ diffTab }: Props): React.JSX.Element => {
         }
       }
     },
-    [diffTab.id, replaceDiffFile],
+    [diffTab.id, replaceDiffFile]
   )
 
   return (
@@ -342,16 +346,26 @@ const DiffView = ({ diffTab }: Props): React.JSX.Element => {
         <div
           className={cn(
             'flex flex-1 flex-col overflow-hidden border-r border-border',
-            leftDragOver && 'ring-2 ring-inset ring-ring',
+            leftDragOver && 'ring-2 ring-inset ring-ring'
           )}
-          onFocus={() => { focusedSideRef.current = 'left' }}
+          onFocus={() => {
+            focusedSideRef.current = 'left'
+          }}
           onDragOver={handleDragOver}
-          onDragEnter={(e) => { if (e.dataTransfer.types.includes(DND_MIME) || e.dataTransfer.types.includes('Files')) setLeftDragOver(true) }}
-          onDragLeave={(e) => { if (e.currentTarget === e.target || !e.currentTarget.contains(e.relatedTarget as Node)) setLeftDragOver(false) }}
+          onDragEnter={(e) => {
+            if (e.dataTransfer.types.includes(DND_MIME) || e.dataTransfer.types.includes('Files'))
+              setLeftDragOver(true)
+          }}
+          onDragLeave={(e) => {
+            if (e.currentTarget === e.target || !e.currentTarget.contains(e.relatedTarget as Node))
+              setLeftDragOver(false)
+          }}
           onDrop={(e) => void handleDrop(e, 'left')}
         >
           <div className="flex h-7 shrink-0 items-center border-b border-border px-1.5 text-xs text-muted-foreground">
-            {leftDirty && <span className="mr-1 inline-block h-2 w-2 rounded-full bg-foreground/50" />}
+            {leftDirty && (
+              <span className="mr-1 inline-block h-2 w-2 rounded-full bg-foreground/50" />
+            )}
             <FileSearchPopover
               value={diffTab.leftPath}
               onSelect={(path) => void replaceDiffFile(diffTab.id, 'left', path)}
@@ -361,7 +375,10 @@ const DiffView = ({ diffTab }: Props): React.JSX.Element => {
             <CodeMirror
               value={leftContent}
               onChange={onLeftChange}
-              onCreateEditor={(view) => { leftViewRef.current = view; setEditorsReady((c) => c + 1) }}
+              onCreateEditor={(view) => {
+                leftViewRef.current = view
+                setEditorsReady((c) => c + 1)
+              }}
               theme={isDark ? 'dark' : 'light'}
               extensions={baseExtensions}
               basicSetup={{
@@ -369,7 +386,7 @@ const DiffView = ({ diffTab }: Props): React.JSX.Element => {
                 foldGutter: false,
                 highlightActiveLine: true,
                 highlightActiveLineGutter: true,
-                searchKeymap: false,
+                searchKeymap: false
               }}
               className="h-full"
               height="100%"
@@ -381,16 +398,26 @@ const DiffView = ({ diffTab }: Props): React.JSX.Element => {
         <div
           className={cn(
             'flex flex-1 flex-col overflow-hidden',
-            rightDragOver && 'ring-2 ring-inset ring-ring',
+            rightDragOver && 'ring-2 ring-inset ring-ring'
           )}
-          onFocus={() => { focusedSideRef.current = 'right' }}
+          onFocus={() => {
+            focusedSideRef.current = 'right'
+          }}
           onDragOver={handleDragOver}
-          onDragEnter={(e) => { if (e.dataTransfer.types.includes(DND_MIME) || e.dataTransfer.types.includes('Files')) setRightDragOver(true) }}
-          onDragLeave={(e) => { if (e.currentTarget === e.target || !e.currentTarget.contains(e.relatedTarget as Node)) setRightDragOver(false) }}
+          onDragEnter={(e) => {
+            if (e.dataTransfer.types.includes(DND_MIME) || e.dataTransfer.types.includes('Files'))
+              setRightDragOver(true)
+          }}
+          onDragLeave={(e) => {
+            if (e.currentTarget === e.target || !e.currentTarget.contains(e.relatedTarget as Node))
+              setRightDragOver(false)
+          }}
           onDrop={(e) => void handleDrop(e, 'right')}
         >
           <div className="flex h-7 shrink-0 items-center border-b border-border px-1.5 text-xs text-muted-foreground">
-            {rightDirty && <span className="mr-1 inline-block h-2 w-2 rounded-full bg-foreground/50" />}
+            {rightDirty && (
+              <span className="mr-1 inline-block h-2 w-2 rounded-full bg-foreground/50" />
+            )}
             <FileSearchPopover
               value={diffTab.rightPath}
               onSelect={(path) => void replaceDiffFile(diffTab.id, 'right', path)}
@@ -401,7 +428,10 @@ const DiffView = ({ diffTab }: Props): React.JSX.Element => {
             <CodeMirror
               value={rightContent}
               onChange={onRightChange}
-              onCreateEditor={(view) => { rightViewRef.current = view; setEditorsReady((c) => c + 1) }}
+              onCreateEditor={(view) => {
+                rightViewRef.current = view
+                setEditorsReady((c) => c + 1)
+              }}
               theme={isDark ? 'dark' : 'light'}
               extensions={baseExtensions}
               basicSetup={{
@@ -409,7 +439,7 @@ const DiffView = ({ diffTab }: Props): React.JSX.Element => {
                 foldGutter: false,
                 highlightActiveLine: true,
                 highlightActiveLineGutter: true,
-                searchKeymap: false,
+                searchKeymap: false
               }}
               className="h-full"
               height="100%"

@@ -190,9 +190,7 @@ export const useShortcuts = (): void => {
         if (!activeTab || activeTab.path.startsWith('draft://')) return
         ;(async (): Promise<void> => {
           const dir = await window.api.dirname(activeTab.path)
-          const ext = activeTab.name.includes('.')
-            ? '.' + activeTab.name.split('.').pop()!
-            : ''
+          const ext = activeTab.name.includes('.') ? '.' + activeTab.name.split('.').pop()! : ''
           const base = activeTab.name.replace(/\.[^.]+$/, '')
           const trailingNum = base.match(/^(.*?)(\d+)$/)
           const copyName = trailingNum

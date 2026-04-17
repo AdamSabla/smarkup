@@ -35,7 +35,13 @@ type Props = {
   variant?: 'inline' | 'outlined'
 }
 
-const FileSearchPopover = ({ value, onSelect, className, align = 'left', variant = 'inline' }: Props): React.JSX.Element => {
+const FileSearchPopover = ({
+  value,
+  onSelect,
+  className,
+  align = 'left',
+  variant = 'inline'
+}: Props): React.JSX.Element => {
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
   const containerRef = useRef<HTMLDivElement>(null)
@@ -56,7 +62,11 @@ const FileSearchPopover = ({ value, onSelect, className, align = 'left', variant
       if (!seen.has(t.path)) {
         seen.add(t.path)
         const parts = t.path.split('/')
-        result.push({ path: t.path, name: t.name, folder: parts.length > 2 ? parts[parts.length - 2] : '' })
+        result.push({
+          path: t.path,
+          name: t.name,
+          folder: parts.length > 2 ? parts[parts.length - 2] : ''
+        })
       }
     }
     // Then all sidebar files
@@ -83,7 +93,7 @@ const FileSearchPopover = ({ value, onSelect, className, align = 'left', variant
       setOpen(false)
       setSearch('')
     },
-    [onSelect],
+    [onSelect]
   )
 
   // Close on outside click
@@ -92,7 +102,8 @@ const FileSearchPopover = ({ value, onSelect, className, align = 'left', variant
     const onClick = (e: MouseEvent): void => {
       const target = e.target as Node
       if (
-        containerRef.current && !containerRef.current.contains(target) &&
+        containerRef.current &&
+        !containerRef.current.contains(target) &&
         (!dropdownRef.current || !dropdownRef.current.contains(target))
       ) {
         setOpen(false)
@@ -152,7 +163,7 @@ const FileSearchPopover = ({ value, onSelect, className, align = 'left', variant
             className={cn(
               'flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-xs outline-hidden select-none',
               'data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground',
-              f.path === value && 'font-medium',
+              f.path === value && 'font-medium'
             )}
           >
             <span className="flex-1 truncate">{f.name}</span>
@@ -180,34 +191,44 @@ const FileSearchPopover = ({ value, onSelect, className, align = 'left', variant
           variant === 'outlined'
             ? 'border border-border bg-background hover:bg-muted hover:text-foreground'
             : 'hover:bg-muted hover:text-foreground',
-          open && 'bg-muted text-foreground',
+          open && 'bg-muted text-foreground'
         )}
         title={value ?? undefined}
       >
         <span className="max-w-[200px] truncate">{selectedName}</span>
         <svg className="size-3 opacity-50" viewBox="0 0 16 16" fill="currentColor">
-          <path d="M4.5 6.5l3.5 3.5 3.5-3.5" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+          <path
+            d="M4.5 6.5l3.5 3.5 3.5-3.5"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            fill="none"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
         </svg>
       </button>
 
-      {open && usePortal && dropdownPos && createPortal(
-        <div
-          ref={dropdownRef}
-          className="fixed z-50 w-72 overflow-hidden rounded-md border border-border bg-popover shadow-lg"
-          style={{ top: dropdownPos.top, left: dropdownPos.left }}
-          onMouseDown={(e) => e.stopPropagation()}
-        >
-          {dropdownContent}
-        </div>,
-        document.body
-      )}
+      {open &&
+        usePortal &&
+        dropdownPos &&
+        createPortal(
+          <div
+            ref={dropdownRef}
+            className="fixed z-50 w-72 overflow-hidden rounded-md border border-border bg-popover shadow-lg"
+            style={{ top: dropdownPos.top, left: dropdownPos.left }}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            {dropdownContent}
+          </div>,
+          document.body
+        )}
 
       {open && !usePortal && (
         <div
           ref={dropdownRef}
           className={cn(
             'absolute top-full z-50 mt-1 w-72 overflow-hidden rounded-md border border-border bg-popover shadow-lg',
-            align === 'right' ? 'right-0' : 'left-0',
+            align === 'right' ? 'right-0' : 'left-0'
           )}
         >
           {dropdownContent}

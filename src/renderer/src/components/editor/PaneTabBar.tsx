@@ -30,7 +30,11 @@ type PaneTabBarProps = {
   isLast?: boolean
 }
 
-const PaneTabBar = ({ paneId, isFirst = false, isLast = false }: PaneTabBarProps): React.JSX.Element => {
+const PaneTabBar = ({
+  paneId,
+  isFirst = false,
+  isLast = false
+}: PaneTabBarProps): React.JSX.Element => {
   const paneRoot = useWorkspace((s) => s.paneRoot)
   const tabs = useWorkspace((s) => s.tabs)
   const diffTabs = useWorkspace((s) => s.diffTabs)
@@ -192,7 +196,10 @@ const PaneTabBar = ({ paneId, isFirst = false, isLast = false }: PaneTabBarProps
             onDragMove={handleDragMove}
             onDragEnd={handleDragEnd}
           >
-            <SortableContext items={paneTabs.map((t) => t.id)} strategy={horizontalListSortingStrategy}>
+            <SortableContext
+              items={paneTabs.map((t) => t.id)}
+              strategy={horizontalListSortingStrategy}
+            >
               {paneTabs.map((tab, index) => {
                 const nextTab = paneTabs[index + 1]
                 const isActive = tab.id === paneActiveTabId
@@ -246,11 +253,11 @@ const PaneTabBar = ({ paneId, isFirst = false, isLast = false }: PaneTabBarProps
             {/* Separator before plus icon when last tab is inactive */}
             {paneActiveTabId !== paneTabs[paneTabs.length - 1]?.id &&
               paneActiveTabId !== paneDiffTabs[paneDiffTabs.length - 1]?.id && (
-              <div
-                className="pointer-events-none absolute left-0 top-1/2 h-4 w-px -translate-y-1/2 bg-foreground/15"
-                aria-hidden
-              />
-            )}
+                <div
+                  className="pointer-events-none absolute left-0 top-1/2 h-4 w-px -translate-y-1/2 bg-foreground/15"
+                  aria-hidden
+                />
+              )}
             <button
               onClick={() => {
                 if (activePaneId !== paneId) setActivePane(paneId)

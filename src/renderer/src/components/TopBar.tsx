@@ -76,12 +76,7 @@ const TopBar = (): React.JSX.Element => {
       <div className="flex-1" />
 
       {/* Right side — mode switcher */}
-      <div
-        className={cn(
-          'flex shrink-0 items-center pr-3',
-          !isMac && 'mr-[140px]'
-        )}
-      >
+      <div className={cn('flex shrink-0 items-center pr-3', !isMac && 'mr-[140px]')}>
         <ModeSwitcher />
       </div>
     </div>

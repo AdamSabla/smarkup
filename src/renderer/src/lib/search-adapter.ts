@@ -168,19 +168,16 @@ export const createTiptapSearchAdapter = (editor: Editor): SearchAdapter => {
 
   return {
     setQuery: (query) =>
-      applyAndReadAfter(
-        { type: 'setQuery', query },
-        (after) => (after && after.matches.length > 0 ? after.matches[after.currentIndex] : null)
+      applyAndReadAfter({ type: 'setQuery', query }, (after) =>
+        after && after.matches.length > 0 ? after.matches[after.currentIndex] : null
       ),
     next: () =>
-      applyAndReadAfter(
-        { type: 'advance', delta: 1 },
-        (after) => (after && after.matches.length > 0 ? after.matches[after.currentIndex] : null)
+      applyAndReadAfter({ type: 'advance', delta: 1 }, (after) =>
+        after && after.matches.length > 0 ? after.matches[after.currentIndex] : null
       ),
     prev: () =>
-      applyAndReadAfter(
-        { type: 'advance', delta: -1 },
-        (after) => (after && after.matches.length > 0 ? after.matches[after.currentIndex] : null)
+      applyAndReadAfter({ type: 'advance', delta: -1 }, (after) =>
+        after && after.matches.length > 0 ? after.matches[after.currentIndex] : null
       ),
     replace: (replacement) => {
       const s = searchHighlightKey.getState(editor.view.state)
