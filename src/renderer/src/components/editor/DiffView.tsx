@@ -4,6 +4,7 @@ import { markdown } from '@codemirror/lang-markdown'
 import { EditorView, drawSelection, keymap, lineNumbers } from '@codemirror/view'
 import { Prec } from '@codemirror/state'
 import { syntaxHighlighting } from '@codemirror/language'
+import { selectNextOccurrence } from '@codemirror/search'
 import { cn } from '@/lib/utils'
 import { useWorkspace, type DiffTab } from '@/store/workspace'
 import { computeDiff, buildAlignmentMap, type DiffResult, type DiffHunk } from '@/lib/diff-engine'
@@ -197,6 +198,9 @@ const DiffView = ({ diffTab }: Props): React.JSX.Element => {
       createDiffExtension(),
       lineNumbers(),
       saveKeymap,
+      // Re-bind Cmd-D → selectNextOccurrence. basicSetup.searchKeymap is
+      // disabled on both sides, which also drops the default Cmd-D binding.
+      Prec.highest(keymap.of([{ key: 'Mod-d', run: selectNextOccurrence, preventDefault: true }])),
       ...(rawWordWrap ? [EditorView.lineWrapping] : []),
       EditorView.theme({
         '&': {

@@ -14,7 +14,7 @@ import {
 } from '@codemirror/view'
 import { Prec, RangeSetBuilder } from '@codemirror/state'
 import { syntaxHighlighting } from '@codemirror/language'
-import { search } from '@codemirror/search'
+import { search, selectNextOccurrence } from '@codemirror/search'
 import { useWorkspace } from '@/store/workspace'
 import { getActiveRawEditor, setActiveRawEditor } from '@/lib/active-raw-editor'
 import {
@@ -402,6 +402,11 @@ const RawEditor = ({ value, onChange, isActive }: Props): React.JSX.Element => {
       // FindBar — basicSetup's searchKeymap is disabled below so Cmd+F never
       // reaches CM6's default `openSearchPanel` handler.
       search({ top: true }),
+      // Re-bind just Cmd-D → selectNextOccurrence. basicSetup.searchKeymap
+      // is disabled (so Cmd+F doesn't open the built-in panel), which also
+      // drops Cmd-D. Add it back explicitly at highest precedence so it
+      // wins over macOS' default "bookmark" action and any other handler.
+      Prec.highest(keymap.of([{ key: 'Mod-d', run: selectNextOccurrence, preventDefault: true }])),
       ...(rawHeadingSizes ? [headingHighlighter] : [stickyHeadingBreadcrumb]),
       ...(rawWordWrap ? [EditorView.lineWrapping] : []),
       sharedEditorTokenTheme,
