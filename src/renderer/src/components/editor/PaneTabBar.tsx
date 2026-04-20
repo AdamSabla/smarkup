@@ -171,7 +171,7 @@ const PaneTabBar = ({
       )}
 
       {paneTabs.length === 0 && paneDiffTabs.length === 0 ? (
-        <div className="flex flex-1 items-center">
+        <div className="flex flex-1 items-center self-stretch">
           <button
             onClick={() => {
               if (activePaneId !== paneId) setActivePane(paneId)

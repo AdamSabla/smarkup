@@ -17,6 +17,7 @@ export const useShortcuts = (): void => {
     saveActiveAs,
     requestCloseTab,
     requestCloseAllTabs,
+    requestCloseWindow,
     closePane,
     activeTabId,
     activePaneId,
@@ -131,6 +132,8 @@ export const useShortcuts = (): void => {
           requestCloseTab(activeTabId)
         } else if (paneRoot.type === 'split') {
           closePane(activePaneId)
+        } else {
+          requestCloseWindow()
         }
         return
       }
@@ -223,6 +226,7 @@ export const useShortcuts = (): void => {
     saveActiveAs,
     requestCloseTab,
     requestCloseAllTabs,
+    requestCloseWindow,
     closePane,
     activeTabId,
     activePaneId,
