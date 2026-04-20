@@ -196,15 +196,16 @@ const CommandPaletteBody = (): React.JSX.Element => {
   // search files (like QuickOpen) — not just commands.
   const fileItems = useMemo<FileItem[]>(() => {
     const result: FileItem[] = []
-    const collectFromNode = (node: FolderNode, rootLabel: string): void => {
+    const collectFromNode = (node: FolderNode, parentPath: string): void => {
+      const here = parentPath ? `${parentPath} / ${node.name}` : node.name
       for (const file of node.files) {
         result.push({
           path: file.path,
           displayName: file.name.replace(/\.md$/i, ''),
-          folder: rootLabel
+          folder: here
         })
       }
-      for (const sub of node.subfolders) collectFromNode(sub, rootLabel)
+      for (const sub of node.subfolders) collectFromNode(sub, here)
     }
     for (const section of sections) {
       for (const file of section.files) {
@@ -305,7 +306,7 @@ const CommandPaletteBody = (): React.JSX.Element => {
                   >
                     <FileTextIcon />
                     <span className="truncate">{file.displayName}</span>
-                    <span className="ml-auto truncate text-xs text-muted-foreground">
+                    <span className="ml-auto max-w-[55%] truncate text-xs text-muted-foreground">
                       {file.folder}
                     </span>
                   </CommandItem>

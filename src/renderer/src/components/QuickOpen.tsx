@@ -53,9 +53,10 @@ const QuickOpenBody = (): React.JSX.Element => {
         result.push(item)
       }
     }
-    const collectFromNode = (node: FolderNode, rootLabel: string): void => {
-      collectFiles(node.files, rootLabel)
-      for (const sub of node.subfolders) collectFromNode(sub, rootLabel)
+    const collectFromNode = (node: FolderNode, parentPath: string): void => {
+      const here = parentPath ? `${parentPath} / ${node.name}` : node.name
+      collectFiles(node.files, here)
+      for (const sub of node.subfolders) collectFromNode(sub, here)
     }
     for (const section of sections) {
       collectFiles(section.files, section.label)
