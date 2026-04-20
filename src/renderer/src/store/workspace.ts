@@ -278,7 +278,7 @@ export type SidebarSection = {
   label: string
   /** Actual path on disk (null for a missing drafts folder) */
   path: string | null
-  /** Direct .md children at the section root, sorted by mtime desc */
+  /** Direct .md children at the section root, sorted by name A-Z */
   files: FileEntry[]
   /** Nested subfolders (each with their own files and subfolders) */
   subfolders: FolderNode[]
@@ -464,7 +464,7 @@ type WorkspaceState = {
    * `useAutoFilename` hook on debounced content change.
    */
   autoRenameActiveTab: () => Promise<void>
-  renameFile: (oldPath: string, newName: string) => Promise<void>
+  renameFile: (oldPath: string, newName: string) => Promise<string>
   deleteFile: (path: string) => Promise<void>
   moveFile: (path: string, destDir: string) => Promise<void>
   moveFolder: (path: string, destDir: string) => Promise<void>
@@ -559,7 +559,7 @@ const readFolderTree = async (dirPath: string): Promise<FolderNode> => {
   const entries = await window.api.readDirectory(dirPath)
   const files = entries
     .filter((e) => !e.isDirectory && e.name.toLowerCase().endsWith('.md'))
-    .sort((a, b) => b.mtimeMs - a.mtimeMs)
+    .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }))
   const dirs = entries.filter((e) => e.isDirectory).sort((a, b) => a.name.localeCompare(b.name))
   const allSubs = await Promise.all(
     dirs.map((d) =>
@@ -1287,6 +1287,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       fileEditorModes: get().fileEditorModes
     })
     await get().refreshAllSections()
+    return newPath
   },
 
   deleteFile: async (path) => {

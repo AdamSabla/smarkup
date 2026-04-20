@@ -79,6 +79,10 @@ type DndContext = {
    *  dragover stream lets the innermost target always win via stopPropagation. */
   onTargetDragOver: (e: React.DragEvent, targetPath: string, destDir: string) => void
   onTargetDrop: (e: React.DragEvent, destDir: string) => void
+  /** Scroll a sidebar row into view after the tree has been re-sorted.
+   *  Piggybacks on this context because both FileRow and SubfolderView
+   *  already consume it; avoids threading a helper through every prop level. */
+  scrollPathIntoView: (path: string) => void
 }
 const SidebarDndContext = createContext<DndContext | null>(null)
 const useSidebarDnd = (): DndContext => {
@@ -420,6 +424,7 @@ const FileList = ({
   onFocusItem
 }: FileListProps): React.JSX.Element => {
   const { openFile, activeTabId, diffTabs, renameFile, deleteFile } = useWorkspace()
+  const { scrollPathIntoView } = useSidebarDnd()
   const activeDiff = activeTabId?.startsWith('diff:')
     ? diffTabs.find((d) => d.id === activeTabId)
     : undefined
@@ -441,7 +446,8 @@ const FileList = ({
           onStartRename={() => onStartRename(file.path)}
           onCommitRename={async (newName) => {
             onCancelRename()
-            await renameFile(file.path, newName)
+            const newPath = await renameFile(file.path, newName)
+            scrollPathIntoView(newPath)
           }}
           onCancelRename={onCancelRename}
           onDelete={() => void deleteFile(file.path)}
@@ -1099,6 +1105,17 @@ const Sidebar = (): React.JSX.Element => {
     ;(el as HTMLElement)?.scrollIntoView({ block: 'nearest' })
   }, [activeFocusedItem])
 
+  // Deferred to the next frame so React has committed the resorted list and
+  // the target row exists in the DOM at its new alphabetical slot.
+  const scrollPathIntoView = useCallback((path: string) => {
+    requestAnimationFrame(() => {
+      const el = sidebarRef.current?.querySelector(
+        `[data-sidebar-path="${CSS.escape(path)}"]`
+      )
+      ;(el as HTMLElement | null)?.scrollIntoView({ block: 'nearest' })
+    })
+  }, [])
+
   const handleFocusItem = useCallback((path: string) => {
     setFocusedItem(path)
     sidebarRef.current?.focus()
@@ -1196,23 +1213,25 @@ const Sidebar = (): React.JSX.Element => {
       try {
         const newPath = await createSubfolder(parentPath)
         setRenamingFolderPath(newPath)
+        scrollPathIntoView(newPath)
       } catch {
         // Directory may already exist or other FS error
       }
     },
-    [createSubfolder, sections, expandSidebarPaths]
+    [createSubfolder, sections, expandSidebarPaths, scrollPathIntoView]
   )
 
   const handleCommitFolderRename = useCallback(
     async (oldPath: string, newName: string): Promise<void> => {
       setRenamingFolderPath(null)
       try {
-        await renameFolder(oldPath, newName)
+        const newPath = await renameFolder(oldPath, newName)
+        scrollPathIntoView(newPath)
       } catch {
         // Name conflict or FS error — section will refresh and show original name
       }
     },
-    [renameFolder]
+    [renameFolder, scrollPathIntoView]
   )
 
   const handleCancelFolderRename = useCallback(() => {
@@ -1300,9 +1319,18 @@ const Sidebar = (): React.JSX.Element => {
       onItemDragStart,
       onItemDragEnd,
       onTargetDragOver,
-      onTargetDrop
+      onTargetDrop,
+      scrollPathIntoView
     }),
-    [dragOverPath, draggingPath, onItemDragStart, onItemDragEnd, onTargetDragOver, onTargetDrop]
+    [
+      dragOverPath,
+      draggingPath,
+      onItemDragStart,
+      onItemDragEnd,
+      onTargetDragOver,
+      onTargetDrop,
+      scrollPathIntoView
+    ]
   )
 
   // --- Top-level folder reordering (dnd-kit) -------------------------------
