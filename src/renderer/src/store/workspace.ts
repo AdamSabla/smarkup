@@ -817,11 +817,21 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
 
   handleWatchEvent: async (payload) => {
     const { sections, autoRenameInFlight } = get()
-    const parent =
-      sections.find((sec) => sec.path === payload.folder) ??
-      sections.find((sec) => sec.isDrafts && sec.path === payload.folder)
+    // Route the event to its owning section. Use a path-prefix match (not
+    // strict equality) so nested emissions — or any minor path drift the
+    // watcher may surface — still land in the right section. If nothing
+    // matches (e.g. the folder was removed from settings mid-flight, or
+    // paths diverged for any reason), fall back to a full rebuild so the
+    // add/change isn't silently dropped from the search index.
+    const parent = sections.find(
+      (sec) =>
+        sec.path !== null &&
+        (payload.folder === sec.path || payload.folder.startsWith(sec.path + '/'))
+    )
     if (parent) {
       await get().refreshSection(parent.id)
+    } else {
+      await get().refreshAllSections()
     }
 
     for (const evt of payload.events) {
@@ -929,6 +939,13 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         // handles self-write suppression (content already matches disk) and
         // defers the apply if the user typed very recently.
         void doReload(evt.path)
+      } else if (evt.type === 'add') {
+        // `add` events are covered wholesale by the section refresh at the
+        // top of this function (the new file appears in the rebuilt tree).
+        // No per-tab work is needed — there's no open tab for a brand-new
+        // file. Kept as an explicit branch so this switch stays exhaustive
+        // and a future refactor can't silently drop adds from the search
+        // index the way the original bug did.
       }
     }
   },

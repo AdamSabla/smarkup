@@ -15,13 +15,18 @@ type PaletteItem = {
 }
 
 /**
- * Inner body — kept permanently mounted so opening the quick-open dialog
- * is instant and the Fuse index stays warm (it's rebuilt in the background
- * whenever the sidebar tree changes, not on first open).
+ * Inner body — Radix's Dialog.Portal unmounts its children when the dialog
+ * closes (no `forceMount` is set on the content), so this component is
+ * re-mounted every time the user opens quick-open. That means it always
+ * reads the latest `sections` snapshot on open, which is important: external
+ * file additions (Finder duplicate, `cp`, etc.) land in `sections` via the
+ * watcher and must be visible the very next time the user hits ⌘P.
  */
 const QuickOpenBody = (): React.JSX.Element => {
-  // Shallow subscription: the body stays mounted so we shouldn't re-render
-  // on unrelated store changes (e.g. content keystrokes in the editor).
+  // Shallow subscription so unrelated store changes (editor keystrokes,
+  // tab reshuffles, etc.) don't churn this component — but any reference
+  // change on `sections` or `recentFiles` still triggers the re-render
+  // we need to rebuild the Fuse index.
   const { closeQuickOpen, sections, openFile, recentFiles, quickOpenOpen } = useWorkspace(
     useShallow((s) => ({
       closeQuickOpen: s.closeQuickOpen,
