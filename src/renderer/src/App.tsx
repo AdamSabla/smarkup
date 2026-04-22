@@ -168,7 +168,6 @@ const App = (): React.JSX.Element => {
 
   return (
     <div className="flex h-full w-full flex-col bg-background text-foreground">
-      <UpdateBanner />
       <div className="flex min-h-0 flex-1">
         {sidebarVisible && (
           <>
@@ -206,6 +205,7 @@ const App = (): React.JSX.Element => {
       <DiffPickerDialog />
       <FolderDropZone />
       <Toast />
+      <UpdateBanner />
     </div>
   )
 }

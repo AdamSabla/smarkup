@@ -2311,8 +2311,13 @@ let toastIdCounter = 0
  * Apply an external change to an open tab. Called for every watcher `change`
  * event on a path we have open. Does three things:
  *
- * 1. Suppresses our own writes by content equality (if disk matches what we
- *    last saved, there's nothing to do — the watcher is echoing our write).
+ * 1. Suppresses our own writes by `savedContent` equality — if disk matches
+ *    the bytes we last wrote, the watcher is echoing our own `writeFile`,
+ *    even if the user has typed since and `content` has moved ahead of
+ *    `savedContent`. Comparing against `content` here (as a previous version
+ *    did) lets the echo slip through during autosave while the user keeps
+ *    typing, and the deferred reload then clobbers the buffer with the
+ *    just-saved bytes — which also resets the CodeMirror caret to 0.
  * 2. Defers the reload if the user typed within `TYPING_DEFER_MS`; retries
  *    automatically via `scheduleReload` so the apply lands the moment the
  *    user pauses.
@@ -2334,8 +2339,10 @@ const doReload = async (path: string): Promise<void> => {
   }
 
   // Self-write suppression: if disk already matches what we last saved, this
-  // is the echo of our own writeFile. No state change needed.
-  if (disk === tab.savedContent && disk === tab.content) return
+  // is the echo of our own writeFile — regardless of whether the user has
+  // typed past `savedContent` in the meantime. See the block comment above
+  // for why comparing `content` here is wrong.
+  if (disk === tab.savedContent) return
 
   // If the user typed very recently, don't yank the buffer out from under
   // them mid-keystroke. Schedule a retry for when typing has paused.

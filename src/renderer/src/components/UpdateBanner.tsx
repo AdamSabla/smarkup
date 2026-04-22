@@ -9,22 +9,33 @@ import {
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
 import { useWorkspace } from '@/store/workspace'
 
-// How long to keep the transient "up to date" / error banners on screen
-// after a user-initiated check completes. Matches typical toast dwell time.
-const TRANSIENT_DISMISS_MS = 5000
-
+/**
+ * Update notifier. Renders as a bottom-right anchored pill/card overlay.
+ * Transient informational states (`checking` / `not-available` triggered by
+ * the user) are routed through the shared bottom-center `Toast` so the app
+ * has one consistent surface for quick notices; persistent states
+ * (download progress, "ready to install", and actionable errors) live in
+ * the corner card and stay until the user acts on them.
+ *
+ * Background checks stay silent for everything except "an update was found"
+ * — same behaviour as before, just with a less intrusive surface.
+ */
 const UpdateBanner = (): React.JSX.Element | null => {
   const status = useWorkspace((s) => s.updateStatus)
+  const showToast = useWorkspace((s) => s.showToast)
+
   // Track which status instance the user has manually dismissed so a later
-  // status transition (e.g. the next check) shows the banner again.
+  // status transition (e.g. the next check) shows the notifier again.
   const [dismissedKey, setDismissedKey] = useState<string | null>(null)
 
   // Key a status by its kind plus any identifying payload. The `checkId` on
-  // `not-available` / `error` is what keeps two separate checks distinct — the
-  // shape is otherwise identical, so without the id an auto-dismissed "up to
-  // date" would silently suppress the next check's result the same session.
+  // `not-available` / `error` is what keeps two separate checks distinct —
+  // the shape is otherwise identical, so without the id an auto-dismissed
+  // "up to date" would silently suppress the next check's result the same
+  // session.
   const statusKey =
     status.kind === 'available'
       ? `available:${status.version}`
@@ -38,23 +49,24 @@ const UpdateBanner = (): React.JSX.Element | null => {
               ? `error:${status.checkId}:${status.message}`
               : status.kind
 
-  // Auto-dismiss transient outcomes of a user-initiated check after a delay.
-  // Download progress and the "ready to install" banner stay until the user
-  // explicitly dismisses or acts on them. Each check carries its own checkId,
-  // so the next check's banner isn't suppressed by this auto-dismiss.
+  // Route transient user-initiated states to the shared bottom-center
+  // toast. We key the effect on `statusKey` so we fire exactly once per
+  // distinct status instance — re-renders from unrelated state changes
+  // don't re-toast.
   useEffect(() => {
-    if (status.kind === 'not-available' || (status.kind === 'error' && status.userInitiated)) {
-      const key = statusKey
-      const timer = window.setTimeout(() => setDismissedKey(key), TRANSIENT_DISMISS_MS)
-      return () => window.clearTimeout(timer)
+    if (status.kind === 'checking' && status.userInitiated) {
+      showToast('Checking for updates…')
+    } else if (status.kind === 'not-available' && status.userInitiated) {
+      showToast(`You're up to date (smarkup v${status.currentVersion})`)
     }
-    return undefined
-  }, [status, statusKey])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [statusKey])
 
-  // Decide whether this state should render at all. Background checks stay
-  // silent for anything other than "available"; user-initiated checks always
-  // surface feedback. Download + install states always show — once an update
-  // is in-flight the user should be able to see and control it.
+  // Decide whether to render the corner notifier. Background checks stay
+  // silent for anything other than `available`; the transient states above
+  // have already been handed off to the toast. Download + install states
+  // always show — once an update is in-flight the user should be able to
+  // see and control it.
   const shouldShow = ((): boolean => {
     if (dismissedKey === statusKey) return false
     switch (status.kind) {
@@ -62,11 +74,10 @@ const UpdateBanner = (): React.JSX.Element | null => {
       case 'downloading':
       case 'downloaded':
         return true
-      case 'checking':
-      case 'not-available':
-        return status.userInitiated
       case 'error':
         return status.userInitiated
+      case 'checking':
+      case 'not-available':
       case 'idle':
       default:
         return false
@@ -77,36 +88,38 @@ const UpdateBanner = (): React.JSX.Element | null => {
 
   const dismiss = (): void => setDismissedKey(statusKey)
 
-  // --- Render per state --------------------------------------------------
-
   if (status.kind === 'available') {
-    // With autoDownload enabled this state is usually transient — the updater
-    // fires `download-progress` almost immediately and we move to
+    // With autoDownload enabled this state is usually transient — the
+    // updater fires `download-progress` almost immediately and we move to
     // `downloading`. We still render a labelled "Preparing download…" so a
     // slow-to-start download doesn't look like nothing is happening.
     return (
-      <BannerShell tone="primary">
-        <span className="flex items-center gap-2 text-xs font-medium">
-          <Loader2Icon className="size-3 animate-spin" />
-          Preparing update v{status.version}…
-        </span>
-        <DismissButton tone="primary" onClick={dismiss} />
-      </BannerShell>
+      <Anchor>
+        <Pill>
+          <Loader2Icon className="size-3.5 shrink-0 animate-spin text-primary" />
+          <span className="min-w-0 flex-1 truncate text-xs font-medium">
+            Preparing update v{status.version}…
+          </span>
+          <DismissButton onClick={dismiss} />
+        </Pill>
+      </Anchor>
     )
   }
 
   if (status.kind === 'downloading') {
     const percent = Math.max(0, Math.min(100, Math.round(status.percent)))
     return (
-      <BannerShell tone="primary">
-        <span className="flex min-w-0 items-center gap-2 text-xs font-medium">
-          <DownloadIcon className="size-3" />
-          <span className="shrink-0">Downloading update v{status.version}…</span>
+      <Anchor>
+        <Pill>
+          <DownloadIcon className="size-3.5 shrink-0 text-primary" />
+          <span className="shrink-0 text-xs font-medium">Downloading v{status.version}</span>
           <ProgressBar percent={percent} />
-          <span className="tabular-nums">{percent}%</span>
-        </span>
-        <DismissButton tone="primary" onClick={dismiss} />
-      </BannerShell>
+          <span className="shrink-0 text-xs font-medium tabular-nums text-muted-foreground">
+            {percent}%
+          </span>
+          <DismissButton onClick={dismiss} />
+        </Pill>
+      </Anchor>
     )
   }
 
@@ -115,42 +128,29 @@ const UpdateBanner = (): React.JSX.Element | null => {
       void window.api.quitAndInstallUpdate()
     }
     return (
-      <BannerShell tone="primary">
-        <span className="flex items-center gap-2 text-xs font-medium">
-          <CheckIcon className="size-3" />
-          Update v{status.version} ready to install
-        </span>
-        <div className="flex items-center gap-1">
-          <Button size="sm" variant="secondary" className="h-6 px-2 text-xs" onClick={restart}>
-            <RotateCwIcon className="size-3" />
-            Restart now
-          </Button>
-          <DismissButton tone="primary" onClick={dismiss} label="Install later" />
-        </div>
-      </BannerShell>
-    )
-  }
-
-  if (status.kind === 'checking') {
-    return (
-      <BannerShell tone="muted">
-        <span className="flex items-center gap-2 text-xs font-medium">
-          <Loader2Icon className="size-3 animate-spin" />
-          Checking for updates…
-        </span>
-      </BannerShell>
-    )
-  }
-
-  if (status.kind === 'not-available') {
-    return (
-      <BannerShell tone="muted">
-        <span className="flex items-center gap-2 text-xs font-medium">
-          <CheckIcon className="size-3" />
-          You&rsquo;re up to date (smarkup v{status.currentVersion})
-        </span>
-        <DismissButton tone="muted" onClick={dismiss} />
-      </BannerShell>
+      <Anchor>
+        <Card tone="primary">
+          <div className="flex items-start gap-2">
+            <CheckIcon className="mt-0.5 size-4 shrink-0 text-primary" />
+            <div className="min-w-0 flex-1">
+              <div className="text-sm font-medium">Update ready to install</div>
+              <div className="text-xs text-muted-foreground">
+                smarkup v{status.version} is ready. Restart to apply.
+              </div>
+            </div>
+            <DismissButton onClick={dismiss} label="Install later" />
+          </div>
+          <div className="mt-2 flex items-center justify-end gap-1">
+            <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={dismiss}>
+              Later
+            </Button>
+            <Button size="sm" variant="default" className="h-7 px-2 text-xs" onClick={restart}>
+              <RotateCwIcon className="size-3" />
+              Restart now
+            </Button>
+          </div>
+        </Card>
+      </Anchor>
     )
   }
 
@@ -164,96 +164,94 @@ const UpdateBanner = (): React.JSX.Element | null => {
         }
       : null
     return (
-      <BannerShell tone="destructive">
-        <span className="flex min-w-0 items-center gap-2 text-xs font-medium">
-          <AlertTriangleIcon className="size-3 shrink-0" />
-          <span className="truncate">Couldn&rsquo;t install update: {status.message}</span>
-        </span>
-        <div className="flex items-center gap-1">
-          {openRelease && (
-            <Button
-              size="sm"
-              variant="secondary"
-              className="h-6 px-2 text-xs"
-              onClick={openRelease}
-            >
-              <ExternalLinkIcon className="size-3" />
-              Download manually
+      <Anchor>
+        <Card tone="destructive">
+          <div className="flex items-start gap-2">
+            <AlertTriangleIcon className="mt-0.5 size-4 shrink-0 text-destructive" />
+            <div className="min-w-0 flex-1">
+              <div className="text-sm font-medium">Couldn&rsquo;t install update</div>
+              <div className="line-clamp-3 text-xs text-muted-foreground">{status.message}</div>
+            </div>
+            <DismissButton onClick={dismiss} />
+          </div>
+          <div className="mt-2 flex items-center justify-end gap-1">
+            {openRelease && (
+              <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={openRelease}>
+                <ExternalLinkIcon className="size-3" />
+                Download manually
+              </Button>
+            )}
+            <Button size="sm" variant="default" className="h-7 px-2 text-xs" onClick={retry}>
+              Retry
             </Button>
-          )}
-          <Button size="sm" variant="secondary" className="h-6 px-2 text-xs" onClick={retry}>
-            Retry
-          </Button>
-          <DismissButton tone="destructive" onClick={dismiss} />
-        </div>
-      </BannerShell>
+          </div>
+        </Card>
+      </Anchor>
     )
   }
 
   return null
 }
 
-type Tone = 'primary' | 'muted' | 'destructive'
+type Tone = 'primary' | 'destructive'
 
-const TONE_CLASSES: Record<Tone, string> = {
-  primary: 'bg-primary text-primary-foreground',
-  muted: 'bg-muted text-foreground',
-  destructive: 'bg-destructive text-destructive-foreground'
-}
-
-const BannerShell = ({
-  tone,
-  children
-}: {
-  tone: Tone
-  children: React.ReactNode
-}): React.JSX.Element => (
+// Outer positioning wrapper. `pointer-events-none` on the wrapper means the
+// empty area around the card never blocks clicks on the editor / sidebar;
+// the card itself restores `pointer-events-auto` so its buttons work.
+const Anchor = ({ children }: { children: React.ReactNode }): React.JSX.Element => (
   <div
-    className={`no-drag flex h-8 shrink-0 items-center justify-between gap-3 border-b border-border/50 px-3 ${TONE_CLASSES[tone]}`}
     role="status"
     aria-live="polite"
+    className="pointer-events-none fixed right-4 bottom-4 z-50 flex max-w-sm justify-end"
   >
     {children}
   </div>
 )
 
-const DISMISS_TONE_CLASSES: Record<Tone, string> = {
-  primary: 'text-primary-foreground hover:bg-primary-foreground/10 hover:text-primary-foreground',
-  muted: 'text-foreground hover:bg-foreground/10 hover:text-foreground',
-  destructive:
-    'text-destructive-foreground hover:bg-destructive-foreground/10 hover:text-destructive-foreground'
-}
+// Single-row compact surface for progress-y states where the content fits
+// on one line and a taller card would feel heavy.
+const Pill = ({ children }: { children: React.ReactNode }): React.JSX.Element => (
+  <div className="pointer-events-auto flex min-w-0 items-center gap-2 rounded-md border border-border bg-background/95 px-3 py-2 shadow-lg backdrop-blur-sm">
+    {children}
+  </div>
+)
+
+// Two-line surface used for states that need explanation + actions.
+const Card = ({ tone, children }: { tone: Tone; children: React.ReactNode }): React.JSX.Element => (
+  <div
+    className={cn(
+      'pointer-events-auto w-80 max-w-full rounded-md border bg-background/95 p-3 shadow-lg backdrop-blur-sm',
+      tone === 'destructive' ? 'border-destructive/40' : 'border-border'
+    )}
+  >
+    {children}
+  </div>
+)
 
 const DismissButton = ({
-  tone,
   onClick,
   label = 'Dismiss'
 }: {
-  tone: Tone
   onClick: () => void
   label?: string
 }): React.JSX.Element => (
   <Button
     size="icon"
     variant="ghost"
-    className={`size-6 ${DISMISS_TONE_CLASSES[tone]}`}
+    className="size-6 shrink-0 text-muted-foreground hover:text-foreground"
     onClick={onClick}
     aria-label={label}
     title={label}
   >
-    <XIcon className="size-3" />
+    <XIcon className="size-3.5" />
   </Button>
 )
 
-// Slim inline progress indicator tinted against the primary banner. Stays
-// narrow so the banner itself doesn't grow taller.
+// Slim inline progress indicator; stays narrow so the pill doesn't grow.
 const ProgressBar = ({ percent }: { percent: number }): React.JSX.Element => (
-  <span
-    className="relative h-1 w-24 overflow-hidden rounded-full bg-primary-foreground/20"
-    aria-hidden
-  >
+  <span className="relative h-1 w-24 shrink-0 overflow-hidden rounded-full bg-muted" aria-hidden>
     <span
-      className="absolute inset-y-0 left-0 bg-primary-foreground transition-[width] duration-200"
+      className="absolute inset-y-0 left-0 bg-primary transition-[width] duration-200"
       style={{ width: `${percent}%` }}
     />
   </span>

@@ -25,6 +25,9 @@ import {
   sharedEditorTokenTheme
 } from '@/lib/shared-cm-extensions'
 
+const isMacUA = navigator.userAgent.toLowerCase().includes('mac')
+const isMod = (e: KeyboardEvent): boolean => (isMacUA ? e.metaKey : e.ctrlKey)
+
 const headingDecos = [
   Decoration.line({ attributes: { class: 'cm-heading-1' } }),
   Decoration.line({ attributes: { class: 'cm-heading-2' } }),
@@ -265,6 +268,44 @@ const RawEditor = ({ value, onChange, isActive }: Props): React.JSX.Element => {
           const target = e.key === 'Home' ? 0 : scroller.scrollHeight - scroller.clientHeight
           smoothScroll(scroller, target, 300)
         } else if (e.key === 'PageUp' || e.key === 'PageDown') {
+          if (isMod(e)) {
+            // Cmd/Ctrl+PageUp/Down: jump to previous/next heading and align
+            // it to the top of the viewport. Finds any `#`…`######` heading
+            // by scanning doc lines with the same regex used elsewhere in
+            // this file (see headingHighlighter / collectHeadings).
+            e.preventDefault()
+            e.stopPropagation()
+            const dir = e.key === 'PageDown' ? 1 : -1
+            const doc = view.state.doc
+            const caret = view.state.selection.main.head
+            const curLine = doc.lineAt(caret).number
+            let targetLine: number | null = null
+            if (dir === 1) {
+              for (let i = curLine + 1; i <= doc.lines; i++) {
+                if (/^(#{1,6})\s/.test(doc.line(i).text)) {
+                  targetLine = i
+                  break
+                }
+              }
+            } else {
+              for (let i = curLine - 1; i >= 1; i--) {
+                if (/^(#{1,6})\s/.test(doc.line(i).text)) {
+                  targetLine = i
+                  break
+                }
+              }
+            }
+            if (targetLine !== null) {
+              const line = doc.line(targetLine)
+              const m = line.text.match(/^(#{1,6})\s/)!
+              const textStart = line.from + m[0].length
+              view.dispatch({
+                selection: { anchor: textStart },
+                effects: EditorView.scrollIntoView(line.from, { y: 'start', yMargin: 0 })
+              })
+            }
+            return
+          }
           e.preventDefault()
           e.stopPropagation()
           const dir = e.key === 'PageDown' ? 1 : -1
@@ -377,6 +418,131 @@ const RawEditor = ({ value, onChange, isActive }: Props): React.JSX.Element => {
               return true
             }
             return false
+          }
+        },
+        {
+          // Cmd/Ctrl+B — smart markdown bold toggle.
+          //
+          // With a selection:
+          //   plain  →  wrap in **…**  (inner text stays selected)
+          //   **X**  →  strip the pair (inner text stays selected)
+          //
+          // Without a selection:
+          //   outside bold  →  insert **** and drop the caret between them
+          //   inside **X**  →  strip the surrounding pair on the current line,
+          //                    caret stays on the same character
+          //
+          // Everything happens in one dispatch so a single Undo reverts it.
+          key: 'Mod-b',
+          run: (view) => {
+            const { state } = view
+            const sel = state.selection.main
+            const { from, to } = sel
+
+            // --- Non-empty selection ---------------------------------------
+            if (from !== to) {
+              const before = state.sliceDoc(Math.max(0, from - 2), from)
+              const after = state.sliceDoc(to, Math.min(state.doc.length, to + 2))
+              const inner = state.sliceDoc(from, to)
+
+              // Case A: selection exactly equals **X** — strip outer pair.
+              if (inner.length >= 4 && inner.startsWith('**') && inner.endsWith('**')) {
+                const stripped = inner.slice(2, -2)
+                view.dispatch({
+                  changes: { from, to, insert: stripped },
+                  selection: { anchor: from, head: from + stripped.length },
+                  userEvent: 'input.format.bold'
+                })
+                return true
+              }
+
+              // Case B: selection is already bracketed by **…** in the doc.
+              if (before === '**' && after === '**') {
+                view.dispatch({
+                  changes: [
+                    { from: from - 2, to: from, insert: '' },
+                    { from: to, to: to + 2, insert: '' }
+                  ],
+                  selection: { anchor: from - 2, head: to - 2 },
+                  userEvent: 'input.format.bold'
+                })
+                return true
+              }
+
+              // Case C: plain selection — wrap in **…**, keep inner selected.
+              view.dispatch({
+                changes: [
+                  { from, to: from, insert: '**' },
+                  { from: to, to, insert: '**' }
+                ],
+                selection: { anchor: from + 2, head: to + 2 },
+                userEvent: 'input.format.bold'
+              })
+              return true
+            }
+
+            // --- Empty selection -------------------------------------------
+            const line = state.doc.lineAt(from)
+            const col = from - line.from
+            const text = line.text
+
+            // Find every `**` delimiter index on this line.
+            const delims: number[] = []
+            for (let i = 0; i < text.length - 1; i++) {
+              if (text[i] === '*' && text[i + 1] === '*') {
+                delims.push(i)
+                i++ // skip the second star of the pair
+              }
+            }
+
+            // Determine whether the caret sits inside a `**…**` region by
+            // counting how many `**` delimiters lie strictly before it.
+            // An odd count means the caret is between an opening and the
+            // next closing pair. Caret sitting between the two stars of a
+            // single delimiter (col === d + 1) is explicitly excluded so
+            // `**|**` (empty bold, opening stars) doesn't mis-strip — the
+            // user meant to type in that empty pair, not toggle it off.
+            let countBefore = 0
+            let closeIdx = -1
+            for (let i = 0; i < delims.length; i++) {
+              const d = delims[i]
+              if (col <= d) {
+                closeIdx = i
+                break
+              }
+              if (col === d + 1) {
+                closeIdx = -1
+                break
+              }
+              countBefore++
+            }
+            const insideBold = countBefore % 2 === 1 && closeIdx !== -1
+            const openIdx = insideBold ? countBefore - 1 : -1
+
+            if (insideBold) {
+              const openFrom = line.from + delims[openIdx]
+              const closeFrom = line.from + delims[closeIdx]
+              // Caret column after stripping the opening `**`:
+              // if the caret was after the opening pair, it shifts left by 2.
+              const newCaret = from - 2
+              view.dispatch({
+                changes: [
+                  { from: openFrom, to: openFrom + 2, insert: '' },
+                  { from: closeFrom, to: closeFrom + 2, insert: '' }
+                ],
+                selection: { anchor: newCaret },
+                userEvent: 'input.format.bold'
+              })
+              return true
+            }
+
+            // Not inside bold — insert `****` and drop caret in the middle.
+            view.dispatch({
+              changes: { from, to, insert: '****' },
+              selection: { anchor: from + 2 },
+              userEvent: 'input.format.bold'
+            })
+            return true
           }
         }
       ]),

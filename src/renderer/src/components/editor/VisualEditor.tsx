@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { useEditor, EditorContent, type Editor } from '@tiptap/react'
+import { TextSelection } from '@tiptap/pm/state'
 import StarterKit from '@tiptap/starter-kit'
 import { Paragraph } from '@tiptap/extension-paragraph'
 import { Text } from '@tiptap/extension-text'
@@ -230,6 +231,84 @@ const VisualEditor = ({ value, onChange, isActive }: Props): React.JSX.Element =
     return () => {
       for (const evt of events) dom.removeEventListener(evt, markEdited)
     }
+  }, [editor])
+
+  // Cmd/Ctrl + PageUp / PageDown: jump to previous / next heading and align
+  // it to the top of the scroll container. Matches the RawEditor behaviour.
+  // Attached in the capture phase on the editor's content DOM so the event
+  // fires before ProseMirror's own PageUp/Down handling moves the caret by
+  // a viewport.
+  useEffect(() => {
+    if (!editor) return
+    const dom = editor.view.dom
+    const handler = (e: KeyboardEvent): void => {
+      if (e.key !== 'PageUp' && e.key !== 'PageDown') return
+      const isMac = navigator.userAgent.toLowerCase().includes('mac')
+      const mod = isMac ? e.metaKey : e.ctrlKey
+      if (!mod) return
+      e.preventDefault()
+      e.stopPropagation()
+
+      const { state, view } = editor
+      const dir = e.key === 'PageDown' ? 1 : -1
+      const caret = state.selection.$from.pos
+
+      // Collect all top-level heading node positions in doc order.
+      const positions: number[] = []
+      state.doc.descendants((node, pos) => {
+        if (node.type.name === 'heading') {
+          positions.push(pos)
+          return false
+        }
+        return true
+      })
+      if (positions.length === 0) return
+
+      let targetPos: number | null = null
+      if (dir === 1) {
+        for (const p of positions) {
+          // Strictly > caret so Cmd+PageDown on a heading advances to the next.
+          if (p > caret) {
+            targetPos = p
+            break
+          }
+        }
+      } else {
+        for (let i = positions.length - 1; i >= 0; i--) {
+          const p = positions[i]
+          // `p + 1` is the start of text inside the heading; if the caret is
+          // anywhere inside the current heading, skip to the previous one.
+          if (p + 1 < caret) {
+            // further check: make sure caret isn't still within THIS heading
+            const node = state.doc.nodeAt(p)
+            const nodeEnd = node ? p + node.nodeSize : p
+            if (caret > nodeEnd) {
+              targetPos = p
+              break
+            }
+          }
+        }
+      }
+      if (targetPos === null) return
+
+      // Caret lands at the start of the heading's text (pos + 1 enters the node).
+      const tr = state.tr.setSelection(TextSelection.near(state.doc.resolve(targetPos + 1)))
+      view.dispatch(tr)
+
+      // Align the heading's DOM element to the top of the scroll container.
+      const el = view.nodeDOM(targetPos) as HTMLElement | null
+      const container = scrollRef.current
+      if (el && container) {
+        const containerTop = container.getBoundingClientRect().top
+        const elTop = el.getBoundingClientRect().top
+        container.scrollTo({
+          top: container.scrollTop + (elTop - containerTop),
+          behavior: 'smooth'
+        })
+      }
+    }
+    dom.addEventListener('keydown', handler, true)
+    return () => dom.removeEventListener('keydown', handler, true)
   }, [editor])
 
   // Strip our empty-paragraph markers from the initial content. `useEditor`
