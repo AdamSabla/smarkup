@@ -32,7 +32,9 @@ const SettingsDialog = (): React.JSX.Element => {
     showWordCount,
     setShowWordCount,
     rawHeadingSizes,
-    setRawHeadingSizes
+    setRawHeadingSizes,
+    showRecents,
+    setShowRecents
   } = useWorkspace()
 
   const handlePickDraftsFolder = async (): Promise<void> => {
@@ -87,6 +89,35 @@ const SettingsDialog = (): React.JSX.Element => {
                   {label}
                 </Button>
               ))}
+            </div>
+          </div>
+
+          {/* Recents in sidebar */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <label className="text-sm font-medium">Show Recents in sidebar</label>
+                <p className="text-xs text-muted-foreground">
+                  Display the Recents section at the top of the sidebar.
+                </p>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={showRecents}
+                onClick={() => void setShowRecents(!showRecents)}
+                className={cn(
+                  'relative inline-flex h-5 w-9 shrink-0 items-center rounded-full border transition-colors',
+                  showRecents ? 'bg-primary border-primary' : 'bg-muted border-border'
+                )}
+              >
+                <span
+                  className={cn(
+                    'inline-block size-3.5 rounded-full bg-background shadow transition-transform',
+                    showRecents ? 'translate-x-[18px]' : 'translate-x-[2px]'
+                  )}
+                />
+              </button>
             </div>
           </div>
 

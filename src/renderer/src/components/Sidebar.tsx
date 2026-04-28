@@ -1035,7 +1035,8 @@ const Sidebar = (): React.JSX.Element => {
     expandSidebarSections,
     collapseSidebarSection,
     expandSidebarSubfolders,
-    collapseSidebarSubfolder
+    collapseSidebarSubfolder,
+    showRecents
   } = useWorkspace()
   const [renamingPath, setRenamingPath] = useState<string | null>(null)
   const [renamingFolderPath, setRenamingFolderPath] = useState<string | null>(null)
@@ -1389,10 +1390,12 @@ const Sidebar = (): React.JSX.Element => {
         className="flex h-full flex-col bg-sidebar text-sidebar-foreground outline-none"
       >
         <ScrollArea className="min-h-0 flex-1 pl-1 pr-2.5 pt-2">
-          <RecentsSection
-            expanded={!collapsedSectionIds.has(RECENTS_ID)}
-            onToggleExpanded={() => toggleSidebarSection(RECENTS_ID)}
-          />
+          {showRecents && (
+            <RecentsSection
+              expanded={!collapsedSectionIds.has(RECENTS_ID)}
+              onToggleExpanded={() => toggleSidebarSection(RECENTS_ID)}
+            />
+          )}
           {draftsSection && (
             <SectionView
               key={draftsSection.id}

@@ -55,6 +55,8 @@ export type Settings = {
   rawWordWrap: boolean
   /** Whether the bottom Variables panel is shown. */
   variablesPanelVisible: boolean
+  /** Whether the Recents section is shown in the sidebar. */
+  showRecents: boolean
   /**
    * Files (by absolute path) whose name is still being auto-derived from
    * their first non-empty line. Removed once the user explicitly renames.

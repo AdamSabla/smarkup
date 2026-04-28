@@ -353,6 +353,8 @@ type WorkspaceState = {
   rawWordWrap: boolean
   /** Whether the bottom Variables panel is shown. */
   variablesPanelVisible: boolean
+  /** Whether the Recents section is shown in the sidebar. */
+  showRecents: boolean
 
   // --- Volatile UI state ---
   sections: SidebarSection[]
@@ -520,6 +522,7 @@ type WorkspaceState = {
   setShowWordCount: (enabled: boolean) => Promise<void>
   setRawHeadingSizes: (enabled: boolean) => Promise<void>
   setRawWordWrap: (enabled: boolean) => Promise<void>
+  setShowRecents: (enabled: boolean) => Promise<void>
   toggleVariablesPanel: () => Promise<void>
   setVariablesPanelVisible: (visible: boolean) => Promise<void>
   openSettings: () => void
@@ -665,6 +668,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   rawHeadingSizes: false,
   rawWordWrap: true,
   variablesPanelVisible: false,
+  showRecents: false,
 
   sections: [],
   moveTargets: [],
@@ -712,6 +716,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       rawHeadingSizes: settings.rawHeadingSizes ?? false,
       rawWordWrap: settings.rawWordWrap ?? true,
       variablesPanelVisible: settings.variablesPanelVisible ?? false,
+      showRecents: settings.showRecents ?? false,
       autoNamedPaths: new Set(settings.autoNamedPaths ?? []),
       collapsedSectionIds: new Set(settings.collapsedSidebarSections ?? []),
       expandedSubfolderPaths: new Set(settings.expandedSidebarSubfolders ?? [])
@@ -2065,6 +2070,11 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   setRawWordWrap: async (enabled) => {
     set({ rawWordWrap: enabled })
     await persistSettings({ rawWordWrap: enabled })
+  },
+
+  setShowRecents: async (enabled) => {
+    set({ showRecents: enabled })
+    await persistSettings({ showRecents: enabled })
   },
 
   toggleVariablesPanel: async () => {
