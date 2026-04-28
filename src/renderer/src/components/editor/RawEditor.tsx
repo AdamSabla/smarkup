@@ -66,6 +66,46 @@ const headingHighlighter = ViewPlugin.fromClass(
   { decorations: (v) => v.decorations }
 )
 
+// Scale the caret to match the heading on the line it's sitting in. The
+// heading line decorations only set font-size on `.cm-line`, but `.cm-cursor`
+// lives in a separate cursor layer outside that subtree, so its `1em` always
+// resolves to the editor's base size. We expose the line's scale as a CSS
+// custom property on the editor DOM and let the cursor's height calc read it.
+const HEADING_SCALES = [2.4, 2.0, 1.7, 1.55]
+
+const caretHeadingScaler = ViewPlugin.fromClass(
+  class {
+    view: EditorView
+    lastScale = 1
+
+    constructor(view: EditorView) {
+      this.view = view
+      this.sync(view)
+    }
+
+    update(update: ViewUpdate): void {
+      if (update.docChanged || update.selectionSet || update.viewportChanged) {
+        this.sync(update.view)
+      }
+    }
+
+    sync(view: EditorView): void {
+      const head = view.state.selection.main.head
+      const line = view.state.doc.lineAt(head)
+      const match = line.text.match(/^(#{1,4})\s/)
+      const scale = match ? HEADING_SCALES[match[1].length - 1] : 1
+      if (scale !== this.lastScale) {
+        this.lastScale = scale
+        view.dom.style.setProperty('--cm-cursor-scale', String(scale))
+      }
+    }
+
+    destroy(): void {
+      this.view.dom.style.removeProperty('--cm-cursor-scale')
+    }
+  }
+)
+
 // ---------------------------------------------------------------------------
 // Sticky heading breadcrumb
 // ---------------------------------------------------------------------------
@@ -573,7 +613,7 @@ const RawEditor = ({ value, onChange, isActive }: Props): React.JSX.Element => {
       // drops Cmd-D. Add it back explicitly at highest precedence so it
       // wins over macOS' default "bookmark" action and any other handler.
       Prec.highest(keymap.of([{ key: 'Mod-d', run: selectNextOccurrence, preventDefault: true }])),
-      ...(rawHeadingSizes ? [headingHighlighter] : [stickyHeadingBreadcrumb]),
+      ...(rawHeadingSizes ? [headingHighlighter, caretHeadingScaler] : [stickyHeadingBreadcrumb]),
       ...(rawWordWrap ? [EditorView.lineWrapping] : []),
       sharedEditorTokenTheme,
       EditorView.theme({
@@ -595,7 +635,7 @@ const RawEditor = ({ value, onChange, isActive }: Props): React.JSX.Element => {
           borderLeftColor: 'var(--foreground)',
           borderLeftWidth: '2px',
           marginTop: '-1px',
-          height: 'calc(1em + 4px) !important'
+          height: 'calc(var(--cm-cursor-scale, 1) * 1em + 4px) !important'
         },
         '.cm-activeLine': {
           backgroundColor: 'color-mix(in srgb, var(--foreground) 6%, transparent)',
