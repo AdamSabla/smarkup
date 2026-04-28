@@ -382,8 +382,17 @@ type WorkspaceState = {
   scrollPositions: Record<string, number | { line: number; offsetPx: number }>
   /** Remembered cursor/selection per tab id (volatile, not persisted to disk) */
   cursorPositions: Record<string, { anchor: number; head: number }>
-  /** Paths that are collapsed in the sidebar tree (volatile, survives sidebar toggle) */
-  sidebarCollapsedPaths: Set<string>
+  /**
+   * Top-level sidebar sections (by id) the user has explicitly collapsed.
+   * Sections default to expanded; presence here means collapsed. Persisted.
+   */
+  collapsedSectionIds: Set<string>
+  /**
+   * Nested sidebar subfolders (by absolute path) the user has explicitly
+   * expanded. Subfolders default to collapsed; presence here means expanded.
+   * Persisted.
+   */
+  expandedSubfolderPaths: Set<string>
   /**
    * Files (by absolute path) whose name is still being auto-derived from
    * their first non-empty line. Removed once the user explicitly renames.
@@ -527,9 +536,12 @@ type WorkspaceState = {
   saveCursorPosition: (tabId: string, anchor: number, head: number) => void
   startRenamingTab: () => void
   cancelRenamingTab: () => void
-  toggleSidebarCollapsedPath: (path: string) => void
-  expandSidebarPaths: (...paths: string[]) => void
-  collapseSidebarPath: (path: string) => void
+  toggleSidebarSection: (id: string) => void
+  toggleSidebarSubfolder: (path: string) => void
+  expandSidebarSections: (...ids: string[]) => void
+  collapseSidebarSection: (id: string) => void
+  expandSidebarSubfolders: (...paths: string[]) => void
+  collapseSidebarSubfolder: (path: string) => void
 
   setUpdateStatus: (status: UpdateStatus) => void
   checkForUpdates: () => Promise<void>
@@ -670,7 +682,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   renamingTabId: null,
   scrollPositions: {},
   cursorPositions: {},
-  sidebarCollapsedPaths: new Set<string>(),
+  collapsedSectionIds: new Set<string>(),
+  expandedSubfolderPaths: new Set<string>(),
   autoNamedPaths: new Set<string>(),
   autoRenameInFlight: new Set<string>(),
   orphanedPaths: new Set<string>(),
@@ -699,7 +712,9 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       rawHeadingSizes: settings.rawHeadingSizes ?? false,
       rawWordWrap: settings.rawWordWrap ?? true,
       variablesPanelVisible: settings.variablesPanelVisible ?? false,
-      autoNamedPaths: new Set(settings.autoNamedPaths ?? [])
+      autoNamedPaths: new Set(settings.autoNamedPaths ?? []),
+      collapsedSectionIds: new Set(settings.collapsedSidebarSections ?? []),
+      expandedSubfolderPaths: new Set(settings.expandedSidebarSubfolders ?? [])
     })
     await get().refreshAllSections()
 
@@ -2088,26 +2103,67 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   },
   cancelRenamingTab: () => set({ renamingTabId: null }),
 
-  toggleSidebarCollapsedPath: (path) => {
-    const current = get().sidebarCollapsedPaths
+  toggleSidebarSection: (id) => {
+    const current = get().collapsedSectionIds
+    const next = new Set(current)
+    if (next.has(id)) next.delete(id)
+    else next.add(id)
+    set({ collapsedSectionIds: next })
+    void persistSettings({ collapsedSidebarSections: Array.from(next) })
+  },
+
+  toggleSidebarSubfolder: (path) => {
+    const current = get().expandedSubfolderPaths
     const next = new Set(current)
     if (next.has(path)) next.delete(path)
     else next.add(path)
-    set({ sidebarCollapsedPaths: next })
+    set({ expandedSubfolderPaths: next })
+    void persistSettings({ expandedSidebarSubfolders: Array.from(next) })
   },
 
-  expandSidebarPaths: (...paths) => {
-    const current = get().sidebarCollapsedPaths
+  expandSidebarSections: (...ids) => {
+    if (ids.length === 0) return
+    const current = get().collapsedSectionIds
     const next = new Set(current)
-    for (const p of paths) next.delete(p)
-    set({ sidebarCollapsedPaths: next })
+    let changed = false
+    for (const id of ids) if (next.delete(id)) changed = true
+    if (!changed) return
+    set({ collapsedSectionIds: next })
+    void persistSettings({ collapsedSidebarSections: Array.from(next) })
   },
 
-  collapseSidebarPath: (path) => {
-    const current = get().sidebarCollapsedPaths
+  collapseSidebarSection: (id) => {
+    const current = get().collapsedSectionIds
+    if (current.has(id)) return
     const next = new Set(current)
-    next.add(path)
-    set({ sidebarCollapsedPaths: next })
+    next.add(id)
+    set({ collapsedSectionIds: next })
+    void persistSettings({ collapsedSidebarSections: Array.from(next) })
+  },
+
+  expandSidebarSubfolders: (...paths) => {
+    if (paths.length === 0) return
+    const current = get().expandedSubfolderPaths
+    const next = new Set(current)
+    let changed = false
+    for (const p of paths) {
+      if (!next.has(p)) {
+        next.add(p)
+        changed = true
+      }
+    }
+    if (!changed) return
+    set({ expandedSubfolderPaths: next })
+    void persistSettings({ expandedSidebarSubfolders: Array.from(next) })
+  },
+
+  collapseSidebarSubfolder: (path) => {
+    const current = get().expandedSubfolderPaths
+    if (!current.has(path)) return
+    const next = new Set(current)
+    next.delete(path)
+    set({ expandedSubfolderPaths: next })
+    void persistSettings({ expandedSidebarSubfolders: Array.from(next) })
   },
 
   setUpdateStatus: (status) => set({ updateStatus: status }),

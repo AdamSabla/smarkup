@@ -38,6 +38,16 @@ export type Settings = {
    * explicitly renames the file.
    */
   autoNamedPaths: string[]
+  /**
+   * Top-level sidebar sections (by id) the user has explicitly collapsed.
+   * Sections default to expanded.
+   */
+  collapsedSidebarSections: string[]
+  /**
+   * Nested sidebar subfolders (by absolute path) the user has explicitly
+   * expanded. Subfolders default to collapsed.
+   */
+  expandedSidebarSubfolders: string[]
 }
 
 const DEFAULT_SETTINGS: Settings = {
@@ -56,7 +66,9 @@ const DEFAULT_SETTINGS: Settings = {
   rawHeadingSizes: false,
   rawWordWrap: true,
   variablesPanelVisible: false,
-  autoNamedPaths: []
+  autoNamedPaths: [],
+  collapsedSidebarSections: [],
+  expandedSidebarSubfolders: []
 }
 
 let cached: Settings | null = null

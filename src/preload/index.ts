@@ -60,6 +60,16 @@ export type Settings = {
    * their first non-empty line. Removed once the user explicitly renames.
    */
   autoNamedPaths: string[]
+  /**
+   * Top-level sidebar sections (by id) the user has explicitly collapsed.
+   * Sections default to expanded.
+   */
+  collapsedSidebarSections: string[]
+  /**
+   * Nested sidebar subfolders (by absolute path) the user has explicitly
+   * expanded. Subfolders default to collapsed.
+   */
+  expandedSidebarSubfolders: string[]
 }
 
 export type WatchEvent = {

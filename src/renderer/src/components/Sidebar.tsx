@@ -55,8 +55,8 @@ import type { FileEntry } from '../../../preload'
 const INITIAL_VISIBLE = 10
 
 /** Sentinel id for the top-of-sidebar Recents section. Not a real path —
- *  reused in `sidebarCollapsedPaths` to persist the section's collapse
- *  state alongside regular folders. */
+ *  used as a section key in `collapsedSectionIds` so its expanded/collapsed
+ *  state persists alongside regular sections. */
 const RECENTS_ID = '__recents__'
 
 // --- Drag & drop ------------------------------------------------------------
@@ -98,8 +98,6 @@ const revealLabel = navigator.platform.startsWith('Win')
   : isMac
     ? 'Reveal in Finder'
     : 'Show in file manager'
-
-const isModClick = (e: React.MouseEvent): boolean => (isMac ? e.metaKey : e.ctrlKey)
 
 const TruncatedName = ({
   children,
@@ -332,20 +330,13 @@ const FileRow = ({
           draggable
           onDragStart={(e) => dnd.onItemDragStart(e, { kind: 'file', path: file.path })}
           onDragEnd={dnd.onItemDragEnd}
-          onClick={(e) => {
-            if (isModClick(e)) {
-              e.preventDefault()
-              onFocusItem()
-            } else {
-              onActivate()
-            }
-          }}
-          onDoubleClick={onStartRename}
+          onClick={() => onFocusItem()}
+          onDoubleClick={onActivate}
           className={cn(
             'group/row relative flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-sm',
             'hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
-            active && 'bg-sidebar-accent text-sidebar-accent-foreground font-medium',
-            focused && 'ring-1 ring-inset ring-ring'
+            (focused || active) && 'bg-sidebar-accent text-sidebar-accent-foreground',
+            active && 'font-medium'
           )}
         >
           <FileTextIcon className="size-3.5 shrink-0 text-muted-foreground" />
@@ -520,20 +511,16 @@ const SubfolderView = ({
           onDragEnter={(e) => dnd.onTargetDragOver(e, folder.path, folder.path)}
           onDragOver={(e) => dnd.onTargetDragOver(e, folder.path, folder.path)}
           onDrop={(e) => dnd.onTargetDrop(e, folder.path)}
-          onClick={(e) => {
-            if (isModClick(e)) {
-              e.preventDefault()
-              onFocusItem(folder.path)
-            } else {
-              onToggleExpanded(folder.path)
-            }
+          onClick={() => {
+            onFocusItem(folder.path)
+            onToggleExpanded(folder.path)
           }}
           style={{ paddingLeft }}
           className={cn(
             'flex w-full items-center gap-1.5 rounded-md pr-2 py-1 text-left text-sm',
             'hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
             'text-muted-foreground',
-            focused && 'ring-1 ring-inset ring-ring',
+            focused && 'bg-sidebar-accent text-sidebar-accent-foreground',
             isDropTarget &&
               'bg-sidebar-accent/70 ring-1 ring-inset ring-primary/60 text-sidebar-accent-foreground'
           )}
@@ -692,17 +679,13 @@ const SectionView = ({
       <div className="group flex items-center gap-1 px-2 pt-1 pb-0.5">
         <button
           data-sidebar-path={section.id}
-          onClick={(e) => {
-            if (isModClick(e)) {
-              e.preventDefault()
-              onFocusItem(section.id)
-            } else {
-              onToggleExpanded(section.id)
-            }
+          onClick={() => {
+            onFocusItem(section.id)
+            onToggleExpanded(section.id)
           }}
           className={cn(
             'flex flex-1 items-center gap-1 text-left text-[11px] font-semibold tracking-wide text-muted-foreground uppercase hover:text-foreground',
-            focused && 'ring-1 ring-inset ring-ring rounded-sm'
+            focused && 'text-foreground'
           )}
         >
           <ChevronRightIcon
@@ -1045,10 +1028,14 @@ const Sidebar = (): React.JSX.Element => {
     renameFolder,
     moveFile,
     moveFolder,
-    sidebarCollapsedPaths,
-    toggleSidebarCollapsedPath,
-    expandSidebarPaths,
-    collapseSidebarPath
+    collapsedSectionIds,
+    expandedSubfolderPaths,
+    toggleSidebarSection,
+    toggleSidebarSubfolder,
+    expandSidebarSections,
+    collapseSidebarSection,
+    expandSidebarSubfolders,
+    collapseSidebarSubfolder
   } = useWorkspace()
   const [renamingPath, setRenamingPath] = useState<string | null>(null)
   const [renamingFolderPath, setRenamingFolderPath] = useState<string | null>(null)
@@ -1059,23 +1046,26 @@ const Sidebar = (): React.JSX.Element => {
 
   const expandedPaths = useMemo(() => {
     const all = new Set<string>()
-    const walk = (node: FolderNode): void => {
-      all.add(node.path)
-      for (const sub of node.subfolders) walk(sub)
-    }
     for (const s of sections) {
-      all.add(s.id)
-      for (const sub of s.subfolders) walk(sub)
+      if (!collapsedSectionIds.has(s.id)) all.add(s.id)
     }
-    for (const p of sidebarCollapsedPaths) all.delete(p)
+    for (const p of expandedSubfolderPaths) all.add(p)
     return all
-  }, [sections, sidebarCollapsedPaths])
+  }, [sections, collapsedSectionIds, expandedSubfolderPaths])
+
+  // Whether `key` refers to a top-level section (id) vs a nested subfolder (path).
+  // Section IDs match either RECENTS_ID or one of the section.id values.
+  const isSectionKey = useCallback(
+    (key: string): boolean => key === RECENTS_ID || sections.some((s) => s.id === key),
+    [sections]
+  )
 
   const toggleExpanded = useCallback(
-    (path: string) => {
-      toggleSidebarCollapsedPath(path)
+    (key: string) => {
+      if (isSectionKey(key)) toggleSidebarSection(key)
+      else toggleSidebarSubfolder(key)
     },
-    [toggleSidebarCollapsedPath]
+    [isSectionKey, toggleSidebarSection, toggleSidebarSubfolder]
   )
 
   const toggleShowAll = useCallback((sectionId: string) => {
@@ -1109,9 +1099,7 @@ const Sidebar = (): React.JSX.Element => {
   // the target row exists in the DOM at its new alphabetical slot.
   const scrollPathIntoView = useCallback((path: string) => {
     requestAnimationFrame(() => {
-      const el = sidebarRef.current?.querySelector(
-        `[data-sidebar-path="${CSS.escape(path)}"]`
-      )
+      const el = sidebarRef.current?.querySelector(`[data-sidebar-path="${CSS.escape(path)}"]`)
       ;(el as HTMLElement | null)?.scrollIntoView({ block: 'nearest' })
     })
   }, [])
@@ -1150,7 +1138,8 @@ const Sidebar = (): React.JSX.Element => {
           e.preventDefault()
           if (item.type === 'section' || item.type === 'folder') {
             if (!expandedPaths.has(item.path)) {
-              expandSidebarPaths(item.path)
+              if (item.type === 'section') expandSidebarSections(item.path)
+              else expandSidebarSubfolders(item.path)
             } else {
               const next = flatItems[idx + 1]
               if (next && next.parentPath === item.path) {
@@ -1163,7 +1152,8 @@ const Sidebar = (): React.JSX.Element => {
         case 'ArrowLeft': {
           e.preventDefault()
           if ((item.type === 'section' || item.type === 'folder') && expandedPaths.has(item.path)) {
-            collapseSidebarPath(item.path)
+            if (item.type === 'section') collapseSidebarSection(item.path)
+            else collapseSidebarSubfolder(item.path)
           } else if (item.parentPath) {
             setFocusedItem(item.parentPath)
           }
@@ -1186,6 +1176,12 @@ const Sidebar = (): React.JSX.Element => {
           sidebarRef.current?.blur()
           break
         }
+        case 'F2': {
+          e.preventDefault()
+          if (item.type === 'file') setRenamingPath(item.path)
+          else if (item.type === 'folder') setRenamingFolderPath(item.path)
+          break
+        }
       }
     },
     [
@@ -1193,8 +1189,10 @@ const Sidebar = (): React.JSX.Element => {
       flatItems,
       expandedPaths,
       toggleExpanded,
-      expandSidebarPaths,
-      collapseSidebarPath,
+      expandSidebarSections,
+      collapseSidebarSection,
+      expandSidebarSubfolders,
+      collapseSidebarSubfolder,
       openFile,
       renamingPath
     ]
@@ -1202,14 +1200,19 @@ const Sidebar = (): React.JSX.Element => {
 
   const handleCreateSubfolder = useCallback(
     async (parentPath: string): Promise<void> => {
-      const pathsToExpand: string[] = [parentPath]
+      let containingSection: SidebarSection | null = null
       for (const s of sections) {
         if (s.path && (parentPath === s.path || parentPath.startsWith(s.path + '/'))) {
-          pathsToExpand.push(s.id)
+          containingSection = s
           break
         }
       }
-      expandSidebarPaths(...pathsToExpand)
+      if (containingSection) expandSidebarSections(containingSection.id)
+      // If parentPath equals the section's root, the new folder lives directly
+      // under the section and parentPath isn't a subfolder we need to expand.
+      if (!containingSection || parentPath !== containingSection.path) {
+        expandSidebarSubfolders(parentPath)
+      }
       try {
         const newPath = await createSubfolder(parentPath)
         setRenamingFolderPath(newPath)
@@ -1218,7 +1221,7 @@ const Sidebar = (): React.JSX.Element => {
         // Directory may already exist or other FS error
       }
     },
-    [createSubfolder, sections, expandSidebarPaths, scrollPathIntoView]
+    [createSubfolder, sections, expandSidebarSections, expandSidebarSubfolders, scrollPathIntoView]
   )
 
   const handleCommitFolderRename = useCallback(
@@ -1385,10 +1388,10 @@ const Sidebar = (): React.JSX.Element => {
         onBlur={handleBlur}
         className="flex h-full flex-col bg-sidebar text-sidebar-foreground outline-none"
       >
-        <ScrollArea className="min-h-0 flex-1 px-1 pt-2">
+        <ScrollArea className="min-h-0 flex-1 pl-1 pr-2.5 pt-2">
           <RecentsSection
-            expanded={!sidebarCollapsedPaths.has(RECENTS_ID)}
-            onToggleExpanded={() => toggleSidebarCollapsedPath(RECENTS_ID)}
+            expanded={!collapsedSectionIds.has(RECENTS_ID)}
+            onToggleExpanded={() => toggleSidebarSection(RECENTS_ID)}
           />
           {draftsSection && (
             <SectionView

@@ -42,7 +42,9 @@ let mockSettings: Settings = {
   rawHeadingSizes: false,
   rawWordWrap: true,
   variablesPanelVisible: false,
-  autoNamedPaths: []
+  autoNamedPaths: [],
+  collapsedSidebarSections: [],
+  expandedSidebarSubfolders: []
 }
 
 const listEntries = (): FileEntry[] =>
