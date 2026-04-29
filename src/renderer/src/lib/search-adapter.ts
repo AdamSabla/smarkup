@@ -17,6 +17,14 @@ export type MatchInfo = {
   current: number
 }
 
+export type MatchPositions = {
+  /** Vertical position (0..1) of every match within the scrollable document.
+   *  Used to render scrollbar gutter ticks. */
+  fractions: number[]
+  /** 0-based index of the current match within `fractions` (-1 if none). */
+  current: number
+}
+
 export type SearchAdapter = {
   /** Set or clear the search query. Empty string clears highlights. */
   setQuery: (query: string) => MatchInfo
@@ -30,6 +38,10 @@ export type SearchAdapter = {
   replaceAll: (replacement: string) => { replaced: number }
   /** Clear all match highlighting (called when the bar closes). */
   clear: () => void
+  /** Vertical positions of every match for the scrollbar gutter overlay. */
+  getMatchPositions: () => MatchPositions
+  /** Jump the editor to the Nth match (and make it the current one). */
+  scrollToMatch: (index: number) => MatchInfo
 }
 
 // ----------------------------------------------------------------------------
@@ -125,6 +137,47 @@ export const createCMSearchAdapter = (view: EditorView): SearchAdapter => {
       // the last found range once the bar closes.
       const head = view.state.selection.main.head
       view.dispatch({ selection: EditorSelection.cursor(head) })
+    },
+    getMatchPositions: () => {
+      if (!query) return { fractions: [], current: -1 }
+      const cursor = new SearchCursor(view.state.doc, query, 0, view.state.doc.length, (s) =>
+        s.toLowerCase()
+      )
+      const selFrom = view.state.selection.main.from
+      const fractions: number[] = []
+      // `contentHeight` is the full estimated height of the document (CM6
+      // estimates unmeasured lines lazily). `lineBlockAt` returns the
+      // content-relative top for any position without forcing a render.
+      const totalH = view.contentHeight || 1
+      let current = -1
+      let i = 0
+      while (!cursor.next().done) {
+        const block = view.lineBlockAt(cursor.value.from)
+        const frac = Math.max(0, Math.min(1, block.top / totalH))
+        fractions.push(frac)
+        if (current === -1 && cursor.value.from === selFrom) current = i
+        i += 1
+      }
+      return { fractions, current }
+    },
+    scrollToMatch: (index) => {
+      if (!query || index < 0) return countCMMatches(view, query)
+      const cursor = new SearchCursor(view.state.doc, query, 0, view.state.doc.length, (s) =>
+        s.toLowerCase()
+      )
+      let i = 0
+      while (!cursor.next().done) {
+        if (i === index) {
+          const { from, to } = cursor.value
+          view.dispatch({
+            selection: EditorSelection.range(from, to),
+            scrollIntoView: true
+          })
+          break
+        }
+        i += 1
+      }
+      return countCMMatches(view, query)
     }
   }
 }
@@ -216,6 +269,75 @@ export const createTiptapSearchAdapter = (editor: Editor): SearchAdapter => {
       editor.view.dispatch(
         editor.view.state.tr.setMeta(searchHighlightKey, { type: 'setQuery', query: '' })
       )
+    },
+    getMatchPositions: () => {
+      const s = searchHighlightKey.getState(editor.view.state)
+      if (!s || s.matches.length === 0) return { fractions: [], current: -1 }
+      // ProseMirror renders the whole doc — `coordsAtPos` is reliable for any
+      // match position. Convert viewport coords to scroll-content fractions
+      // against the nearest scrollable ancestor of the editor's DOM.
+      const scrollEl = findScrollContainer(editor.view.dom)
+      if (!scrollEl) return { fractions: [], current: s.currentIndex }
+      const totalH = scrollEl.scrollHeight || 1
+      const containerTop = scrollEl.getBoundingClientRect().top
+      const scrollTop = scrollEl.scrollTop
+      const fractions: number[] = []
+      for (const m of s.matches) {
+        try {
+          const c = editor.view.coordsAtPos(m.from)
+          const yInContent = c.top - containerTop + scrollTop
+          fractions.push(Math.max(0, Math.min(1, yInContent / totalH)))
+        } catch {
+          fractions.push(0)
+        }
+      }
+      return { fractions, current: s.currentIndex }
+    },
+    scrollToMatch: (index) => {
+      const s = searchHighlightKey.getState(editor.view.state)
+      if (!s || s.matches.length === 0 || index < 0 || index >= s.matches.length) {
+        return readTiptapInfo(editor)
+      }
+      // Set the plugin's currentIndex by advancing the difference, then move
+      // the selection to the targeted match so it scrolls into view.
+      const delta = index - s.currentIndex
+      if (delta !== 0) {
+        // Walk the plugin one step at a time so its `apply` clamps within
+        // [0, len). Going through `setMeta` keeps the decoration class
+        // (smarkup-search-match-current) in sync without us touching internals.
+        for (let k = 0; k < Math.abs(delta); k++) {
+          editor.view.dispatch(
+            editor.view.state.tr.setMeta(searchHighlightKey, {
+              type: 'advance',
+              delta: delta > 0 ? 1 : -1
+            })
+          )
+        }
+      }
+      const after = searchHighlightKey.getState(editor.view.state)
+      if (after && after.matches.length > 0) {
+        const target = after.matches[after.currentIndex]
+        const { state, dispatch } = editor.view
+        const from = Math.min(target.from, state.doc.content.size)
+        const to = Math.min(target.to, state.doc.content.size)
+        dispatch(state.tr.setSelection(TextSelection.create(state.doc, from, to)).scrollIntoView())
+      }
+      return readTiptapInfo(editor)
     }
   }
+}
+
+/**
+ * Walk up from `el` looking for the first scrollable ancestor — the element
+ * whose `overflow-y` is `auto` or `scroll`. Used by the visual editor's
+ * search adapter to translate match coords into scroll-content fractions.
+ */
+const findScrollContainer = (el: HTMLElement): HTMLElement | null => {
+  let cur: HTMLElement | null = el
+  while (cur) {
+    const overflowY = window.getComputedStyle(cur).overflowY
+    if (overflowY === 'auto' || overflowY === 'scroll') return cur
+    cur = cur.parentElement
+  }
+  return null
 }
