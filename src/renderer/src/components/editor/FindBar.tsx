@@ -10,6 +10,7 @@ import {
   type MatchInfo,
   type SearchAdapter
 } from '@/lib/search-adapter'
+import SearchScrollbarMarkers from './SearchScrollbarMarkers'
 
 /**
  * Chrome-style minimal find/replace bar. Floats top-right inside the active
@@ -45,6 +46,11 @@ const FindBar = (): React.JSX.Element | null => {
   const [replacement, setReplacement] = useState('')
   const [info, setInfo] = useState<MatchInfo>({ count: 0, current: 0 })
   const inputRef = useRef<HTMLInputElement>(null)
+  // Bumped on every search action so the scrollbar-marker gutter knows to
+  // re-poll positions even when count/current didn't visibly change (e.g.
+  // after a replace that left the same number of matches).
+  const [searchTick, setSearchTick] = useState(0)
+  const bump = useCallback(() => setSearchTick((n) => n + 1), [])
 
   // Search trigger lives on the input's onChange (see `runSearch` below) —
   // calling setState in an event handler is the React-recommended pattern,
@@ -58,8 +64,9 @@ const FindBar = (): React.JSX.Element | null => {
       queryRef.current = q
       setQuery(q)
       if (adapter) setInfo(adapter.setQuery(q))
+      bump()
     },
-    [adapter]
+    [adapter, bump]
   )
 
   // When the active editor swaps (tab switch, raw↔visual toggle), re-apply
@@ -110,17 +117,20 @@ const FindBar = (): React.JSX.Element | null => {
   const next = useCallback(() => {
     if (!adapter) return
     setInfo(adapter.next())
-  }, [adapter])
+    bump()
+  }, [adapter, bump])
 
   const prev = useCallback(() => {
     if (!adapter) return
     setInfo(adapter.prev())
-  }, [adapter])
+    bump()
+  }, [adapter, bump])
 
   const doReplace = useCallback(() => {
     if (!adapter) return
     setInfo(adapter.replace(replacement))
-  }, [adapter, replacement])
+    bump()
+  }, [adapter, replacement, bump])
 
   const doReplaceAll = useCallback(() => {
     if (!adapter) return
@@ -129,7 +139,8 @@ const FindBar = (): React.JSX.Element | null => {
     // replacement string itself contains the query). Re-run setQuery to
     // surface the new state.
     setInfo(adapter.setQuery(query))
-  }, [adapter, query, replacement])
+    bump()
+  }, [adapter, query, replacement, bump])
 
   const onQueryKeyDown = (e: React.KeyboardEvent<HTMLInputElement>): void => {
     if (e.key === 'Enter') {
@@ -161,73 +172,80 @@ const FindBar = (): React.JSX.Element | null => {
   const hasNoMatch = Boolean(query) && info.count === 0
 
   return (
-    <div
-      className={cn(
-        'absolute right-3 top-3 z-20 flex flex-col gap-1 rounded-lg border border-border bg-popover p-1.5 shadow-lg',
-        'min-w-[360px] text-sm'
-      )}
-      // Stop mousedown from bubbling to EditorPane's handler, which would
-      // re-set the active pane and yank focus back into the editor.
-      onMouseDown={(e) => e.stopPropagation()}
-    >
-      {/* Find row */}
-      <div className="flex items-center gap-1">
-        <input
-          ref={inputRef}
-          type="text"
-          placeholder="Find"
-          value={query}
-          onChange={(e) => runSearch(e.target.value)}
-          onKeyDown={onQueryKeyDown}
-          className={cn(
-            'h-7 flex-1 min-w-0 rounded-md border bg-background px-2 text-sm outline-none',
-            'placeholder:text-muted-foreground focus:ring-1 focus:ring-ring',
-            hasNoMatch ? 'border-destructive/60 focus:ring-destructive/60' : 'border-input'
-          )}
-        />
-        <span
-          className={cn(
-            'min-w-[64px] px-1 text-right text-[11px] tabular-nums',
-            hasNoMatch ? 'text-destructive' : 'text-muted-foreground'
-          )}
-        >
-          {counterText}
-        </span>
-        <IconButton onClick={prev} title="Previous match (Shift+Enter)" disabled={info.count === 0}>
-          <ChevronUpIcon className="h-4 w-4" />
-        </IconButton>
-        <IconButton onClick={next} title="Next match (Enter)" disabled={info.count === 0}>
-          <ChevronDownIcon className="h-4 w-4" />
-        </IconButton>
-        <IconButton onClick={close} title="Close (Esc)">
-          <XIcon className="h-4 w-4" />
-        </IconButton>
-      </div>
+    <>
+      <SearchScrollbarMarkers adapter={adapter} trigger={searchTick} count={info.count} />
+      <div
+        className={cn(
+          'absolute right-3 top-3 z-20 flex flex-col gap-1 rounded-lg border border-border bg-popover p-1.5 shadow-lg',
+          'min-w-[360px] text-sm'
+        )}
+        // Stop mousedown from bubbling to EditorPane's handler, which would
+        // re-set the active pane and yank focus back into the editor.
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        {/* Find row */}
+        <div className="flex items-center gap-1">
+          <input
+            ref={inputRef}
+            type="text"
+            placeholder="Find"
+            value={query}
+            onChange={(e) => runSearch(e.target.value)}
+            onKeyDown={onQueryKeyDown}
+            className={cn(
+              'h-7 flex-1 min-w-0 rounded-md border bg-background px-2 text-sm outline-none',
+              'placeholder:text-muted-foreground focus:ring-1 focus:ring-ring',
+              hasNoMatch ? 'border-destructive/60 focus:ring-destructive/60' : 'border-input'
+            )}
+          />
+          <span
+            className={cn(
+              'min-w-[64px] px-1 text-right text-[11px] tabular-nums',
+              hasNoMatch ? 'text-destructive' : 'text-muted-foreground'
+            )}
+          >
+            {counterText}
+          </span>
+          <IconButton
+            onClick={prev}
+            title="Previous match (Shift+Enter)"
+            disabled={info.count === 0}
+          >
+            <ChevronUpIcon className="h-4 w-4" />
+          </IconButton>
+          <IconButton onClick={next} title="Next match (Enter)" disabled={info.count === 0}>
+            <ChevronDownIcon className="h-4 w-4" />
+          </IconButton>
+          <IconButton onClick={close} title="Close (Esc)">
+            <XIcon className="h-4 w-4" />
+          </IconButton>
+        </div>
 
-      {/* Replace row */}
-      <div className="flex items-center gap-1">
-        <input
-          type="text"
-          placeholder="Replace"
-          value={replacement}
-          onChange={(e) => setReplacement(e.target.value)}
-          onKeyDown={onReplaceKeyDown}
-          className={cn(
-            'h-7 flex-1 min-w-0 rounded-md border border-input bg-background px-2 text-sm outline-none',
-            'placeholder:text-muted-foreground focus:ring-1 focus:ring-ring'
-          )}
-        />
-        {/* Reserve the same width as the counter above so the buttons in both
-         *  rows align vertically. */}
-        <span className="min-w-[64px]" aria-hidden />
-        <TextButton onClick={doReplace} disabled={info.count === 0}>
-          Replace
-        </TextButton>
-        <TextButton onClick={doReplaceAll} disabled={info.count === 0}>
-          All
-        </TextButton>
+        {/* Replace row */}
+        <div className="flex items-center gap-1">
+          <input
+            type="text"
+            placeholder="Replace"
+            value={replacement}
+            onChange={(e) => setReplacement(e.target.value)}
+            onKeyDown={onReplaceKeyDown}
+            className={cn(
+              'h-7 flex-1 min-w-0 rounded-md border border-input bg-background px-2 text-sm outline-none',
+              'placeholder:text-muted-foreground focus:ring-1 focus:ring-ring'
+            )}
+          />
+          {/* Reserve the same width as the counter above so the buttons in both
+           *  rows align vertically. */}
+          <span className="min-w-[64px]" aria-hidden />
+          <TextButton onClick={doReplace} disabled={info.count === 0}>
+            Replace
+          </TextButton>
+          <TextButton onClick={doReplaceAll} disabled={info.count === 0}>
+            All
+          </TextButton>
+        </div>
       </div>
-    </div>
+    </>
   )
 }
 

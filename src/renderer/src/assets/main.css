@@ -201,21 +201,77 @@
  */
 .smarkup-search-match,
 .cm-searchMatch {
-  background: rgba(250, 204, 21, 0.35); /* tailwind yellow-400 @ 35% */
+  background: #fff263; /* saturated chrome-style yellow */
+  color: #1f2937; /* readable dark text on the yellow */
   border-radius: 2px;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.08);
 }
 .smarkup-search-match-current,
 .cm-searchMatch-selected {
-  background: #fb923c; /* tailwind orange-400 */
-  color: #1f2937; /* tailwind gray-800 — readable on the orange */
+  background: #ff9632; /* chrome-style orange for the active match */
+  color: #1f2937;
   border-radius: 2px;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.18);
 }
+/* Same colors in dark mode — the whole point is high contrast against any
+ * background, so we keep the saturated yellow/orange. The text stays dark
+ * so it remains readable on top of the bright fill. */
 .dark .smarkup-search-match,
 .dark .cm-searchMatch {
-  background: rgba(250, 204, 21, 0.28);
+  background: #fff263;
+  color: #1f2937;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25);
 }
 .dark .smarkup-search-match-current,
 .dark .cm-searchMatch-selected {
-  background: #fb923c;
+  background: #ff9632;
   color: #1f2937;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35);
+}
+
+/* --- Find/replace scrollbar gutter ----------------------------------- */
+/*
+ * Thin overlay strip rendered to the right of the editor when the FindBar
+ * is open. Each match in the document gets a tick whose vertical position
+ * mirrors the match's position in the document, Chrome-style.
+ */
+.smarkup-search-gutter {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 12px;
+  pointer-events: none;
+  z-index: 15;
+}
+.smarkup-search-gutter-tick {
+  position: absolute;
+  left: 2px;
+  right: 2px;
+  height: 3px;
+  background: #eab308; /* tailwind yellow-500 — visible on both themes */
+  border: none;
+  border-radius: 1px;
+  padding: 0;
+  pointer-events: auto;
+  cursor: pointer;
+}
+.smarkup-search-gutter-tick:focus {
+  outline: none;
+}
+.smarkup-search-gutter-tick:hover {
+  filter: brightness(1.15);
+}
+.smarkup-search-gutter-tick-current {
+  background: #ff9632;
+  height: 4px;
+  left: 1px;
+  right: 1px;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.3);
+}
+.dark .smarkup-search-gutter-tick {
+  background: #facc15;
+}
+.dark .smarkup-search-gutter-tick-current {
+  background: #ff9632;
 }
