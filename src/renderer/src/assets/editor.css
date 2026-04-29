@@ -469,23 +469,3 @@
 .cm-sticky-line:hover {
   background: color-mix(in srgb, var(--foreground) 8%, transparent);
 }
-/* Per-level indent reads as visual ancestry — deeper headings sit further
- * right, so the chain looks like a folder breadcrumb. */
-.cm-sticky-line[data-level='1'] {
-  padding-left: 4px;
-}
-.cm-sticky-line[data-level='2'] {
-  padding-left: 16px;
-}
-.cm-sticky-line[data-level='3'] {
-  padding-left: 28px;
-}
-.cm-sticky-line[data-level='4'] {
-  padding-left: 40px;
-}
-.cm-sticky-line[data-level='5'] {
-  padding-left: 52px;
-}
-.cm-sticky-line[data-level='6'] {
-  padding-left: 64px;
-}

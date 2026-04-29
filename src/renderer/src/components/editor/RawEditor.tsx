@@ -199,7 +199,6 @@ const stickyHeadingPanel = (view: EditorView): Panel => {
     for (const h of chain) {
       const row = document.createElement('div')
       row.className = 'cm-sticky-line'
-      row.dataset.level = String(h.level)
       row.textContent = h.text
       row.title = h.text
       // mousedown + preventDefault keeps editor focus and prevents the
