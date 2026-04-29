@@ -170,6 +170,7 @@ function flattenVisibleTree(
 
 type RenameInputProps = {
   initialValue: string
+  paddingLeft: number
   onCommit: (value: string) => void
   onCancel: () => void
 }
@@ -179,7 +180,12 @@ type RenameInputProps = {
  * `useState(initialValue)` picks up the current value without needing
  * a state-sync effect.
  */
-const RenameInput = ({ initialValue, onCommit, onCancel }: RenameInputProps): React.JSX.Element => {
+const RenameInput = ({
+  initialValue,
+  paddingLeft,
+  onCommit,
+  onCancel
+}: RenameInputProps): React.JSX.Element => {
   const [value, setValue] = useState(initialValue)
   const ref = useRef<HTMLInputElement>(null)
 
@@ -199,12 +205,13 @@ const RenameInput = ({ initialValue, onCommit, onCancel }: RenameInputProps): Re
 
   return (
     <div
+      style={{ paddingLeft }}
       className={cn(
-        'flex w-full items-center gap-2 rounded-md px-2 py-1',
-        'bg-sidebar-accent text-sidebar-accent-foreground'
+        'flex w-full items-center gap-2 pr-2 py-1',
+        'bg-sidebar-selected text-sidebar-selected-foreground'
       )}
     >
-      <FileTextIcon className="size-3.5 shrink-0 text-muted-foreground" />
+      <FileTextIcon className="size-3.5 shrink-0 text-current/70" />
       <input
         ref={ref}
         value={value}
@@ -260,8 +267,8 @@ const FolderRenameInput = ({
     <div
       style={{ paddingLeft: 8 + depth * 12 }}
       className={cn(
-        'flex w-full items-center gap-1.5 rounded-md pr-2 py-1',
-        'bg-sidebar-accent text-sidebar-accent-foreground'
+        'flex w-full items-center gap-1.5 pr-2 py-1',
+        'bg-sidebar-selected text-sidebar-selected-foreground'
       )}
     >
       <ChevronRightIcon className="size-3 shrink-0" />
@@ -292,6 +299,7 @@ type FileRowProps = {
   active: boolean
   focused: boolean
   renaming: boolean
+  paddingLeft: number
   onActivate: () => void
   onFocusItem: () => void
   onStartRename: () => void
@@ -305,6 +313,7 @@ const FileRow = ({
   active,
   focused,
   renaming,
+  paddingLeft,
   onActivate,
   onFocusItem,
   onStartRename,
@@ -318,10 +327,17 @@ const FileRow = ({
 
   if (renaming) {
     return (
-      <RenameInput initialValue={displayName} onCommit={onCommitRename} onCancel={onCancelRename} />
+      <RenameInput
+        initialValue={displayName}
+        paddingLeft={paddingLeft}
+        onCommit={onCommitRename}
+        onCancel={onCancelRename}
+      />
     )
   }
 
+  // Selected (focused) wins over active when both are true. Hover is suppressed
+  // on selected/active rows so they don't flash to gray on mouseover.
   return (
     <ContextMenu>
       <ContextMenuTrigger asChild>
@@ -332,14 +348,20 @@ const FileRow = ({
           onDragEnd={dnd.onItemDragEnd}
           onClick={() => onFocusItem()}
           onDoubleClick={onActivate}
+          style={{ paddingLeft }}
           className={cn(
-            'group/row relative flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-sm',
-            'hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
-            (focused || active) && 'bg-sidebar-accent text-sidebar-accent-foreground',
-            active && 'font-medium'
+            'group/row relative flex w-full items-center gap-2 pr-2 py-1 text-left text-sm',
+            !active && !focused && 'hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
+            active && 'bg-sidebar-accent text-sidebar-accent-foreground font-medium',
+            focused && 'bg-sidebar-selected text-sidebar-selected-foreground'
           )}
         >
-          <FileTextIcon className="size-3.5 shrink-0 text-muted-foreground" />
+          <FileTextIcon
+            className={cn(
+              'size-3.5 shrink-0',
+              focused ? 'text-current/80' : 'text-muted-foreground'
+            )}
+          />
           <TruncatedName>{displayName}</TruncatedName>
 
           <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
@@ -353,11 +375,14 @@ const FileRow = ({
                 }}
                 className={cn(
                   'absolute right-1 inline-flex items-center justify-center rounded-sm size-5',
-                  'opacity-0 group-hover/row:opacity-100 bg-sidebar-accent',
+                  'opacity-0 group-hover/row:opacity-100',
+                  focused ? 'bg-sidebar-selected' : 'bg-sidebar-accent',
                   menuOpen && 'opacity-100'
                 )}
               >
-                <MoreHorizontalIcon className="size-3.5 text-muted-foreground" />
+                <MoreHorizontalIcon
+                  className={cn('size-3.5', focused ? 'text-current/80' : 'text-muted-foreground')}
+                />
               </span>
             </DropdownMenuTrigger>
             <DropdownMenuContent side="right" align="start">
@@ -399,6 +424,7 @@ const FileRow = ({
 
 type FileListProps = {
   files: FileEntry[]
+  paddingLeft: number
   renamingPath: string | null
   focusedItem: string | null
   onStartRename: (path: string) => void
@@ -408,6 +434,7 @@ type FileListProps = {
 
 const FileList = ({
   files,
+  paddingLeft,
   renamingPath,
   focusedItem,
   onStartRename,
@@ -425,6 +452,7 @@ const FileList = ({
         <FileRow
           key={file.path}
           file={file}
+          paddingLeft={paddingLeft}
           active={
             file.path === activeTabId ||
             (activeDiff != null &&
@@ -517,10 +545,12 @@ const SubfolderView = ({
           }}
           style={{ paddingLeft }}
           className={cn(
-            'flex w-full items-center gap-1.5 rounded-md pr-2 py-1 text-left text-sm',
-            'hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
+            'flex w-full items-center gap-1.5 pr-2 py-1 text-left text-sm',
             'text-muted-foreground',
-            focused && 'bg-sidebar-accent text-sidebar-accent-foreground',
+            !focused &&
+              !isDropTarget &&
+              'hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
+            focused && 'bg-sidebar-selected text-sidebar-selected-foreground',
             isDropTarget &&
               'bg-sidebar-accent/70 ring-1 ring-inset ring-primary/60 text-sidebar-accent-foreground'
           )}
@@ -581,16 +611,15 @@ const SubfolderView = ({
             />
           ))}
 
-          <div style={{ paddingLeft: 20 + (depth + 1) * 12 }}>
-            <FileList
-              files={folder.files}
-              renamingPath={renamingPath}
-              focusedItem={focusedItem}
-              onStartRename={onStartRename}
-              onCancelRename={onCancelRename}
-              onFocusItem={onFocusItem}
-            />
-          </div>
+          <FileList
+            files={folder.files}
+            paddingLeft={20 + (depth + 1) * 12}
+            renamingPath={renamingPath}
+            focusedItem={focusedItem}
+            onStartRename={onStartRename}
+            onCancelRename={onCancelRename}
+            onFocusItem={onFocusItem}
+          />
         </div>
       )}
     </div>
@@ -763,6 +792,7 @@ const SectionView = ({
 
           <FileList
             files={files}
+            paddingLeft={8}
             renamingPath={renamingPath}
             focusedItem={focusedItem}
             onStartRename={onStartRename}
@@ -828,8 +858,8 @@ const RecentsRow = ({ path, active, onOpen, onRemove }: RecentsRowProps): React.
         onClick={onOpen}
         title={path}
         className={cn(
-          'flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-sm',
-          'hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
+          'flex w-full items-center gap-2 pl-2 pr-2 py-1 text-left text-sm',
+          !active && 'hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
           active && 'bg-sidebar-accent text-sidebar-accent-foreground font-medium'
         )}
       >
@@ -951,7 +981,7 @@ const RecentsSection = ({ expanded, onToggleExpanded }: RecentsSectionProps): Re
           {hasMore && (
             <button
               onClick={() => setVisibleCount((n) => n + RECENTS_PAGE)}
-              className="block w-full rounded-md px-2 py-1 text-left text-[11px] text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
+              className="block w-full pl-2 pr-2 py-1 text-left text-[11px] text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
             >
               Show {Math.min(RECENTS_PAGE, recentFiles.length - visibleCount)} more
             </button>
@@ -1389,7 +1419,7 @@ const Sidebar = (): React.JSX.Element => {
         onBlur={handleBlur}
         className="flex h-full flex-col bg-sidebar text-sidebar-foreground outline-none"
       >
-        <ScrollArea className="min-h-0 flex-1 pl-1 pr-2.5 pt-2">
+        <ScrollArea className="min-h-0 flex-1 pt-2">
           {showRecents && (
             <RecentsSection
               expanded={!collapsedSectionIds.has(RECENTS_ID)}
