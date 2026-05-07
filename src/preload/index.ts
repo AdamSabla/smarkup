@@ -181,6 +181,13 @@ const api = {
       ipcRenderer.off('app:toggleVariablesPanel', handler)
     }
   },
+  onToggleEditorMode: (callback: () => void): (() => void) => {
+    const handler = (): void => callback()
+    ipcRenderer.on('app:toggleEditorMode', handler)
+    return () => {
+      ipcRenderer.off('app:toggleEditorMode', handler)
+    }
+  },
   onOpenDiffPicker: (callback: () => void): (() => void) => {
     const handler = (): void => callback()
     ipcRenderer.on('app:openDiffPicker', handler)
