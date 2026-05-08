@@ -2,11 +2,13 @@ import { EditorView } from '@codemirror/view'
 import type { Editor } from '@tiptap/react'
 
 /**
- * Matches `TODO` as a standalone token (so it doesn't fire on words that
- * happen to contain those letters). Case-sensitive on purpose — the token is
- * a deliberate yellow flag the user types, not natural-language "todo".
+ * Matches `TODO` as a standalone token, optionally followed by a
+ * `:{description}` body — `TODO`, `TODO:{}`, `TODO:{fix the thing}` all match
+ * as a single token. Unclosed `TODO:{partial` falls back to matching just
+ * `TODO`. Case-sensitive on purpose — the token is a deliberate yellow flag
+ * the user types, not natural-language "todo".
  */
-export const TODO_RE = /\bTODO\b/g
+export const TODO_RE = /\bTODO(?::\{[^}]*\})?(?!\w)/g
 
 /**
  * Matches `// some comment` from the slashes through end of line. Negative
@@ -85,23 +87,14 @@ const flashRectsForRawRange = (view: EditorView, from: number, to: number): void
  * to map the literal text to pm positions.
  */
 export const jumpToVisualTodo = (editor: Editor, occurrenceIndex: number): boolean => {
-  const target = 'TODO'
   const hits: Array<{ from: number; to: number }> = []
   editor.state.doc.descendants((node, pos) => {
     if (!node.isText || !node.text) return true
     const text = node.text
-    let searchFrom = 0
-    while (searchFrom <= text.length - target.length) {
-      const idx = text.indexOf(target, searchFrom)
-      if (idx === -1) break
-      // Word-boundary check so we match `\bTODO\b` like the regex does.
-      const before = idx === 0 ? '' : text[idx - 1]
-      const after = idx + target.length >= text.length ? '' : text[idx + target.length]
-      const isWordChar = (c: string): boolean => /[A-Za-z0-9_]/.test(c)
-      if (!isWordChar(before) && !isWordChar(after)) {
-        hits.push({ from: pos + idx, to: pos + idx + target.length })
-      }
-      searchFrom = idx + target.length
+    const re = new RegExp(TODO_RE.source, 'g')
+    let m: RegExpExecArray | null
+    while ((m = re.exec(text))) {
+      hits.push({ from: pos + m.index, to: pos + m.index + m[0].length })
     }
     return false
   })

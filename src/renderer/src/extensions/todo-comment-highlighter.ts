@@ -1,5 +1,5 @@
 import { Extension } from '@tiptap/core'
-import { Plugin, PluginKey } from '@tiptap/pm/state'
+import { Plugin, PluginKey, TextSelection } from '@tiptap/pm/state'
 import { Decoration, DecorationSet } from '@tiptap/pm/view'
 import type { EditorState, Transaction } from '@tiptap/pm/state'
 import type { Node as PMNode } from '@tiptap/pm/model'
@@ -15,8 +15,9 @@ import type { Node as PMNode } from '@tiptap/pm/model'
  * agree on what counts as a TODO / comment.
  */
 const COMMENT_RE = /(?<!:)\/\/[^\n]*/g
-const TODO_RE = /\bTODO\b/g
+const TODO_RE = /\bTODO(?::\{[^}]*\})?(?!\w)/g
 const todoCommentKey = new PluginKey('todo-comment-highlight')
+const todoAutoBracketKey = new PluginKey('todo-auto-bracket')
 
 const buildDecorations = (doc: PMNode): DecorationSet => {
   const decos: Decoration[] = []
@@ -65,6 +66,28 @@ export const TodoCommentHighlighter = Extension.create({
         props: {
           decorations(state) {
             return this.getState(state)
+          }
+        }
+      }),
+      // Auto-expand `TODO:` into `TODO:{|}` so the user can immediately type
+      // the description body without manually balancing braces. Mirrors the
+      // CodeMirror inputHandler in RawEditor — keep them in lockstep.
+      new Plugin({
+        key: todoAutoBracketKey,
+        props: {
+          handleTextInput(view, from, to, text) {
+            if (text !== ':' || from !== to) return false
+            const $from = view.state.doc.resolve(from)
+            // Only the parent text content matters — we look 4 chars back for
+            // "TODO" plus one more to confirm a non-word boundary before it.
+            const parentStart = $from.start()
+            const sliceFrom = Math.max(parentStart, from - 5)
+            const before = view.state.doc.textBetween(sliceFrom, from, '\0', '\0')
+            if (!/(?:^|\W)TODO$/.test(before)) return false
+            const tr = view.state.tr.insertText(':{}', from, to)
+            tr.setSelection(TextSelection.create(tr.doc, from + 2))
+            view.dispatch(tr)
+            return true
           }
         }
       })

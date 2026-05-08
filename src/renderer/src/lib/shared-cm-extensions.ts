@@ -133,7 +133,7 @@ export const todoCommentHighlighter = ViewPlugin.fromClass(
           order: 0
         })
       }
-      const todoRe = /\bTODO\b/g
+      const todoRe = /\bTODO(?::\{[^}]*\})?(?!\w)/g
       while ((m = todoRe.exec(text))) {
         hits.push({
           from: from + m.index,
@@ -150,6 +150,29 @@ export const todoCommentHighlighter = ViewPlugin.fromClass(
   },
   { decorations: (v) => v.decorations }
 )
+
+/* ------------------------------------------------------------------ */
+/*  TODO auto-bracket — `TODO:` → `TODO:{|}`                           */
+/* ------------------------------------------------------------------ */
+
+/**
+ * When the user types `:` immediately after a standalone `TODO`, expand the
+ * insertion to `:{}` and place the caret between the braces so the user can
+ * start typing the description body without balancing braces. Mirrors the
+ * Tiptap `todoAutoBracketKey` plugin so both editors behave identically.
+ */
+export const todoColonAutoBracket = EditorView.inputHandler.of((view, from, to, text) => {
+  if (text !== ':' || from !== to) return false
+  const start = Math.max(0, from - 5)
+  const before = view.state.doc.sliceString(start, from)
+  if (!/(?:^|\W)TODO$/.test(before)) return false
+  view.dispatch({
+    changes: { from, to, insert: ':{}' },
+    selection: { anchor: from + 2 },
+    userEvent: 'input.type'
+  })
+  return true
+})
 
 /* ------------------------------------------------------------------ */
 /*  Shared editor theme (token styling — not layout/padding)           */

@@ -22,6 +22,7 @@ import {
   placeholderHighlighter,
   inlineCodeHighlighter,
   todoCommentHighlighter,
+  todoColonAutoBracket,
   sharedEditorTokenTheme
 } from '@/lib/shared-cm-extensions'
 
@@ -602,6 +603,7 @@ const RawEditor = ({ value, onChange, isActive }: Props): React.JSX.Element => {
       placeholderHighlighter,
       inlineCodeHighlighter,
       todoCommentHighlighter,
+      todoColonAutoBracket,
       // Provide the search state field (decorations, current match) without
       // the panel. We drive it via setSearchQuery / findNext from our own
       // FindBar — basicSetup's searchKeymap is disabled below so Cmd+F never
