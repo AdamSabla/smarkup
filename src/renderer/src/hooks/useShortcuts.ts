@@ -117,10 +117,7 @@ export const useShortcuts = (): void => {
       // Reveal in Finder: cmd/ctrl+shift+r
       if (key === 'r' && e.shiftKey && !e.altKey) {
         e.preventDefault()
-        const focusedPath = useWorkspace.getState().sidebarFocusedPath
-        if (focusedPath) {
-          void window.api.revealInFolder(focusedPath)
-        } else if (activeTabId) {
+        if (activeTabId) {
           const tab = tabs.find((t) => t.id === activeTabId)
           if (tab && !tab.path.startsWith('draft://')) {
             void window.api.revealInFolder(tab.path)
