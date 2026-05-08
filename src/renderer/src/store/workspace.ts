@@ -615,11 +615,22 @@ const buildDraftsSection = async (path: string | null): Promise<SidebarSection> 
     files: [] as FileEntry[],
     subfolders: [] as FolderNode[]
   }))
+  // Drafts is a workbench, not an archive — the most recently edited note is
+  // almost always what the user wants to reach next. Re-sort the top-level
+  // files by mtime (newest first), tie-breaking on name so the order stays
+  // stable when two files share a timestamp. Subfolders inside Drafts and
+  // every other sidebar section keep the alphabetical sort from
+  // `readFolderTree`.
+  const draftsFiles = [...tree.files].sort(
+    (a, b) =>
+      b.mtimeMs - a.mtimeMs ||
+      a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' })
+  )
   return {
     id: DRAFTS_ID,
     label: 'Drafts',
     path,
-    files: tree.files,
+    files: draftsFiles,
     subfolders: tree.subfolders,
     isDrafts: true
   }
