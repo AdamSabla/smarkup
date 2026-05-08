@@ -222,9 +222,10 @@ export const useShortcuts = (): void => {
         return
       }
 
-      // Toggle editor mode: cmd/ctrl+; — toggles the active file's effective
-      // mode (per-file override), not the global default.
-      if (e.key === ';' && !e.shiftKey && !e.altKey) {
+      // Toggle editor mode: cmd/ctrl+e (e for editor) or cmd/ctrl+;
+      // — toggles the active file's effective mode (per-file override),
+      // not the global default.
+      if ((key === 'e' || e.key === ';') && !e.shiftKey && !e.altKey) {
         e.preventDefault()
         const activeTab = activeTabId ? tabs.find((t) => t.id === activeTabId) : undefined
         const current = resolveEditorMode(activeTab?.path, fileEditorModes, editorMode)

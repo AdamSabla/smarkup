@@ -744,6 +744,14 @@ app.whenReady().then(() => {
           }
         },
         {
+          label: 'Toggle Editor Mode',
+          accelerator: 'CmdOrCtrl+E',
+          click: (): void => {
+            const win = BrowserWindow.getFocusedWindow()
+            if (win) win.webContents.send('app:toggleEditorMode')
+          }
+        },
+        {
           label: 'Compare Files\u2026',
           click: (): void => {
             const win = BrowserWindow.getFocusedWindow()

@@ -1,8 +1,10 @@
 import { PanelLeftIcon, PanelLeftOpenIcon, EyeIcon, CodeIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useWorkspace } from '@/store/workspace'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 
 const isMac = navigator.userAgent.toLowerCase().includes('mac')
+const modKey = isMac ? '⌘' : 'Ctrl'
 
 const ModeSwitcher = (): React.JSX.Element => {
   const { editorMode, fileEditorModes, activeTabId, tabs, setEditorMode } = useWorkspace()
@@ -11,33 +13,45 @@ const ModeSwitcher = (): React.JSX.Element => {
     activeTab && fileEditorModes[activeTab.path] ? fileEditorModes[activeTab.path] : editorMode
   const isVisual = effectiveMode === 'visual'
   return (
-    <button
-      onClick={() => void setEditorMode(isVisual ? 'raw' : 'visual')}
-      style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
-      className="group flex items-center gap-0.5 rounded-[6px] p-0.5 hover:bg-foreground/[0.04] transition-colors"
-      aria-label={`Switch to ${isVisual ? 'raw' : 'visual'} mode`}
-    >
-      <span
-        className={cn(
-          'flex size-[26px] items-center justify-center rounded-[5px] transition-colors',
-          isVisual
-            ? 'bg-foreground/10 text-foreground'
-            : 'text-muted-foreground group-hover:text-foreground'
-        )}
-      >
-        <EyeIcon className="size-3.5" />
-      </span>
-      <span
-        className={cn(
-          'flex size-[26px] items-center justify-center rounded-[5px] transition-colors',
-          !isVisual
-            ? 'bg-foreground/10 text-foreground'
-            : 'text-muted-foreground group-hover:text-foreground'
-        )}
-      >
-        <CodeIcon className="size-3.5" />
-      </span>
-    </button>
+    <Tooltip delayDuration={500}>
+      <TooltipTrigger asChild>
+        <button
+          onClick={() => void setEditorMode(isVisual ? 'raw' : 'visual')}
+          style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+          className="group flex items-center gap-0.5 rounded-[6px] p-0.5 hover:bg-foreground/[0.04] transition-colors"
+          aria-label={`Switch to ${isVisual ? 'raw' : 'visual'} mode`}
+        >
+          <span
+            className={cn(
+              'flex size-[26px] items-center justify-center rounded-[5px] transition-colors',
+              isVisual
+                ? 'bg-foreground/10 text-foreground'
+                : 'text-muted-foreground group-hover:text-foreground'
+            )}
+          >
+            <EyeIcon className="size-3.5" />
+          </span>
+          <span
+            className={cn(
+              'flex size-[26px] items-center justify-center rounded-[5px] transition-colors',
+              !isVisual
+                ? 'bg-foreground/10 text-foreground'
+                : 'text-muted-foreground group-hover:text-foreground'
+            )}
+          >
+            <CodeIcon className="size-3.5" />
+          </span>
+        </button>
+      </TooltipTrigger>
+      <TooltipContent side="bottom" sideOffset={4}>
+        <span className="flex items-center gap-1.5">
+          <span>Switch to {isVisual ? 'raw' : 'visual'} mode</span>
+          <kbd className="inline-flex h-4 items-center rounded border border-primary-foreground/20 bg-primary-foreground/10 px-1 font-mono text-[10px] font-medium">
+            {modKey} E
+          </kbd>
+        </span>
+      </TooltipContent>
+    </Tooltip>
   )
 }
 
