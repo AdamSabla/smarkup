@@ -199,7 +199,7 @@ const QuickOpenBody = (): React.JSX.Element => {
                 onMouseMove={() => setActiveIndex(idx)}
                 className={cn(
                   'flex w-full items-center gap-3 px-4 py-2 text-left text-sm',
-                  active && 'bg-accent text-accent-foreground'
+                  active && 'bg-primary/15 text-foreground'
                 )}
               >
                 <FileTextIcon className="size-4 shrink-0 text-muted-foreground" />
