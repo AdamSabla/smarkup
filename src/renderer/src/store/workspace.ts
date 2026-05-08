@@ -262,7 +262,19 @@ export type OpenFile = {
   content: string
   /** Content last loaded or saved to disk (to detect dirty state) */
   savedContent: string
+  /**
+   * Per-session stable identity used by EditorPane to key the keep-alive
+   * editor mount. Unlike `id`/`path` this never changes during the tab's
+   * lifetime, so auto-rename (which rewrites `id`) doesn't unmount the
+   * editor and reset the caret. Generated fresh per session — not persisted.
+   */
+  instanceId: string
 }
+
+const newInstanceId = (): string =>
+  typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+    ? crypto.randomUUID()
+    : `inst-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
 
 export type FolderNode = {
   name: string
@@ -739,7 +751,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
           path: t.path,
           name,
           content: t.content,
-          savedContent: t.savedContent
+          savedContent: t.savedContent,
+          instanceId: newInstanceId()
         })
       }
     } else {
@@ -748,7 +761,14 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         try {
           const content = await window.api.readFile(path)
           const name = await window.api.basename(path)
-          restoredTabs.push({ id: path, path, name, content, savedContent: content })
+          restoredTabs.push({
+            id: path,
+            path,
+            name,
+            content,
+            savedContent: content,
+            instanceId: newInstanceId()
+          })
         } catch {
           // File is gone — silently skip
         }
@@ -1107,7 +1127,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       path,
       name,
       content,
-      savedContent: content
+      savedContent: content,
+      instanceId: newInstanceId()
     }
     const { paneRoot, activePaneId } = get()
     const activeLeaf = findLeafById(paneRoot, activePaneId)
@@ -2221,7 +2242,14 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         // File was deleted — restore from snapshot with dirty state
         name = entry.path.split('/').pop() ?? entry.path
       }
-      const tab: OpenFile = { id: entry.path, path: entry.path, name, content, savedContent }
+      const tab: OpenFile = {
+        id: entry.path,
+        path: entry.path,
+        name,
+        content,
+        savedContent,
+        instanceId: newInstanceId()
+      }
       const { paneRoot, activePaneId } = get()
       const activeLeaf = findLeafById(paneRoot, activePaneId)
       if (!activeLeaf) return
@@ -2265,7 +2293,14 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         get().showToast(`Can't open "${basename}" — file no longer exists`, 'error')
         return
       }
-      const tab: OpenFile = { id: path, path, name, content, savedContent: content }
+      const tab: OpenFile = {
+        id: path,
+        path,
+        name,
+        content,
+        savedContent: content,
+        instanceId: newInstanceId()
+      }
       set((s) => ({ tabs: [...s.tabs, tab] }))
     }
 
@@ -2376,7 +2411,14 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         get().showToast(`Can't open "${basename}" — file no longer exists`, 'error')
         return
       }
-      const tab: OpenFile = { id: newPath, path: newPath, name, content, savedContent: content }
+      const tab: OpenFile = {
+        id: newPath,
+        path: newPath,
+        name,
+        content,
+        savedContent: content,
+        instanceId: newInstanceId()
+      }
       set((s) => ({ tabs: [...s.tabs, tab] }))
     }
     set((s) => ({

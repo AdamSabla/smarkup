@@ -97,14 +97,16 @@ const EditorPane = ({ tabId, paneId }: EditorPaneProps): React.JSX.Element => {
   const activeDiffTab = isDiffTab ? diffTabs.find((d) => d.id === tabId) : undefined
 
   // Track which tabs have been visited so we keep their editors alive.
-  // Keyed as `${tabId}::${mode}` so flipping a file's own mode swaps in the
-  // other editor (the active tab's entry unmounts and the new-mode entry
-  // takes its place); other tabs keep their mounted editors intact.
+  // Keyed as `${instanceId}::${mode}` — `instanceId` is stable across the
+  // tab's lifetime, so auto-rename (which rewrites `id`/`path`) doesn't
+  // unmount the editor and reset the caret. Flipping a file's own mode still
+  // swaps in the other editor cleanly via the mode segment.
   const [mounted, setMounted] = useState<ReadonlySet<string>>(() => new Set())
 
   const currentTab = tabId && !isDiffTab ? tabs.find((t) => t.id === tabId) : undefined
   const currentMode = resolveEditorMode(currentTab?.path, fileEditorModes, editorMode)
-  const currentKey = tabId && !isDiffTab ? `${tabId}::${currentMode}` : null
+  const currentKey =
+    currentTab && !isDiffTab ? `${currentTab.instanceId}::${currentMode}` : null
 
   // Derive the set that SHOULD be mounted this render: previous set, plus the
   // current key, minus closed tabs and any stale mode-entries for the current
@@ -112,17 +114,18 @@ const EditorPane = ({ tabId, paneId }: EditorPaneProps): React.JSX.Element => {
   // "derive state from props" case — setState during render is the documented
   // pattern (React bails on the current render and uses the new state directly).
   const desiredMounted = useMemo(() => {
-    const openIds = new Set(tabs.map((t) => t.id))
+    const openInstances = new Set(tabs.map((t) => t.instanceId))
     const next = new Set<string>()
+    const currentInstance = currentTab?.instanceId
     for (const key of mounted) {
-      const keyTabId = key.slice(0, key.lastIndexOf('::'))
-      if (!openIds.has(keyTabId)) continue
-      if (currentKey && keyTabId === tabId && key !== currentKey) continue
+      const keyInstance = key.slice(0, key.lastIndexOf('::'))
+      if (!openInstances.has(keyInstance)) continue
+      if (currentInstance && keyInstance === currentInstance && key !== currentKey) continue
       next.add(key)
     }
     if (currentKey) next.add(currentKey)
     return next
-  }, [mounted, tabs, currentKey, tabId])
+  }, [mounted, tabs, currentKey, currentTab])
 
   const mountedChanged =
     desiredMounted.size !== mounted.size || [...desiredMounted].some((k) => !mounted.has(k))
@@ -167,9 +170,9 @@ const EditorPane = ({ tabId, paneId }: EditorPaneProps): React.JSX.Element => {
         {isPaneActive && <FindBar />}
         {[...desiredMounted].map((key) => {
           const sepIdx = key.lastIndexOf('::')
-          const id = key.slice(0, sepIdx)
+          const instanceId = key.slice(0, sepIdx)
           const mode = key.slice(sepIdx + 2) as typeof editorMode
-          const tab = tabs.find((t) => t.id === id)
+          const tab = tabs.find((t) => t.instanceId === instanceId)
           if (!tab) return null
           const isActive = key === currentKey
           const EditorComponent = mode === 'visual' ? VisualEditor : RawEditor
@@ -184,9 +187,9 @@ const EditorPane = ({ tabId, paneId }: EditorPaneProps): React.JSX.Element => {
               }}
             >
               <EditorComponent
-                tabId={id}
+                tabId={tab.id}
                 value={tab.content}
-                onChange={(content: string): void => updateTabContent(id, content)}
+                onChange={(content: string): void => updateTabContent(tab.id, content)}
                 isActive={isActive}
               />
             </div>
