@@ -81,6 +81,21 @@ const FileSearchPopover = ({
     return result
   }, [tabs, sections])
 
+  // Detect files whose names would look identical when truncated (same long prefix)
+  const ambiguousNames = useMemo(() => {
+    const set = new Set<string>()
+    const names = allFiles.map((f) => f.name)
+    for (let i = 0; i < names.length; i++) {
+      for (let j = i + 1; j < names.length; j++) {
+        if (names[i] !== names[j] && names[i].slice(0, 20) === names[j].slice(0, 20)) {
+          set.add(names[i])
+          set.add(names[j])
+        }
+      }
+    }
+    return set
+  }, [allFiles])
+
   const selectedName = useMemo(() => {
     if (!value) return 'Select a file...'
     const found = allFiles.find((f) => f.path === value)
@@ -166,7 +181,12 @@ const FileSearchPopover = ({
               f.path === value && 'font-medium'
             )}
           >
-            <span className="flex-1 truncate">{f.name}</span>
+            <span className="flex-1 truncate" title={f.name}>{f.name}</span>
+            {ambiguousNames.has(f.name) && (
+              <span className="shrink-0 text-[10px] text-muted-foreground/70">
+                …{f.name.slice(-8)}
+              </span>
+            )}
             {f.folder && (
               <span className="shrink-0 text-[10px] text-muted-foreground">{f.folder}</span>
             )}

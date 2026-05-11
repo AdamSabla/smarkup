@@ -90,6 +90,7 @@ const Tab = ({
       {...attributes}
       {...listeners}
       onClick={renaming ? undefined : onActivate}
+      onDoubleClick={renaming ? undefined : onStartRename}
       className={cn(
         'group relative flex h-8 min-w-[60px] max-w-[180px] flex-1 basis-0 cursor-pointer items-center gap-1 rounded-t-[6px]',
         'pl-[10px] pr-[5px] select-none',
@@ -139,6 +140,7 @@ const Tab = ({
       ) : (
         <span
           className="flex-1 overflow-hidden whitespace-nowrap"
+          title={displayName}
           style={{
             maskImage: 'linear-gradient(90deg, black calc(100% - 24px), transparent)',
             WebkitMaskImage: 'linear-gradient(90deg, black calc(100% - 24px), transparent)'
