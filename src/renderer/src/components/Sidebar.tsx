@@ -1154,9 +1154,24 @@ const Sidebar = (): React.JSX.Element => {
       if (idx === -1) return
       const item = flatItems[idx]
 
+      const modPressed = isMac ? e.metaKey : e.ctrlKey
+
       switch (e.key) {
         case 'ArrowDown': {
           e.preventDefault()
+          // Mod+ArrowDown opens the focused file (Finder convention on macOS;
+          // learned shortcut elsewhere). Falls through to expand on folders so
+          // the rule matches Enter's behavior.
+          if (modPressed) {
+            if (item.type === 'file') {
+              void openFile(item.path)
+              setFocusedItem(null)
+              sidebarRef.current?.blur()
+            } else {
+              toggleExpanded(item.path)
+            }
+            break
+          }
           if (idx < flatItems.length - 1) setFocusedItem(flatItems[idx + 1].path)
           break
         }
