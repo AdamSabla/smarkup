@@ -152,6 +152,56 @@ export const todoCommentHighlighter = ViewPlugin.fromClass(
 )
 
 /* ------------------------------------------------------------------ */
+/*  List hang-indent — wrapped list items align under the marker text  */
+/* ------------------------------------------------------------------ */
+
+// Matches leading whitespace + a list marker. The capture's length is the
+// number of `ch` to hang-indent wrapped lines by, so the wrapped portion
+// aligns under the content after the marker rather than flushing left.
+//
+// Marker forms covered:
+//   - bullet:   `- `, `* `, `+ `
+//   - ordered:  `1. `, `12) `
+//   - task:     `- [ ] `, `- [x] `  (after a bullet, optional)
+const LIST_MARKER_RE = /^(\s*(?:[-*+]|\d+[.)])\s(?:\[[ xX]\]\s)?)/
+
+export const listHangIndentPlugin = ViewPlugin.fromClass(
+  class {
+    decorations: DecorationSet
+
+    constructor(view: EditorView) {
+      this.decorations = this.build(view)
+    }
+
+    update(update: ViewUpdate): void {
+      if (update.docChanged || update.viewportChanged) {
+        this.decorations = this.build(update.view)
+      }
+    }
+
+    build(view: EditorView): DecorationSet {
+      const builder = new RangeSetBuilder<Decoration>()
+      const { from, to } = view.viewport
+      for (let pos = from; pos <= to; ) {
+        const line = view.state.doc.lineAt(pos)
+        const m = line.text.match(LIST_MARKER_RE)
+        if (m) {
+          const offset = m[1].length
+          builder.add(
+            line.from,
+            line.from,
+            Decoration.line({ attributes: { style: `--cm-hang: ${offset}ch` } })
+          )
+        }
+        pos = line.to + 1
+      }
+      return builder.finish()
+    }
+  },
+  { decorations: (v) => v.decorations }
+)
+
+/* ------------------------------------------------------------------ */
 /*  TODO auto-bracket — `TODO:` → `TODO:{|}`                           */
 /* ------------------------------------------------------------------ */
 
@@ -179,6 +229,14 @@ export const todoColonAutoBracket = EditorView.inputHandler.of((view, from, to, 
 /* ------------------------------------------------------------------ */
 
 export const sharedEditorTokenTheme = EditorView.theme({
+  // Hang-indent for soft-wrapped list items. The `listHangIndentPlugin`
+  // sets `--cm-hang` per list line as an inline style; non-list lines (and
+  // every line when the plugin is disabled) fall back to `0px`, so this
+  // rule is a no-op outside list contexts.
+  '.cm-line': {
+    paddingInlineStart: 'var(--cm-hang, 0px)',
+    textIndent: 'calc(-1 * var(--cm-hang, 0px))'
+  },
   '.cm-placeholder-highlight': {
     color: '#e879f9',
     borderRadius: '3px',

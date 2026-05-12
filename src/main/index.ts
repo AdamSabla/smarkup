@@ -752,6 +752,13 @@ app.whenReady().then(() => {
           }
         },
         {
+          label: 'Toggle Hanging List Indent',
+          click: (): void => {
+            const win = BrowserWindow.getFocusedWindow()
+            if (win) win.webContents.send('app:toggleRawListHangIndent')
+          }
+        },
+        {
           label: 'Compare Files\u2026',
           click: (): void => {
             const win = BrowserWindow.getFocusedWindow()
