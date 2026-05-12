@@ -87,6 +87,14 @@ const App = (): React.JSX.Element => {
     })
   }, [])
 
+  // View → Toggle Hanging List Indent — flip the raw-editor hang indent.
+  useEffect(() => {
+    return window.api.onToggleRawListHangIndent(() => {
+      const s = useWorkspace.getState()
+      void s.setRawListHangIndent(!s.rawListHangIndent)
+    })
+  }, [])
+
   // Main forwards file paths here when the OS asks us to open a file —
   // "Open With…" in Finder, file double-click on Win/Linux, File → Open…,
   // or a `.md` dropped onto the window. These are *external* requests, so
