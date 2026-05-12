@@ -96,7 +96,7 @@ const UpdateBanner = (): React.JSX.Element | null => {
     return (
       <Anchor>
         <Pill>
-          <Loader2Icon className="size-3.5 shrink-0 animate-spin text-primary" />
+          <Loader2Icon className="size-3.5 shrink-0 animate-spin" />
           <span className="min-w-0 flex-1 truncate text-xs font-medium">
             Preparing update v{status.version}…
           </span>
@@ -111,12 +111,10 @@ const UpdateBanner = (): React.JSX.Element | null => {
     return (
       <Anchor>
         <Pill>
-          <DownloadIcon className="size-3.5 shrink-0 text-primary" />
+          <DownloadIcon className="size-3.5 shrink-0" />
           <span className="shrink-0 text-xs font-medium">Downloading v{status.version}</span>
           <ProgressBar percent={percent} />
-          <span className="shrink-0 text-xs font-medium tabular-nums text-muted-foreground">
-            {percent}%
-          </span>
+          <span className="shrink-0 text-xs font-medium tabular-nums opacity-80">{percent}%</span>
           <DismissButton onClick={dismiss} />
         </Pill>
       </Anchor>
@@ -131,20 +129,30 @@ const UpdateBanner = (): React.JSX.Element | null => {
       <Anchor>
         <Card tone="primary">
           <div className="flex items-start gap-2">
-            <CheckIcon className="mt-0.5 size-4 shrink-0 text-primary" />
+            <CheckIcon className="mt-0.5 size-4 shrink-0" />
             <div className="min-w-0 flex-1">
               <div className="text-sm font-medium">Update ready to install</div>
-              <div className="text-xs text-muted-foreground">
+              <div className="text-xs opacity-80">
                 smarkup v{status.version} is ready. Restart to apply.
               </div>
             </div>
             <DismissButton onClick={dismiss} label="Install later" />
           </div>
           <div className="mt-2 flex items-center justify-end gap-1">
-            <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={dismiss}>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-7 px-2 text-xs hover:bg-background/10 hover:text-background"
+              onClick={dismiss}
+            >
               Later
             </Button>
-            <Button size="sm" variant="default" className="h-7 px-2 text-xs" onClick={restart}>
+            <Button
+              size="sm"
+              variant="default"
+              className="h-7 bg-background px-2 text-xs text-foreground hover:bg-background/90"
+              onClick={restart}
+            >
               <RotateCwIcon className="size-3" />
               Restart now
             </Button>
@@ -167,21 +175,31 @@ const UpdateBanner = (): React.JSX.Element | null => {
       <Anchor>
         <Card tone="destructive">
           <div className="flex items-start gap-2">
-            <AlertTriangleIcon className="mt-0.5 size-4 shrink-0 text-destructive" />
+            <AlertTriangleIcon className="mt-0.5 size-4 shrink-0" />
             <div className="min-w-0 flex-1">
               <div className="text-sm font-medium">Couldn&rsquo;t install update</div>
-              <div className="line-clamp-3 text-xs text-muted-foreground">{status.message}</div>
+              <div className="line-clamp-3 text-xs opacity-90">{status.message}</div>
             </div>
             <DismissButton onClick={dismiss} />
           </div>
           <div className="mt-2 flex items-center justify-end gap-1">
             {openRelease && (
-              <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={openRelease}>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-7 px-2 text-xs hover:bg-destructive-foreground/10 hover:text-destructive-foreground"
+                onClick={openRelease}
+              >
                 <ExternalLinkIcon className="size-3" />
                 Download manually
               </Button>
             )}
-            <Button size="sm" variant="default" className="h-7 px-2 text-xs" onClick={retry}>
+            <Button
+              size="sm"
+              variant="default"
+              className="h-7 bg-destructive-foreground px-2 text-xs text-destructive hover:bg-destructive-foreground/90"
+              onClick={retry}
+            >
               Retry
             </Button>
           </div>
@@ -209,9 +227,10 @@ const Anchor = ({ children }: { children: React.ReactNode }): React.JSX.Element 
 )
 
 // Single-row compact surface for progress-y states where the content fits
-// on one line and a taller card would feel heavy.
+// on one line and a taller card would feel heavy. Inverted colors make the
+// notifier read as a high-contrast surface against the app background.
 const Pill = ({ children }: { children: React.ReactNode }): React.JSX.Element => (
-  <div className="pointer-events-auto flex min-w-0 items-center gap-2 rounded-md border border-border bg-background/95 px-3 py-2 shadow-lg backdrop-blur-sm">
+  <div className="pointer-events-auto flex min-w-0 items-center gap-2 rounded-md border border-foreground bg-foreground px-3 py-2 text-background shadow-lg">
     {children}
   </div>
 )
@@ -220,8 +239,10 @@ const Pill = ({ children }: { children: React.ReactNode }): React.JSX.Element =>
 const Card = ({ tone, children }: { tone: Tone; children: React.ReactNode }): React.JSX.Element => (
   <div
     className={cn(
-      'pointer-events-auto w-80 max-w-full rounded-md border bg-background/95 p-3 shadow-lg backdrop-blur-sm',
-      tone === 'destructive' ? 'border-destructive/40' : 'border-border'
+      'pointer-events-auto w-80 max-w-full rounded-md border p-3 shadow-lg',
+      tone === 'destructive'
+        ? 'border-destructive bg-destructive text-destructive-foreground'
+        : 'border-foreground bg-foreground text-background'
     )}
   >
     {children}
@@ -238,7 +259,7 @@ const DismissButton = ({
   <Button
     size="icon"
     variant="ghost"
-    className="size-6 shrink-0 text-muted-foreground hover:text-foreground"
+    className="size-6 shrink-0 opacity-70 hover:bg-transparent hover:opacity-100"
     onClick={onClick}
     aria-label={label}
     title={label}
@@ -249,9 +270,12 @@ const DismissButton = ({
 
 // Slim inline progress indicator; stays narrow so the pill doesn't grow.
 const ProgressBar = ({ percent }: { percent: number }): React.JSX.Element => (
-  <span className="relative h-1 w-24 shrink-0 overflow-hidden rounded-full bg-muted" aria-hidden>
+  <span
+    className="relative h-1 w-24 shrink-0 overflow-hidden rounded-full bg-background/25"
+    aria-hidden
+  >
     <span
-      className="absolute inset-y-0 left-0 bg-primary transition-[width] duration-200"
+      className="absolute inset-y-0 left-0 bg-background transition-[width] duration-200"
       style={{ width: `${percent}%` }}
     />
   </span>
