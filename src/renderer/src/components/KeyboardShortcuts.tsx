@@ -46,6 +46,7 @@ const shortcuts: { section: string; items: { label: string; keys: string }[] }[]
       { label: 'Next tab', keys: 'Ctrl Tab' },
       { label: 'Previous tab', keys: 'Ctrl Shift Tab' },
       { label: 'Toggle sidebar', keys: `${mod} .` },
+      { label: 'Open selected file (sidebar)', keys: `${mod} ↓` },
       { label: 'Reveal in Finder', keys: `${mod} Shift R` }
     ]
   }
