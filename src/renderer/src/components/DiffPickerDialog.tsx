@@ -29,7 +29,10 @@ const DiffPickerDialog = (): React.JSX.Element => {
     }
   }, [open, prefill])
 
-  const canCompare = leftPath && rightPath && leftPath !== rightPath
+  // Same file on both sides is the only invalid combo. Otherwise any combination
+  // (both empty, only-left, only-right, both files) is OK — empty sides become
+  // paste targets / file-pick prompts in the diff view itself.
+  const canCompare = leftPath !== rightPath || (!leftPath && !rightPath)
 
   const handleBrowse = async (side: 'left' | 'right'): Promise<void> => {
     const path = await window.api.openFile()
@@ -41,7 +44,7 @@ const DiffPickerDialog = (): React.JSX.Element => {
 
   const handleCompare = (): void => {
     if (!canCompare) return
-    void openDiff(leftPath, rightPath)
+    void openDiff(leftPath || null, rightPath || null)
   }
 
   return (

@@ -157,8 +157,14 @@ const remapPathPrefix = (
 const remapDiffTabs = (diffs: DiffTab[], oldPath: string, newPath: string): DiffTab[] => {
   if (oldPath === newPath || diffs.length === 0) return diffs
   const prefix = oldPath + '/'
-  const map = (p: string): string =>
-    p === oldPath ? newPath : p.startsWith(prefix) ? newPath + p.slice(oldPath.length) : p
+  const map = (p: string | null): string | null =>
+    p == null
+      ? p
+      : p === oldPath
+        ? newPath
+        : p.startsWith(prefix)
+          ? newPath + p.slice(oldPath.length)
+          : p
   let changed = false
   const next = diffs.map((d) => {
     const l = map(d.leftPath)
@@ -319,14 +325,16 @@ export type UnsavedChoice = 'save' | 'discard' | 'cancel'
 // --- Diff/compare view types ---
 export type DiffTab = {
   id: string // e.g. "diff:1", "diff:2"
-  leftPath: string // absolute path — must have a matching tab in `tabs`
-  rightPath: string // absolute path — must have a matching tab in `tabs`
+  /** Absolute path of the left file, or null for an empty side waiting on paste. */
+  leftPath: string | null
+  /** Absolute path of the right file, or null for an empty side waiting on paste. */
+  rightPath: string | null
 }
 
 /** Entry in the "reopen closed tab" stack. */
 type ClosedTabEntry =
   | { kind: 'file'; path: string; content: string; savedContent: string }
-  | { kind: 'diff'; leftPath: string; rightPath: string }
+  | { kind: 'diff'; leftPath: string | null; rightPath: string | null }
 
 const MAX_CLOSED_TABS = 20
 
@@ -572,10 +580,21 @@ type WorkspaceState = {
   // --- Diff/compare view actions ---
   openDiffPicker: (prefill?: { leftPath?: string }) => void
   closeDiffPicker: () => void
-  openDiff: (leftPath: string, rightPath: string) => Promise<void>
+  openDiff: (leftPath: string | null, rightPath: string | null) => Promise<void>
+  /** Open a diff tab with both sides empty (no files yet). */
+  openEmptyDiff: () => Promise<void>
   closeDiffTab: (diffId: string) => void
   swapDiffSides: (diffId: string) => void
   replaceDiffFile: (diffId: string, side: 'left' | 'right', newPath: string) => Promise<void>
+  /**
+   * Promote an empty diff side to a Drafts file and seed it with `initialContent`.
+   * Used when the user pastes/types into an empty side. Returns the new draft path.
+   */
+  promoteDiffSideToDraft: (
+    diffId: string,
+    side: 'left' | 'right',
+    initialContent: string
+  ) => Promise<string | null>
 }
 
 const MAX_RECENT_FILES = 50
@@ -2292,7 +2311,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   openDiff: async (leftPath, rightPath) => {
     // Load files into the tabs pool (so DiffView can read their content)
     // but DON'T add them to any pane's tabIds — only the diff tab is visible.
-    const loadIntoPool = async (path: string): Promise<void> => {
+    const loadIntoPool = async (path: string | null): Promise<void> => {
+      if (!path) return
       if (get().tabs.find((t) => t.path === path)) return
       let content: string
       let name: string
@@ -2338,10 +2358,33 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     }))
   },
 
+  openEmptyDiff: async () => {
+    await get().openDiff(null, null)
+  },
+
   closeDiffTab: (diffId) => {
-    const { diffTabs } = get()
+    const { diffTabs, tabs } = get()
     const dt = diffTabs.find((d) => d.id === diffId)
     if (!dt) return
+
+    // Flush dirty source tabs that are exclusive to this diff. Without this,
+    // pasted-into drafts and other in-diff edits would be silently dropped by
+    // the GC below. We save before GC, mirroring the "drafts are real files"
+    // contract — once a side has content, it lives in the Drafts folder.
+    const stillReferencedAfter = collectAllPaneTabIds(get().paneRoot)
+    for (const od of diffTabs) {
+      if (od.id === diffId) continue
+      if (od.leftPath) stillReferencedAfter.add(od.leftPath)
+      if (od.rightPath) stillReferencedAfter.add(od.rightPath)
+    }
+    for (const path of [dt.leftPath, dt.rightPath]) {
+      if (!path) continue
+      if (stillReferencedAfter.has(path)) continue
+      const t = tabs.find((tt) => tt.path === path)
+      if (t && t.content !== t.savedContent) {
+        void get().saveTab(t.id)
+      }
+    }
 
     // Push to closed-tabs stack
     const entry: ClosedTabEntry = { kind: 'diff', leftPath: dt.leftPath, rightPath: dt.rightPath }
@@ -2438,6 +2481,56 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         return side === 'left' ? { ...d, leftPath: newPath } : { ...d, rightPath: newPath }
       })
     }))
+  },
+
+  promoteDiffSideToDraft: async (diffId, side, initialContent) => {
+    const { draftsFolder, openSettings } = get()
+    if (!draftsFolder) {
+      openSettings()
+      return null
+    }
+
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
+    const newPath = await window.api.createFile(draftsFolder, `untitled-${timestamp}.md`)
+    // Write the pasted content immediately so the file on disk matches what the
+    // user sees in the diff. The tab below gets the same string as `content` but
+    // `savedContent: ''` so the tab is marked dirty (initialContent != savedContent)
+    // — actually no, we want the file to exist with the pasted content and the
+    // tab to be CLEAN (matches disk). The user can then keep editing and the
+    // normal save/auto-save flow takes over.
+    if (initialContent.length > 0) {
+      await window.api.writeFile(newPath, initialContent)
+    }
+
+    // Mark as auto-named so the first non-empty line eventually becomes the name.
+    const nextAutoNamed = new Set(get().autoNamedPaths)
+    nextAutoNamed.add(newPath)
+    set({ autoNamedPaths: nextAutoNamed })
+    void persistSettings({ autoNamedPaths: Array.from(nextAutoNamed) })
+
+    // Create the OpenFile entry in the tabs pool (no pane attachment — diff
+    // tab references it by path, same as other diff source tabs).
+    const name = await window.api.basename(newPath)
+    const tab: OpenFile = {
+      id: newPath,
+      path: newPath,
+      name,
+      content: initialContent,
+      savedContent: initialContent,
+      instanceId: newInstanceId()
+    }
+    set((s) => ({
+      tabs: [...s.tabs, tab],
+      diffTabs: s.diffTabs.map((d) => {
+        if (d.id !== diffId) return d
+        return side === 'left' ? { ...d, leftPath: newPath } : { ...d, rightPath: newPath }
+      })
+    }))
+
+    // Refresh the Drafts sidebar section so the new file shows up.
+    void get().refreshSection(DRAFTS_ID)
+
+    return newPath
   }
 }))
 
