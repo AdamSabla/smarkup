@@ -1,5 +1,11 @@
 import { EditorView, Decoration, type DecorationSet, gutter, GutterMarker } from '@codemirror/view'
-import { StateField, StateEffect, RangeSetBuilder, RangeSet, type Extension } from '@codemirror/state'
+import {
+  StateField,
+  StateEffect,
+  RangeSetBuilder,
+  RangeSet,
+  type Extension
+} from '@codemirror/state'
 import type { DiffResult, CharDiff } from './diff-engine'
 
 /* ------------------------------------------------------------------ */
@@ -173,10 +179,30 @@ function buildGutterSet(
   return builder.finish()
 }
 
-const diffGutterExt = gutter({
-  class: 'cm-diff-gutter',
-  markers: (v) => v.state.field(diffGutterField)
-})
+type GutterClickHandler = (view: EditorView, lineNumber: number) => void
+
+function makeDiffGutterExt(onClick?: GutterClickHandler): Extension {
+  return gutter({
+    class: 'cm-diff-gutter',
+    markers: (v) => v.state.field(diffGutterField),
+    domEventHandlers: onClick
+      ? {
+          click: (view, line) => {
+            const markers = view.state.field(diffGutterField)
+            let hasMarker = false
+            markers.between(line.from, line.from, () => {
+              hasMarker = true
+              return false
+            })
+            if (!hasMarker) return false
+            const lineNum = view.state.doc.lineAt(line.from).number - 1
+            onClick(view, lineNum)
+            return true
+          }
+        }
+      : undefined
+  })
+}
 
 /* ------------------------------------------------------------------ */
 /*  Helper                                                             */
@@ -228,17 +254,20 @@ const diffTheme = EditorView.baseTheme({
   '.cm-diff-gutter-added': {
     width: '3px',
     height: '100%',
-    backgroundColor: 'rgba(34, 197, 94, 0.7)'
+    backgroundColor: 'rgba(34, 197, 94, 0.7)',
+    cursor: 'pointer'
   },
   '.cm-diff-gutter-removed': {
     width: '3px',
     height: '100%',
-    backgroundColor: 'rgba(239, 68, 68, 0.7)'
+    backgroundColor: 'rgba(239, 68, 68, 0.7)',
+    cursor: 'pointer'
   },
   '.cm-diff-gutter-changed': {
     width: '3px',
     height: '100%',
-    backgroundColor: 'rgba(234, 179, 8, 0.7)'
+    backgroundColor: 'rgba(234, 179, 8, 0.7)',
+    cursor: 'pointer'
   }
 })
 
@@ -246,8 +275,10 @@ const diffTheme = EditorView.baseTheme({
 /*  Public factory                                                     */
 /* ------------------------------------------------------------------ */
 
-export function createDiffExtension(): Extension[] {
-  return [diffDecoField, diffGutterField, diffGutterExt, diffTheme]
+export function createDiffExtension(
+  opts: { onGutterClick?: GutterClickHandler } = {}
+): Extension[] {
+  return [diffDecoField, diffGutterField, makeDiffGutterExt(opts.onGutterClick), diffTheme]
 }
 
 /* ------------------------------------------------------------------ */

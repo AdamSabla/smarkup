@@ -26,6 +26,18 @@ import DiffStatusBar from './DiffStatusBar'
 const DND_MIME = 'application/x-smarkup-sidebar-item'
 const MD_EXT_RE = /\.md$/i
 
+function findHunkAtLine(hunks: DiffHunk[], side: 'left' | 'right', line: number): DiffHunk | null {
+  for (const h of hunks) {
+    if (h.type === 'equal') continue
+    if (side === 'left') {
+      if ('leftStart' in h && line >= h.leftStart && line < h.leftEnd) return h
+    } else {
+      if ('rightStart' in h && line >= h.rightStart && line < h.rightEnd) return h
+    }
+  }
+  return null
+}
+
 type Props = {
   diffTab: DiffTab
   isActive: boolean
@@ -76,6 +88,11 @@ const DiffView = ({ diffTab }: Props): React.JSX.Element => {
     () => computeDiff(deferredLeft, deferredRight),
     [deferredLeft, deferredRight]
   )
+
+  // Kept current each render so the stable gutter-click handlers can read
+  // the latest hunks without re-creating the CodeMirror extension.
+  const diffRef = useRef(diff)
+  diffRef.current = diff
 
   const alignment = useMemo(() => {
     const leftLines = deferredLeft.split('\n').length
@@ -186,6 +203,68 @@ const DiffView = ({ diffTab }: Props): React.JSX.Element => {
     [leftTab?.id, rightTab?.id, saveTab]
   )
 
+  // Align the opposite pane so the first line of the clicked hunk sits at the
+  // same viewport Y as the first line of the hunk on the clicked side.
+  const alignOpposite = useCallback((clickedSide: 'left' | 'right', clickedLine: number) => {
+    const clickedView = clickedSide === 'left' ? leftViewRef.current : rightViewRef.current
+    const otherView = clickedSide === 'left' ? rightViewRef.current : leftViewRef.current
+    if (!clickedView || !otherView) return
+
+    const hunk = findHunkAtLine(diffRef.current.hunks, clickedSide, clickedLine)
+    if (!hunk) return
+
+    // First line of the hunk on the clicked side.
+    const clickedFirstLine =
+      clickedSide === 'left'
+        ? 'leftStart' in hunk
+          ? hunk.leftStart
+          : clickedLine
+        : 'rightStart' in hunk
+          ? hunk.rightStart
+          : clickedLine
+
+    // Target line on the other side.
+    let otherTargetLine: number
+    if (hunk.type === 'changed') {
+      otherTargetLine = clickedSide === 'left' ? hunk.rightStart : hunk.leftStart
+    } else if (hunk.type === 'removed') {
+      otherTargetLine = hunk.rightLine
+    } else if (hunk.type === 'added') {
+      otherTargetLine = hunk.leftLine
+    } else {
+      return
+    }
+
+    try {
+      const clickedDocLine = Math.min(clickedFirstLine + 1, clickedView.state.doc.lines)
+      const clickedPos = clickedView.state.doc.line(clickedDocLine).from
+      const clickedTop = clickedView.lineBlockAt(clickedPos).top
+      const viewportY = clickedTop - clickedView.scrollDOM.scrollTop
+
+      const otherDocLine = Math.min(otherTargetLine + 1, otherView.state.doc.lines)
+      const otherPos = otherView.state.doc.line(otherDocLine).from
+      const otherTop = otherView.lineBlockAt(otherPos).top
+      const targetScrollTop = Math.max(0, otherTop - viewportY)
+
+      syncingRef.current = true
+      otherView.scrollDOM.scrollTop = targetScrollTop
+      requestAnimationFrame(() => {
+        syncingRef.current = false
+      })
+    } catch {
+      // Ignore measurement errors during transitions
+    }
+  }, [])
+
+  const onLeftGutterClick = useCallback(
+    (_view: EditorView, line: number) => alignOpposite('left', line),
+    [alignOpposite]
+  )
+  const onRightGutterClick = useCallback(
+    (_view: EditorView, line: number) => alignOpposite('right', line),
+    [alignOpposite]
+  )
+
   const baseExtensions = useMemo(
     () => [
       markdown(),
@@ -195,7 +274,6 @@ const DiffView = ({ diffTab }: Props): React.JSX.Element => {
       inlineCodeHighlighter,
       todoCommentHighlighter,
       sharedEditorTokenTheme,
-      createDiffExtension(),
       lineNumbers(),
       saveKeymap,
       // Re-bind Cmd-D → selectNextOccurrence. basicSetup.searchKeymap is
@@ -245,6 +323,15 @@ const DiffView = ({ diffTab }: Props): React.JSX.Element => {
       })
     ],
     [saveKeymap, rawWordWrap]
+  )
+
+  const leftExtensions = useMemo(
+    () => [...baseExtensions, createDiffExtension({ onGutterClick: onLeftGutterClick })],
+    [baseExtensions, onLeftGutterClick]
+  )
+  const rightExtensions = useMemo(
+    () => [...baseExtensions, createDiffExtension({ onGutterClick: onRightGutterClick })],
+    [baseExtensions, onRightGutterClick]
   )
 
   const onLeftChange = useCallback(
@@ -384,7 +471,7 @@ const DiffView = ({ diffTab }: Props): React.JSX.Element => {
                 setEditorsReady((c) => c + 1)
               }}
               theme={isDark ? 'dark' : 'light'}
-              extensions={baseExtensions}
+              extensions={leftExtensions}
               basicSetup={{
                 lineNumbers: false,
                 foldGutter: false,
@@ -437,7 +524,7 @@ const DiffView = ({ diffTab }: Props): React.JSX.Element => {
                 setEditorsReady((c) => c + 1)
               }}
               theme={isDark ? 'dark' : 'light'}
-              extensions={baseExtensions}
+              extensions={rightExtensions}
               basicSetup={{
                 lineNumbers: false,
                 foldGutter: false,
