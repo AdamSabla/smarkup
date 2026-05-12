@@ -95,6 +95,7 @@ const CommandPaletteBody = (): React.JSX.Element => {
     splitPane,
     activePaneId,
     openDiffPicker,
+    openEmptyDiff,
     commandPaletteOpen,
     moveTargets,
     moveTargetsLoading,
@@ -137,6 +138,7 @@ const CommandPaletteBody = (): React.JSX.Element => {
       splitPane: s.splitPane,
       activePaneId: s.activePaneId,
       openDiffPicker: s.openDiffPicker,
+      openEmptyDiff: s.openEmptyDiff,
       commandPaletteOpen: s.commandPaletteOpen,
       moveTargets: s.moveTargets,
       moveTargetsLoading: s.moveTargetsLoading,
@@ -501,6 +503,15 @@ const CommandPaletteBody = (): React.JSX.Element => {
               }}
             >
               <ColumnsIcon /> Compare Files...
+            </CommandItem>
+            <CommandItem
+              value="new empty diff paste compare"
+              onSelect={() => {
+                void openEmptyDiff()
+                dismiss()
+              }}
+            >
+              <ColumnsIcon /> New Diff (paste or pick)
             </CommandItem>
           </CommandGroup>
 

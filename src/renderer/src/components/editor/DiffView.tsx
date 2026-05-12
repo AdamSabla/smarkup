@@ -50,6 +50,20 @@ function useIsDark(): boolean {
   return document.documentElement.classList.contains('dark')
 }
 
+/**
+ * Overlay shown on an empty diff side. `pointer-events-none` lets clicks fall
+ * through to the underlying CodeMirror, so the user can click anywhere in the
+ * empty pane to focus it and paste immediately.
+ */
+const EmptyDiffPlaceholder = (): React.JSX.Element => (
+  <div className="pointer-events-none absolute inset-0 flex select-none items-center justify-center px-6 text-center text-xs text-muted-foreground/70">
+    <div>
+      <div className="mb-1 font-medium">Paste or drop text</div>
+      <div>to create a draft, or pick a file above ↑</div>
+    </div>
+  </div>
+)
+
 const DiffView = ({ diffTab }: Props): React.JSX.Element => {
   const isDark = useIsDark()
   const rawWordWrap = useWorkspace((s) => s.rawWordWrap)
@@ -59,13 +73,34 @@ const DiffView = ({ diffTab }: Props): React.JSX.Element => {
   const closeDiffTab = useWorkspace((s) => s.closeDiffTab)
   const swapDiffSides = useWorkspace((s) => s.swapDiffSides)
   const replaceDiffFile = useWorkspace((s) => s.replaceDiffFile)
+  const promoteDiffSideToDraft = useWorkspace((s) => s.promoteDiffSideToDraft)
   const autoSave = useWorkspace((s) => s.autoSave)
   const autoSaveDelayMs = useWorkspace((s) => s.autoSaveDelayMs)
 
-  const leftTab = tabs.find((t) => t.path === diffTab.leftPath)
-  const rightTab = tabs.find((t) => t.path === diffTab.rightPath)
-  const leftContent = leftTab?.content ?? ''
-  const rightContent = rightTab?.content ?? ''
+  const leftTab = diffTab.leftPath ? tabs.find((t) => t.path === diffTab.leftPath) : undefined
+  const rightTab = diffTab.rightPath ? tabs.find((t) => t.path === diffTab.rightPath) : undefined
+
+  // Pending content for an empty side: keeps CodeMirror's value prop in sync
+  // with what the user just typed/pasted while the async draft-promotion is
+  // in flight. Once the new tab lands, the tab's content takes over and we
+  // clear pending. Without this, CodeMirror would reset its doc back to ''
+  // on the next render between paste and promote completion.
+  const [leftPending, setLeftPending] = useState<string | null>(null)
+  const [rightPending, setRightPending] = useState<string | null>(null)
+  // Refs mirror the latest pending values so the async promote handler can
+  // grab keystrokes that happened during promotion without going stale.
+  const leftPendingRef = useRef<string | null>(null)
+  const rightPendingRef = useRef<string | null>(null)
+  const leftPromotingRef = useRef(false)
+  const rightPromotingRef = useRef(false)
+
+  // Pending wins over leftTab.content during the brief promote→catch-up window.
+  // Once promote resolves and we updateTabContent + setPending(null) in the
+  // same microtask, leftTab.content carries forward and pending is cleared.
+  const leftContent = leftPending ?? leftTab?.content ?? ''
+  const rightContent = rightPending ?? rightTab?.content ?? ''
+  const leftEmpty = !diffTab.leftPath && leftPending === null
+  const rightEmpty = !diffTab.rightPath && rightPending === null
 
   const leftViewRef = useRef<EditorView | null>(null)
   const rightViewRef = useRef<EditorView | null>(null)
@@ -334,18 +369,61 @@ const DiffView = ({ diffTab }: Props): React.JSX.Element => {
     [baseExtensions, onRightGutterClick]
   )
 
+  const promoteSide = useCallback(
+    (
+      side: 'left' | 'right',
+      val: string,
+      setPending: (v: string | null) => void,
+      pendingRef: React.MutableRefObject<string | null>,
+      promotingRef: React.MutableRefObject<boolean>
+    ): void => {
+      // Mirror the typed/pasted value into CodeMirror's value prop so it
+      // doesn't get reset on re-render before the new tab lands.
+      pendingRef.current = val
+      setPending(val)
+      if (promotingRef.current) return
+      promotingRef.current = true
+      void promoteDiffSideToDraft(diffTab.id, side, val).then((newPath) => {
+        promotingRef.current = false
+        if (!newPath) {
+          pendingRef.current = null
+          setPending(null)
+          return
+        }
+        // Apply any keystrokes that arrived during the async write.
+        const latest = pendingRef.current
+        if (latest != null && latest !== val) {
+          updateTabContent(newPath, latest)
+        }
+        pendingRef.current = null
+        setPending(null)
+      })
+    },
+    [diffTab.id, promoteDiffSideToDraft, updateTabContent]
+  )
+
   const onLeftChange = useCallback(
     (val: string) => {
-      if (leftTab) updateTabContent(leftTab.id, val)
+      if (leftTab) {
+        updateTabContent(leftTab.id, val)
+        return
+      }
+      if (val.length === 0) return
+      promoteSide('left', val, setLeftPending, leftPendingRef, leftPromotingRef)
     },
-    [leftTab?.id, updateTabContent]
+    [leftTab?.id, updateTabContent, promoteSide]
   )
 
   const onRightChange = useCallback(
     (val: string) => {
-      if (rightTab) updateTabContent(rightTab.id, val)
+      if (rightTab) {
+        updateTabContent(rightTab.id, val)
+        return
+      }
+      if (val.length === 0) return
+      promoteSide('right', val, setRightPending, rightPendingRef, rightPromotingRef)
     },
-    [rightTab?.id, updateTabContent]
+    [rightTab?.id, updateTabContent, promoteSide]
   )
 
   // Hunk navigation
@@ -462,7 +540,7 @@ const DiffView = ({ diffTab }: Props): React.JSX.Element => {
               onSelect={(path) => void replaceDiffFile(diffTab.id, 'left', path)}
             />
           </div>
-          <div className="min-h-0 flex-1 overflow-hidden">
+          <div className="relative min-h-0 flex-1 overflow-hidden">
             <CodeMirror
               value={leftContent}
               onChange={onLeftChange}
@@ -482,6 +560,7 @@ const DiffView = ({ diffTab }: Props): React.JSX.Element => {
               className="h-full"
               height="100%"
             />
+            {leftEmpty && <EmptyDiffPlaceholder />}
           </div>
         </div>
 
@@ -515,7 +594,7 @@ const DiffView = ({ diffTab }: Props): React.JSX.Element => {
               align="right"
             />
           </div>
-          <div className="min-h-0 flex-1 overflow-hidden">
+          <div className="relative min-h-0 flex-1 overflow-hidden">
             <CodeMirror
               value={rightContent}
               onChange={onRightChange}
@@ -535,6 +614,7 @@ const DiffView = ({ diffTab }: Props): React.JSX.Element => {
               className="h-full"
               height="100%"
             />
+            {rightEmpty && <EmptyDiffPlaceholder />}
           </div>
         </div>
       </div>
