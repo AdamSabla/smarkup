@@ -13,7 +13,7 @@ const ModeSwitcher = (): React.JSX.Element => {
     activeTab && fileEditorModes[activeTab.path] ? fileEditorModes[activeTab.path] : editorMode
   const isVisual = effectiveMode === 'visual'
   return (
-    <Tooltip delayDuration={500}>
+    <Tooltip>
       <TooltipTrigger asChild>
         <button
           onClick={() => void setEditorMode(isVisual ? 'raw' : 'visual')}

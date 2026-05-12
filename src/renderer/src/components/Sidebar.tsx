@@ -123,7 +123,7 @@ const TruncatedName = ({
   if (!overflowing) return label
 
   return (
-    <Tooltip delayDuration={400}>
+    <Tooltip>
       <TooltipTrigger asChild>{label}</TooltipTrigger>
       <TooltipContent side="right">{children}</TooltipContent>
     </Tooltip>

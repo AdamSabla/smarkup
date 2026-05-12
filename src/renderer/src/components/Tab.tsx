@@ -9,6 +9,7 @@ import {
   ContextMenuItem,
   ContextMenuSeparator
 } from '@/components/ui/context-menu'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 import { useWorkspace, type OpenFile } from '@/store/workspace'
 
@@ -138,16 +139,20 @@ const Tab = ({
           className="flex-1 min-w-0 bg-transparent text-[12.5px] font-medium outline-none selection:bg-primary/30"
         />
       ) : (
-        <span
-          className="flex-1 overflow-hidden whitespace-nowrap"
-          title={displayName}
-          style={{
-            maskImage: 'linear-gradient(90deg, black calc(100% - 24px), transparent)',
-            WebkitMaskImage: 'linear-gradient(90deg, black calc(100% - 24px), transparent)'
-          }}
-        >
-          {displayName}
-        </span>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span
+              className="flex-1 overflow-hidden whitespace-nowrap"
+              style={{
+                maskImage: 'linear-gradient(90deg, black calc(100% - 24px), transparent)',
+                WebkitMaskImage: 'linear-gradient(90deg, black calc(100% - 24px), transparent)'
+              }}
+            >
+              {displayName}
+            </span>
+          </TooltipTrigger>
+          <TooltipContent>{displayName}</TooltipContent>
+        </Tooltip>
       )}
       <button
         onClick={(e) => {
