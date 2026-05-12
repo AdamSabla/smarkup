@@ -37,8 +37,9 @@ const Toast = (): React.JSX.Element | null => {
       <div
         className={cn(
           'pointer-events-auto flex max-w-md items-center gap-2 rounded-md border px-3 py-2 text-sm shadow-lg',
-          'bg-background/95 backdrop-blur-sm',
-          toast.kind === 'error' ? 'border-destructive/50 text-destructive' : 'border-border'
+          toast.kind === 'error'
+            ? 'border-destructive bg-destructive text-destructive-foreground'
+            : 'border-foreground bg-foreground text-background'
         )}
       >
         <Icon className="size-4 shrink-0" />
@@ -47,7 +48,7 @@ const Toast = (): React.JSX.Element | null => {
           type="button"
           onClick={dismiss}
           aria-label="Dismiss"
-          className="inline-flex size-5 shrink-0 items-center justify-center rounded-sm text-muted-foreground hover:bg-muted hover:text-foreground"
+          className="inline-flex size-5 shrink-0 items-center justify-center rounded-sm opacity-70 hover:bg-background/10 hover:opacity-100"
         >
           <XIcon className="size-3.5" />
         </button>
