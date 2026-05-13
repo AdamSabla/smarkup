@@ -181,7 +181,9 @@ const FileSearchPopover = ({
               f.path === value && 'font-medium'
             )}
           >
-            <span className="flex-1 truncate" title={f.name}>{f.name}</span>
+            <span className="flex-1 truncate" title={f.name}>
+              {f.name}
+            </span>
             {ambiguousNames.has(f.name) && (
               <span className="shrink-0 text-[10px] text-muted-foreground/70">
                 …{f.name.slice(-8)}

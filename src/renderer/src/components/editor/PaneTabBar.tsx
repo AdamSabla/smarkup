@@ -59,6 +59,7 @@ const PaneTabBar = ({
   const fileEditorModes = useWorkspace((s) => s.fileEditorModes)
   const activeTabId = useWorkspace((s) => s.activeTabId)
   const setEditorMode = useWorkspace((s) => s.setEditorMode)
+  const openDiff = useWorkspace((s) => s.openDiff)
 
   const leaf = findLeaf(paneRoot, paneId)
   const paneTabIds = leaf?.tabIds ?? []
@@ -232,6 +233,14 @@ const PaneTabBar = ({
                       await renameFile(tab.path, newName)
                     }}
                     onCancelRename={cancelRenamingTab}
+                    onCompareWith={
+                      paneActiveTabId && paneActiveTabId !== tab.id && !paneActiveTabId.startsWith('diff:')
+                        ? () => {
+                            const activeTab = tabs.find((t) => t.id === paneActiveTabId)
+                            if (activeTab) void openDiff(activeTab.path, tab.path)
+                          }
+                        : undefined
+                    }
                   />
                 )
               })}

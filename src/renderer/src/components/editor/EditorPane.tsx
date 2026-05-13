@@ -105,8 +105,7 @@ const EditorPane = ({ tabId, paneId }: EditorPaneProps): React.JSX.Element => {
 
   const currentTab = tabId && !isDiffTab ? tabs.find((t) => t.id === tabId) : undefined
   const currentMode = resolveEditorMode(currentTab?.path, fileEditorModes, editorMode)
-  const currentKey =
-    currentTab && !isDiffTab ? `${currentTab.instanceId}::${currentMode}` : null
+  const currentKey = currentTab && !isDiffTab ? `${currentTab.instanceId}::${currentMode}` : null
 
   // Derive the set that SHOULD be mounted this render: previous set, plus the
   // current key, minus closed tabs and any stale mode-entries for the current

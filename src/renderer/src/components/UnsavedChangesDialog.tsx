@@ -80,10 +80,7 @@ const UnsavedChangesDialog = (): React.JSX.Element => {
         className="sm:max-w-md"
         onKeyDown={(e) => {
           // macOS-style accelerators: Cmd+D or Cmd+Backspace = Don't Save
-          if (
-            (e.metaKey || e.ctrlKey) &&
-            (e.key.toLowerCase() === 'd' || e.key === 'Backspace')
-          ) {
+          if ((e.metaKey || e.ctrlKey) && (e.key.toLowerCase() === 'd' || e.key === 'Backspace')) {
             e.preventDefault()
             onDiscard()
           }

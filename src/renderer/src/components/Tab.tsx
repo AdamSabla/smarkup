@@ -29,6 +29,7 @@ type TabProps = {
   onStartRename: () => void
   onCommitRename: (newName: string) => void
   onCancelRename: () => void
+  onCompareWith?: () => void
 }
 
 const Tab = ({
@@ -44,7 +45,8 @@ const Tab = ({
   onOpenInNewWindow,
   onStartRename,
   onCommitRename,
-  onCancelRename
+  onCancelRename,
+  onCompareWith
 }: TabProps): React.JSX.Element => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: tab.id
@@ -90,7 +92,18 @@ const Tab = ({
       style={style}
       {...attributes}
       {...listeners}
-      onClick={renaming ? undefined : onActivate}
+      onClick={
+        renaming
+          ? undefined
+          : (e) => {
+              if ((isMac ? e.metaKey : e.ctrlKey) && onCompareWith) {
+                e.stopPropagation()
+                onCompareWith()
+              } else {
+                onActivate()
+              }
+            }
+      }
       onDoubleClick={renaming ? undefined : onStartRename}
       className={cn(
         'group relative flex h-8 min-w-[60px] max-w-[180px] flex-1 basis-0 cursor-pointer items-center gap-1 rounded-t-[6px]',
@@ -199,9 +212,7 @@ const Tab = ({
         <ContextMenuItem onSelect={() => void window.api.revealInFolder(tab.path)}>
           Reveal in {isMac ? 'Finder' : 'Explorer'}
         </ContextMenuItem>
-        <ContextMenuItem
-          onSelect={() => useWorkspace.getState().revealInSidebar(tab.path)}
-        >
+        <ContextMenuItem onSelect={() => useWorkspace.getState().revealInSidebar(tab.path)}>
           Reveal in Sidebar
         </ContextMenuItem>
         <ContextMenuSeparator />

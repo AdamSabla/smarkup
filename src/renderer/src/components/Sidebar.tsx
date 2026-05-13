@@ -1146,6 +1146,7 @@ const Sidebar = (): React.JSX.Element => {
       if (!rel.includes('/')) {
         const idx = s.files.findIndex((f) => f.path === revealSidebarPath)
         if (idx >= INITIAL_VISIBLE) {
+          // eslint-disable-next-line react-hooks/set-state-in-effect
           setShowAllSections((prev) => {
             if (prev.has(s.id)) return prev
             const next = new Set(prev)
