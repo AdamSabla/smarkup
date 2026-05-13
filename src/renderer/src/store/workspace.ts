@@ -445,6 +445,7 @@ type WorkspaceState = {
 
   // --- Diff/compare view state ---
   diffTabs: DiffTab[]
+  diffPlainColors: boolean
   diffPickerOpen: boolean
   diffPickerPrefill: { leftPath?: string } | null
 
@@ -599,6 +600,7 @@ type WorkspaceState = {
     side: 'left' | 'right',
     initialContent: string
   ) => Promise<string | null>
+  toggleDiffPlainColors: () => void
 }
 
 const MAX_RECENT_FILES = 50
@@ -745,6 +747,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
 
   closedTabsStack: [],
   diffTabs: [],
+  diffPlainColors: true,
   diffPickerOpen: false,
   diffPickerPrefill: null,
 
@@ -2531,24 +2534,15 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
 
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
     const newPath = await window.api.createFile(draftsFolder, `untitled-${timestamp}.md`)
-    // Write the pasted content immediately so the file on disk matches what the
-    // user sees in the diff. The tab below gets the same string as `content` but
-    // `savedContent: ''` so the tab is marked dirty (initialContent != savedContent)
-    // — actually no, we want the file to exist with the pasted content and the
-    // tab to be CLEAN (matches disk). The user can then keep editing and the
-    // normal save/auto-save flow takes over.
     if (initialContent.length > 0) {
       await window.api.writeFile(newPath, initialContent)
     }
 
-    // Mark as auto-named so the first non-empty line eventually becomes the name.
     const nextAutoNamed = new Set(get().autoNamedPaths)
     nextAutoNamed.add(newPath)
     set({ autoNamedPaths: nextAutoNamed })
     void persistSettings({ autoNamedPaths: Array.from(nextAutoNamed) })
 
-    // Create the OpenFile entry in the tabs pool (no pane attachment — diff
-    // tab references it by path, same as other diff source tabs).
     const name = await window.api.basename(newPath)
     const tab: OpenFile = {
       id: newPath,
@@ -2566,10 +2560,13 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       })
     }))
 
-    // Refresh the Drafts sidebar section so the new file shows up.
     void get().refreshSection(DRAFTS_ID)
 
     return newPath
+  },
+
+  toggleDiffPlainColors: () => {
+    set((s) => ({ diffPlainColors: !s.diffPlainColors }))
   }
 }))
 

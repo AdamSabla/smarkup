@@ -2,7 +2,7 @@ import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } f
 import CodeMirror from '@uiw/react-codemirror'
 import { markdown } from '@codemirror/lang-markdown'
 import { EditorView, drawSelection, keymap, lineNumbers } from '@codemirror/view'
-import { Prec } from '@codemirror/state'
+import { Compartment, Prec } from '@codemirror/state'
 import { syntaxHighlighting } from '@codemirror/language'
 import { selectNextOccurrence } from '@codemirror/search'
 import { cn } from '@/lib/utils'
@@ -67,6 +67,7 @@ const EmptyDiffPlaceholder = (): React.JSX.Element => (
 const DiffView = ({ diffTab }: Props): React.JSX.Element => {
   const isDark = useIsDark()
   const rawWordWrap = useWorkspace((s) => s.rawWordWrap)
+  const diffPlainColors = useWorkspace((s) => s.diffPlainColors)
   const tabs = useWorkspace((s) => s.tabs)
   const updateTabContent = useWorkspace((s) => s.updateTabContent)
   const saveTab = useWorkspace((s) => s.saveTab)
@@ -106,6 +107,7 @@ const DiffView = ({ diffTab }: Props): React.JSX.Element => {
   const rightViewRef = useRef<EditorView | null>(null)
   const focusedSideRef = useRef<'left' | 'right'>('left')
   const syncingRef = useRef(false)
+  const plainColorsComp = useRef(new Compartment())
 
   // Incremented when each editor mounts so the decoration effect re-fires
   // after both CodeMirror instances are ready.
@@ -300,6 +302,40 @@ const DiffView = ({ diffTab }: Props): React.JSX.Element => {
     [alignOpposite]
   )
 
+  const plainColorsOverride = useMemo(
+    () =>
+      EditorView.theme({
+        '& .cm-line span': { color: 'inherit !important' },
+        '& .cm-placeholder-highlight': {
+          color: 'inherit !important',
+          backgroundColor: 'transparent !important'
+        },
+        '& .cm-inline-code-highlight': {
+          color: 'inherit !important',
+          backgroundColor: 'transparent !important'
+        },
+        '& .cm-comment-highlight': {
+          color: 'inherit !important',
+          fontStyle: 'normal !important'
+        },
+        '& .cm-todo-highlight': {
+          color: 'inherit !important',
+          backgroundColor: 'transparent !important',
+          fontWeight: 'inherit !important'
+        }
+      }),
+    []
+  )
+
+  useEffect(() => {
+    const config = diffPlainColors ? plainColorsOverride : []
+    for (const view of [leftViewRef.current, rightViewRef.current]) {
+      if (view) {
+        view.dispatch({ effects: plainColorsComp.current.reconfigure(config) })
+      }
+    }
+  }, [diffPlainColors, plainColorsOverride])
+
   const baseExtensions = useMemo(
     () => [
       markdown(),
@@ -309,10 +345,9 @@ const DiffView = ({ diffTab }: Props): React.JSX.Element => {
       inlineCodeHighlighter,
       todoCommentHighlighter,
       sharedEditorTokenTheme,
+      plainColorsComp.current.of(diffPlainColors ? plainColorsOverride : []),
       lineNumbers(),
       saveKeymap,
-      // Re-bind Cmd-D → selectNextOccurrence. basicSetup.searchKeymap is
-      // disabled on both sides, which also drops the default Cmd-D binding.
       Prec.highest(keymap.of([{ key: 'Mod-d', run: selectNextOccurrence, preventDefault: true }])),
       ...(rawWordWrap ? [EditorView.lineWrapping] : []),
       EditorView.theme({
@@ -357,7 +392,7 @@ const DiffView = ({ diffTab }: Props): React.JSX.Element => {
         }
       })
     ],
-    [saveKeymap, rawWordWrap]
+    [saveKeymap, rawWordWrap, plainColorsOverride, diffPlainColors]
   )
 
   const leftExtensions = useMemo(

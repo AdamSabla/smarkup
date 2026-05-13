@@ -1,5 +1,6 @@
-import { XIcon } from 'lucide-react'
+import { XIcon, PenLineIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useWorkspace } from '@/store/workspace'
 
 type DiffTabItemProps = {
   active: boolean
@@ -8,6 +9,9 @@ type DiffTabItemProps = {
 }
 
 const DiffTabItem = ({ active, onActivate, onClose }: DiffTabItemProps): React.JSX.Element => {
+  const diffPlainColors = useWorkspace((s) => s.diffPlainColors)
+  const toggleDiffPlainColors = useWorkspace((s) => s.toggleDiffPlainColors)
+
   return (
     <div
       onClick={onActivate}
@@ -41,12 +45,32 @@ const DiffTabItem = ({ active, onActivate, onClose }: DiffTabItemProps): React.J
       <span
         className="flex-1 overflow-hidden whitespace-nowrap"
         style={{
-          maskImage: 'linear-gradient(90deg, black calc(100% - 24px), transparent)',
-          WebkitMaskImage: 'linear-gradient(90deg, black calc(100% - 24px), transparent)'
+          maskImage: 'linear-gradient(90deg, black calc(100% - 44px), transparent)',
+          WebkitMaskImage: 'linear-gradient(90deg, black calc(100% - 44px), transparent)'
         }}
       >
         Diff
       </span>
+      <button
+        onClick={(e) => {
+          e.stopPropagation()
+          toggleDiffPlainColors()
+        }}
+        onPointerDown={(e) => e.stopPropagation()}
+        style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+        className={cn(
+          'flex size-4 shrink-0 items-center justify-center rounded-full',
+          'transition-colors',
+          diffPlainColors
+            ? 'text-foreground/70 hover:bg-muted hover:text-foreground'
+            : 'text-muted-foreground/40 hover:bg-muted hover:text-foreground',
+          active ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+        )}
+        aria-label="Toggle syntax colors"
+        title={diffPlainColors ? 'Show syntax colors' : 'Hide syntax colors'}
+      >
+        <PenLineIcon className="size-2.5" />
+      </button>
       <button
         onClick={(e) => {
           e.stopPropagation()
