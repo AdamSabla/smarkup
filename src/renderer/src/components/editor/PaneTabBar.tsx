@@ -234,7 +234,9 @@ const PaneTabBar = ({
                     }}
                     onCancelRename={cancelRenamingTab}
                     onCompareWith={
-                      paneActiveTabId && paneActiveTabId !== tab.id && !paneActiveTabId.startsWith('diff:')
+                      paneActiveTabId &&
+                      paneActiveTabId !== tab.id &&
+                      !paneActiveTabId.startsWith('diff:')
                         ? () => {
                             const activeTab = tabs.find((t) => t.id === paneActiveTabId)
                             if (activeTab) void openDiff(activeTab.path, tab.path)

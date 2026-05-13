@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/refs -- CodeMirror refs are imperative editor handles, read in event handlers not render */
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import CodeMirror from '@uiw/react-codemirror'
 import { markdown } from '@codemirror/lang-markdown'
@@ -126,10 +127,12 @@ const DiffView = ({ diffTab }: Props): React.JSX.Element => {
     [deferredLeft, deferredRight]
   )
 
-  // Kept current each render so the stable gutter-click handlers can read
-  // the latest hunks without re-creating the CodeMirror extension.
+  // Kept current so the stable gutter-click handlers can read the latest
+  // hunks without re-creating the CodeMirror extension.
   const diffRef = useRef(diff)
-  diffRef.current = diff
+  useEffect(() => {
+    diffRef.current = diff
+  }, [diff])
 
   const alignment = useMemo(() => {
     const leftLines = deferredLeft.split('\n').length
@@ -226,7 +229,6 @@ const DiffView = ({ diffTab }: Props): React.JSX.Element => {
   // Cmd+S keymap to save focused side
   const saveKeymap = useMemo(
     () =>
-      // eslint-disable-next-line react-hooks/rules-of-hooks
       keymap.of([
         {
           key: 'Mod-s',

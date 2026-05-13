@@ -24,7 +24,6 @@ const DiffPickerDialog = (): React.JSX.Element => {
     if (open) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setLeftPath(prefill?.leftPath ?? '')
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setRightPath('')
     }
   }, [open, prefill])
