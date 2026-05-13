@@ -33,8 +33,6 @@ const SettingsDialog = (): React.JSX.Element => {
     setShowWordCount,
     rawHeadingSizes,
     setRawHeadingSizes,
-    rawListHangIndent,
-    setRawListHangIndent,
     showRecents,
     setShowRecents
   } = useWorkspace()
@@ -203,34 +201,6 @@ const SettingsDialog = (): React.JSX.Element => {
                   className={cn(
                     'inline-block size-3.5 rounded-full bg-background shadow transition-transform',
                     rawHeadingSizes ? 'translate-x-[18px]' : 'translate-x-[2px]'
-                  )}
-                />
-              </button>
-            </div>
-          </div>
-          {/* Raw list hang indent */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between gap-4">
-              <div>
-                <label className="text-sm font-medium">Hanging list indent</label>
-                <p className="text-xs text-muted-foreground">
-                  Align wrapped list-item lines under the text after the marker.
-                </p>
-              </div>
-              <button
-                type="button"
-                role="switch"
-                aria-checked={rawListHangIndent}
-                onClick={() => void setRawListHangIndent(!rawListHangIndent)}
-                className={cn(
-                  'relative inline-flex h-5 w-9 shrink-0 items-center rounded-full border transition-colors',
-                  rawListHangIndent ? 'bg-primary border-primary' : 'bg-muted border-border'
-                )}
-              >
-                <span
-                  className={cn(
-                    'inline-block size-3.5 rounded-full bg-background shadow transition-transform',
-                    rawListHangIndent ? 'translate-x-[18px]' : 'translate-x-[2px]'
                   )}
                 />
               </button>

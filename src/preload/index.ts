@@ -53,11 +53,6 @@ export type Settings = {
   showWordCount: boolean
   rawHeadingSizes: boolean
   rawWordWrap: boolean
-  /**
-   * Visually hang-indent soft-wrapped list items in the raw editor so wrapped
-   * lines align under the text after the marker instead of flushing left.
-   */
-  rawListHangIndent: boolean
   /** Whether the bottom Variables panel is shown. */
   variablesPanelVisible: boolean
   /** Whether the Recents section is shown in the sidebar. */
@@ -191,13 +186,6 @@ const api = {
     ipcRenderer.on('app:toggleEditorMode', handler)
     return () => {
       ipcRenderer.off('app:toggleEditorMode', handler)
-    }
-  },
-  onToggleRawListHangIndent: (callback: () => void): (() => void) => {
-    const handler = (): void => callback()
-    ipcRenderer.on('app:toggleRawListHangIndent', handler)
-    return () => {
-      ipcRenderer.off('app:toggleRawListHangIndent', handler)
     }
   },
   onOpenDiffPicker: (callback: () => void): (() => void) => {
