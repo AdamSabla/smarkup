@@ -240,54 +240,55 @@ const diffTheme = EditorView.baseTheme({
     backgroundColor: 'rgba(239, 68, 68, 0.35)',
     borderRadius: '2px'
   },
-  // Diff gutter strip — wide hit area, narrow colored bar on the right edge
+  // Diff gutter — wide hit area, narrow colored bar on the right edge
   '.cm-diff-gutter': {
     width: '14px',
-    minWidth: '14px'
+    minWidth: '14px',
+    cursor: 'default'
   },
   '.cm-diff-gutter .cm-gutterElement': {
-    padding: '0 !important',
-    cursor: 'default'
+    padding: '0 !important'
   },
   '.cm-diff-gutter .cm-activeLineGutter': {
     backgroundColor: 'transparent'
   },
-  '.cm-diff-gutter-added, .cm-diff-gutter-removed, .cm-diff-gutter-changed': {
-    width: '100%',
-    height: '100%',
-    cursor: 'pointer',
-    display: 'flex',
-    justifyContent: 'flex-end'
-  },
-  '.cm-diff-gutter-added::after, .cm-diff-gutter-removed::after, .cm-diff-gutter-changed::after': {
-    content: '""',
-    display: 'block',
+  '.cm-diff-gutter-added': {
     width: '3px',
     height: '100%',
-    transition: 'width 0.1s ease, opacity 0.1s ease'
+    marginLeft: 'auto',
+    backgroundColor: 'rgba(34, 197, 94, 0.7)',
+    transition: 'width 0.1s ease, background-color 0.1s ease',
+    cursor: 'pointer'
   },
-  '.cm-diff-gutter-added::after': {
-    backgroundColor: 'rgba(34, 197, 94, 0.7)'
+  '.cm-diff-gutter-removed': {
+    width: '3px',
+    height: '100%',
+    marginLeft: 'auto',
+    backgroundColor: 'rgba(239, 68, 68, 0.7)',
+    transition: 'width 0.1s ease, background-color 0.1s ease',
+    cursor: 'pointer'
   },
-  '.cm-diff-gutter-removed::after': {
-    backgroundColor: 'rgba(239, 68, 68, 0.7)'
+  '.cm-diff-gutter-changed': {
+    width: '3px',
+    height: '100%',
+    marginLeft: 'auto',
+    backgroundColor: 'rgba(234, 179, 8, 0.7)',
+    transition: 'width 0.1s ease, background-color 0.1s ease',
+    cursor: 'pointer'
   },
-  '.cm-diff-gutter-changed::after': {
-    backgroundColor: 'rgba(234, 179, 8, 0.7)'
+  '.cm-diff-gutter .cm-gutterElement:hover': {
+    cursor: 'pointer'
   },
-  '.cm-diff-gutter-added:hover::after': {
+  '.cm-diff-gutter .cm-gutterElement:hover .cm-diff-gutter-added': {
     width: '5px',
-    opacity: '1',
     backgroundColor: 'rgba(34, 197, 94, 1)'
   },
-  '.cm-diff-gutter-removed:hover::after': {
+  '.cm-diff-gutter .cm-gutterElement:hover .cm-diff-gutter-removed': {
     width: '5px',
-    opacity: '1',
     backgroundColor: 'rgba(239, 68, 68, 1)'
   },
-  '.cm-diff-gutter-changed:hover::after': {
+  '.cm-diff-gutter .cm-gutterElement:hover .cm-diff-gutter-changed': {
     width: '5px',
-    opacity: '1',
     backgroundColor: 'rgba(234, 179, 8, 1)'
   }
 })
