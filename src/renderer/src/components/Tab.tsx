@@ -199,6 +199,11 @@ const Tab = ({
         <ContextMenuItem onSelect={() => void window.api.revealInFolder(tab.path)}>
           Reveal in {isMac ? 'Finder' : 'Explorer'}
         </ContextMenuItem>
+        <ContextMenuItem
+          onSelect={() => useWorkspace.getState().revealInSidebar(tab.path)}
+        >
+          Reveal in Sidebar
+        </ContextMenuItem>
         <ContextMenuSeparator />
         <ContextMenuItem
           onSelect={() => {

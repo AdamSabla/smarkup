@@ -566,6 +566,10 @@ type WorkspaceState = {
   expandSidebarSubfolders: (...paths: string[]) => void
   collapseSidebarSubfolder: (path: string) => void
 
+  revealSidebarPath: string | null
+  revealInSidebar: (path: string) => void
+  clearRevealSidebarPath: () => void
+
   setUpdateStatus: (status: UpdateStatus) => void
   checkForUpdates: () => Promise<void>
 
@@ -736,6 +740,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   pendingClose: null,
   toast: null,
   hydrated: false,
+
+  revealSidebarPath: null,
 
   closedTabsStack: [],
   diffTabs: [],
@@ -2226,6 +2232,39 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     set({ expandedSubfolderPaths: next })
     void persistSettings({ expandedSidebarSubfolders: Array.from(next) })
   },
+
+  revealInSidebar: (filePath) => {
+    const { sections, sidebarVisible } = get()
+    let containingSection: SidebarSection | null = null
+    for (const s of sections) {
+      if (s.path && filePath.startsWith(s.path + '/')) {
+        containingSection = s
+        break
+      }
+    }
+    if (!containingSection) {
+      get().showToast('File is not in any sidebar folder', 'error')
+      return
+    }
+    if (!sidebarVisible) {
+      set({ sidebarVisible: true })
+      void persistSettings({ sidebarVisible: true })
+    }
+    get().expandSidebarSections(containingSection.id)
+    const rel = filePath.slice(containingSection.path!.length + 1)
+    const parts = rel.split('/')
+    if (parts.length > 1) {
+      const folderParts = parts.slice(0, -1)
+      const folderPaths: string[] = []
+      for (let i = 0; i < folderParts.length; i++) {
+        folderPaths.push(containingSection.path + '/' + folderParts.slice(0, i + 1).join('/'))
+      }
+      get().expandSidebarSubfolders(...folderPaths)
+    }
+    set({ revealSidebarPath: filePath })
+  },
+
+  clearRevealSidebarPath: () => set({ revealSidebarPath: null }),
 
   setUpdateStatus: (status) => set({ updateStatus: status }),
 

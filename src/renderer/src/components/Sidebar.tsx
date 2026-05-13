@@ -1066,7 +1066,9 @@ const Sidebar = (): React.JSX.Element => {
     collapseSidebarSection,
     expandSidebarSubfolders,
     collapseSidebarSubfolder,
-    showRecents
+    showRecents,
+    revealSidebarPath,
+    clearRevealSidebarPath
   } = useWorkspace()
   const [renamingPath, setRenamingPath] = useState<string | null>(null)
   const [renamingFolderPath, setRenamingFolderPath] = useState<string | null>(null)
@@ -1134,6 +1136,35 @@ const Sidebar = (): React.JSX.Element => {
       ;(el as HTMLElement | null)?.scrollIntoView({ block: 'nearest' })
     })
   }, [])
+
+  useEffect(() => {
+    if (!revealSidebarPath) return
+    clearRevealSidebarPath()
+    for (const s of sections) {
+      if (!s.path || !revealSidebarPath.startsWith(s.path + '/')) continue
+      const rel = revealSidebarPath.slice(s.path.length + 1)
+      if (!rel.includes('/')) {
+        const idx = s.files.findIndex((f) => f.path === revealSidebarPath)
+        if (idx >= INITIAL_VISIBLE) {
+          setShowAllSections((prev) => {
+            if (prev.has(s.id)) return prev
+            const next = new Set(prev)
+            next.add(s.id)
+            return next
+          })
+        }
+      }
+      break
+    }
+    setFocusedItem(revealSidebarPath)
+    requestAnimationFrame(() => {
+      const el = sidebarRef.current?.querySelector(
+        `[data-sidebar-path="${CSS.escape(revealSidebarPath)}"]`
+      )
+      ;(el as HTMLElement | null)?.scrollIntoView({ block: 'nearest' })
+      sidebarRef.current?.focus()
+    })
+  }, [revealSidebarPath, clearRevealSidebarPath, sections])
 
   const handleFocusItem = useCallback((path: string) => {
     setFocusedItem(path)
