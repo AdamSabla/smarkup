@@ -37,7 +37,8 @@ export const useShortcuts = (): void => {
     openFindBar,
     openDiffPicker,
     openFile,
-    reopenClosedTab
+    reopenClosedTab,
+    closeDiffTab
   } = useWorkspace()
 
   // Tab-switch shortcuts (cmd+opt+arrow, ctrl+tab) must run in the capture
@@ -140,7 +141,9 @@ export const useShortcuts = (): void => {
       // If the pane is already empty in a split, close it directly.
       if (key === 'w' && !e.shiftKey && !e.altKey) {
         e.preventDefault()
-        if (activeTabId) {
+        if (activeTabId?.startsWith('diff:')) {
+          closeDiffTab(activeTabId)
+        } else if (activeTabId) {
           requestCloseTab(activeTabId)
         } else if (paneRoot.type === 'split') {
           closePane(activePaneId)
@@ -258,6 +261,7 @@ export const useShortcuts = (): void => {
     openFindBar,
     openDiffPicker,
     openFile,
-    reopenClosedTab
+    reopenClosedTab,
+    closeDiffTab
   ])
 }
