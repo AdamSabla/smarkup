@@ -18,7 +18,6 @@ import {
   placeholderHighlighter,
   inlineCodeHighlighter,
   todoCommentHighlighter,
-  listHangIndentPlugin,
   sharedEditorTokenTheme
 } from '@/lib/shared-cm-extensions'
 import FileSearchPopover from '@/components/FileSearchPopover'
@@ -68,7 +67,6 @@ const EmptyDiffPlaceholder = (): React.JSX.Element => (
 const DiffView = ({ diffTab }: Props): React.JSX.Element => {
   const isDark = useIsDark()
   const rawWordWrap = useWorkspace((s) => s.rawWordWrap)
-  const rawListHangIndent = useWorkspace((s) => s.rawListHangIndent)
   const tabs = useWorkspace((s) => s.tabs)
   const updateTabContent = useWorkspace((s) => s.updateTabContent)
   const saveTab = useWorkspace((s) => s.saveTab)
@@ -317,7 +315,6 @@ const DiffView = ({ diffTab }: Props): React.JSX.Element => {
       // disabled on both sides, which also drops the default Cmd-D binding.
       Prec.highest(keymap.of([{ key: 'Mod-d', run: selectNextOccurrence, preventDefault: true }])),
       ...(rawWordWrap ? [EditorView.lineWrapping] : []),
-      ...(rawListHangIndent ? [listHangIndentPlugin] : []),
       EditorView.theme({
         '&': {
           fontSize: '14px',
@@ -360,7 +357,7 @@ const DiffView = ({ diffTab }: Props): React.JSX.Element => {
         }
       })
     ],
-    [saveKeymap, rawWordWrap, rawListHangIndent]
+    [saveKeymap, rawWordWrap]
   )
 
   const leftExtensions = useMemo(

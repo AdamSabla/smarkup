@@ -30,11 +30,6 @@ export type Settings = {
   showWordCount: boolean
   rawHeadingSizes: boolean
   rawWordWrap: boolean
-  /**
-   * Visually hang-indent soft-wrapped list items in the raw editor so wrapped
-   * lines align under the text after the marker instead of flushing left.
-   */
-  rawListHangIndent: boolean
   /** Whether the bottom Variables panel is shown. */
   variablesPanelVisible: boolean
   /** Whether the Recents section is shown in the sidebar. */
@@ -72,7 +67,6 @@ const DEFAULT_SETTINGS: Settings = {
   showWordCount: false,
   rawHeadingSizes: false,
   rawWordWrap: true,
-  rawListHangIndent: true,
   variablesPanelVisible: false,
   showRecents: false,
   autoNamedPaths: [],

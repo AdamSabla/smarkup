@@ -23,7 +23,6 @@ import {
   inlineCodeHighlighter,
   todoCommentHighlighter,
   todoColonAutoBracket,
-  listHangIndentPlugin,
   sharedEditorTokenTheme
 } from '@/lib/shared-cm-extensions'
 
@@ -267,7 +266,6 @@ const RawEditor = ({ value, onChange, isActive }: Props): React.JSX.Element => {
   const isDark = useIsDark()
   const rawHeadingSizes = useWorkspace((s) => s.rawHeadingSizes)
   const rawWordWrap = useWorkspace((s) => s.rawWordWrap)
-  const rawListHangIndent = useWorkspace((s) => s.rawListHangIndent)
   const viewRef = useRef<EditorView | null>(null)
   // Mirror of viewRef as state — CodeMirror's `onCreateEditor` fires in a
   // later effect pass than RawEditor's own useEffect, so a pure ref would
@@ -618,7 +616,6 @@ const RawEditor = ({ value, onChange, isActive }: Props): React.JSX.Element => {
       Prec.highest(keymap.of([{ key: 'Mod-d', run: selectNextOccurrence, preventDefault: true }])),
       ...(rawHeadingSizes ? [headingHighlighter, caretHeadingScaler] : [stickyHeadingBreadcrumb]),
       ...(rawWordWrap ? [EditorView.lineWrapping] : []),
-      ...(rawListHangIndent ? [listHangIndentPlugin] : []),
       sharedEditorTokenTheme,
       EditorView.theme({
         '&': {
@@ -645,11 +642,7 @@ const RawEditor = ({ value, onChange, isActive }: Props): React.JSX.Element => {
           backgroundColor: 'color-mix(in srgb, var(--foreground) 6%, transparent)',
           boxShadow: 'inset 10px 0 0 color-mix(in srgb, var(--foreground) 40%, transparent)',
           marginLeft: '-48px',
-          // Compose with the per-line `--cm-hang` set by listHangIndentPlugin
-          // so list lines keep their hang offset when active. text-indent on
-          // .cm-line still applies (we don't override it here), which pulls
-          // the first visual line back into column with non-list active lines.
-          paddingLeft: 'calc(54px + var(--cm-hang, 0px))'
+          paddingLeft: '54px'
         },
         '.cm-gutters': {
           backgroundColor: 'var(--background) !important',
@@ -664,7 +657,7 @@ const RawEditor = ({ value, onChange, isActive }: Props): React.JSX.Element => {
         '.cm-heading-4': { fontSize: '1.55em', lineHeight: '1.3', fontWeight: '600' }
       })
     ],
-    [checklistKeymap, rawHeadingSizes, rawWordWrap, rawListHangIndent]
+    [checklistKeymap, rawHeadingSizes, rawWordWrap]
   )
 
   return (
