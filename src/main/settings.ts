@@ -30,6 +30,8 @@ export type Settings = {
   showWordCount: boolean
   rawHeadingSizes: boolean
   rawWordWrap: boolean
+  /** Colour headings, bold, and code in the visual editor to match the raw editor. */
+  visualSyntaxHighlight: boolean
   /** Whether the bottom Variables panel is shown. */
   variablesPanelVisible: boolean
   /** Whether the Recents section is shown in the sidebar. */
@@ -67,6 +69,7 @@ const DEFAULT_SETTINGS: Settings = {
   showWordCount: false,
   rawHeadingSizes: false,
   rawWordWrap: true,
+  visualSyntaxHighlight: false,
   variablesPanelVisible: false,
   showRecents: false,
   autoNamedPaths: [],

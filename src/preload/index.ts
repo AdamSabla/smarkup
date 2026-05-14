@@ -53,6 +53,7 @@ export type Settings = {
   showWordCount: boolean
   rawHeadingSizes: boolean
   rawWordWrap: boolean
+  visualSyntaxHighlight: boolean
   /** Whether the bottom Variables panel is shown. */
   variablesPanelVisible: boolean
   /** Whether the Recents section is shown in the sidebar. */

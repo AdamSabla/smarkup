@@ -371,6 +371,7 @@ type WorkspaceState = {
   showWordCount: boolean
   rawHeadingSizes: boolean
   rawWordWrap: boolean
+  visualSyntaxHighlight: boolean
   /** Whether the bottom Variables panel is shown. */
   variablesPanelVisible: boolean
   /** Whether the Recents section is shown in the sidebar. */
@@ -543,6 +544,7 @@ type WorkspaceState = {
   setShowWordCount: (enabled: boolean) => Promise<void>
   setRawHeadingSizes: (enabled: boolean) => Promise<void>
   setRawWordWrap: (enabled: boolean) => Promise<void>
+  setVisualSyntaxHighlight: (enabled: boolean) => Promise<void>
   setShowRecents: (enabled: boolean) => Promise<void>
   toggleVariablesPanel: () => Promise<void>
   setVariablesPanelVisible: (visible: boolean) => Promise<void>
@@ -715,6 +717,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   showWordCount: false,
   rawHeadingSizes: false,
   rawWordWrap: true,
+  visualSyntaxHighlight: false,
   variablesPanelVisible: false,
   showRecents: false,
 
@@ -766,6 +769,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       showWordCount: settings.showWordCount ?? false,
       rawHeadingSizes: settings.rawHeadingSizes ?? false,
       rawWordWrap: settings.rawWordWrap ?? true,
+      visualSyntaxHighlight: settings.visualSyntaxHighlight ?? false,
       variablesPanelVisible: settings.variablesPanelVisible ?? false,
       showRecents: settings.showRecents ?? false,
       autoNamedPaths: new Set(settings.autoNamedPaths ?? []),
@@ -2130,6 +2134,11 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   setRawWordWrap: async (enabled) => {
     set({ rawWordWrap: enabled })
     await persistSettings({ rawWordWrap: enabled })
+  },
+
+  setVisualSyntaxHighlight: async (enabled) => {
+    set({ visualSyntaxHighlight: enabled })
+    await persistSettings({ visualSyntaxHighlight: enabled })
   },
 
   setShowRecents: async (enabled) => {

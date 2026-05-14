@@ -18,6 +18,7 @@ import { VariableHighlighter } from '@/extensions/variable-highlighter'
 import { TodoCommentHighlighter } from '@/extensions/todo-comment-highlighter'
 import { SearchHighlighter } from '@/extensions/search-highlight'
 import { getActiveEditor, setActiveEditor } from '@/lib/active-editor'
+import { useWorkspace } from '@/store/workspace'
 import { serializeSliceToText } from '@/lib/serialize-clipboard-text'
 import TableMenu from './TableMenu'
 
@@ -352,6 +353,13 @@ const VisualEditor = ({ value, onChange, isActive }: Props): React.JSX.Element =
       stripEmptyParagraphMarkers(editor)
     }
   }, [value, editor])
+
+  const visualSyntaxHighlight = useWorkspace((s) => s.visualSyntaxHighlight)
+  useEffect(() => {
+    if (!editor) return
+    const el = editor.view.dom
+    el.classList.toggle('syntax-highlight', visualSyntaxHighlight)
+  }, [editor, visualSyntaxHighlight])
 
   return (
     <div ref={scrollRef} className="relative h-full overflow-auto">
