@@ -41,6 +41,7 @@ let mockSettings: Settings = {
   showWordCount: false,
   rawHeadingSizes: false,
   rawWordWrap: true,
+  visualSyntaxHighlight: false,
   variablesPanelVisible: false,
   showRecents: false,
   autoNamedPaths: [],
