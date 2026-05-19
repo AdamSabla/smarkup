@@ -440,6 +440,13 @@ type WorkspaceState = {
   /** Transient bottom-of-window notice (stale file, etc.). Null when hidden. */
   toast: Toast | null
   hydrated: boolean
+  /**
+   * OS-driven "open this file" requests (Finder double-click, "Open With…",
+   * File → Open…) that arrived before `hydrate()` finished. Parked here so
+   * hydration's restore-tabs `set()` can't clobber them; flushed once
+   * hydration completes.
+   */
+  pendingExternalOpens: string[]
 
   // --- Closed tab history (for reopen) ---
   closedTabsStack: ClosedTabEntry[]
@@ -482,6 +489,13 @@ type WorkspaceState = {
    *   promotion happens later when the user makes the first dirty edit.
    */
   openFile: (path: string, opts?: { source?: 'external' | 'navigate' }) => Promise<void>
+  /**
+   * Entry point for OS-driven file opens (Finder double-click, "Open With…",
+   * File → Open…). Opens immediately once hydrated; otherwise parks the path
+   * in `pendingExternalOpens` so a cold-launch open isn't wiped by the
+   * restore-tabs `set()` at the end of `hydrate()`.
+   */
+  requestOpenFromDisk: (path: string) => void
   /** Remove a path from the recent files list. */
   removeRecentFile: (path: string) => void
   /** Clear all entries from the recent files list. */
@@ -745,6 +759,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   pendingClose: null,
   toast: null,
   hydrated: false,
+  pendingExternalOpens: [],
 
   revealSidebarPath: null,
 
@@ -835,6 +850,17 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       activePaneId: 'root',
       hydrated: true
     })
+
+    // The restore-tabs `set()` above has landed. Replay any OS open-file
+    // requests that arrived mid-hydration (cold launch via Finder
+    // double-click) — they were parked so this `set()` couldn't wipe them.
+    const queued = get().pendingExternalOpens
+    if (queued.length > 0) {
+      set({ pendingExternalOpens: [] })
+      for (const p of queued) {
+        await get().openFile(p, { source: 'external' })
+      }
+    }
 
     // Start file watchers
     const { draftsFolder, additionalFolders } = get()
@@ -1131,6 +1157,14 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     await get().refreshAllSections()
     void get().refreshMoveTargets()
     return newPath
+  },
+
+  requestOpenFromDisk: (path) => {
+    if (get().hydrated) {
+      void get().openFile(path, { source: 'external' })
+      return
+    }
+    set((s) => ({ pendingExternalOpens: [...s.pendingExternalOpens, path] }))
   },
 
   openFile: async (path, opts) => {

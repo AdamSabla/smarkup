@@ -93,7 +93,7 @@ const App = (): React.JSX.Element => {
   // promote the file to the top of Recents (in-app navigation doesn't).
   useEffect(() => {
     return window.api.onOpenFileFromDisk((path) => {
-      void useWorkspace.getState().openFile(path, { source: 'external' })
+      useWorkspace.getState().requestOpenFromDisk(path)
     })
   }, [])
 
