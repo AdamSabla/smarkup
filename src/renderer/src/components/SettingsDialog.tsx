@@ -1,4 +1,4 @@
-import { FolderOpenIcon, MonitorIcon, MoonIcon, SunIcon } from 'lucide-react'
+import { EyeIcon, FileCodeIcon, FolderOpenIcon, MonitorIcon, MoonIcon, SunIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -8,7 +8,7 @@ import {
   DialogTitle
 } from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
-import { useWorkspace } from '@/store/workspace'
+import { useWorkspace, type EditorMode } from '@/store/workspace'
 import type { Theme } from '../../../preload'
 
 type ThemeOption = { value: Theme; label: string; icon: React.ElementType }
@@ -19,6 +19,13 @@ const THEME_OPTIONS: ThemeOption[] = [
   { value: 'system', label: 'System', icon: MonitorIcon }
 ]
 
+type EditorModeOption = { value: EditorMode; label: string; icon: React.ElementType }
+
+const EDITOR_MODE_OPTIONS: EditorModeOption[] = [
+  { value: 'visual', label: 'Visual', icon: EyeIcon },
+  { value: 'raw', label: 'Raw', icon: FileCodeIcon }
+]
+
 const SettingsDialog = (): React.JSX.Element => {
   const {
     settingsOpen,
@@ -27,6 +34,8 @@ const SettingsDialog = (): React.JSX.Element => {
     setDraftsFolder,
     theme,
     setTheme,
+    editorMode,
+    setDefaultEditorMode,
     autoSave,
     setAutoSave,
     showWordCount,
@@ -86,6 +95,29 @@ const SettingsDialog = (): React.JSX.Element => {
                   size="sm"
                   className="flex-1"
                   onClick={() => void setTheme(value)}
+                >
+                  <Icon className="size-3.5" />
+                  {label}
+                </Button>
+              ))}
+            </div>
+          </div>
+
+          {/* Default editor */}
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Default editor</label>
+            <p className="text-xs text-muted-foreground">
+              How files open when they have no saved preference yet. Switching the editor for a file
+              remembers that choice for the file.
+            </p>
+            <div className="flex gap-2">
+              {EDITOR_MODE_OPTIONS.map(({ value, label, icon: Icon }) => (
+                <Button
+                  key={value}
+                  variant={editorMode === value ? 'default' : 'outline'}
+                  size="sm"
+                  className="flex-1"
+                  onClick={() => void setDefaultEditorMode(value)}
                 >
                   <Icon className="size-3.5" />
                   {label}

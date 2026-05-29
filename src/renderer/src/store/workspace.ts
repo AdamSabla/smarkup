@@ -553,6 +553,13 @@ type WorkspaceState = {
 
   toggleSidebar: () => Promise<void>
   setEditorMode: (mode: EditorMode) => Promise<void>
+  /**
+   * Set the global default editor mode. Unlike `setEditorMode` (which records
+   * a per-file override when a tab is active), this always writes the global
+   * fallback used for files that have no per-file preference yet. Backs the
+   * "Default editor" control in Settings.
+   */
+  setDefaultEditorMode: (mode: EditorMode) => Promise<void>
   setTheme: (theme: Theme) => Promise<void>
   setAutoSave: (enabled: boolean) => Promise<void>
   setShowWordCount: (enabled: boolean) => Promise<void>
@@ -2141,6 +2148,12 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       return
     }
     if (editorMode === mode) return
+    set({ editorMode: mode })
+    await persistSettings({ editorMode: mode })
+  },
+
+  setDefaultEditorMode: async (mode) => {
+    if (get().editorMode === mode) return
     set({ editorMode: mode })
     await persistSettings({ editorMode: mode })
   },
