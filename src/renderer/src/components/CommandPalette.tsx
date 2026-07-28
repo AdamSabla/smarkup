@@ -28,6 +28,7 @@ import {
   Trash2Icon,
   TrashIcon,
   KeyboardIcon,
+  ListTreeIcon,
   XIcon,
   RotateCcwIcon
 } from 'lucide-react'
@@ -96,6 +97,7 @@ const CommandPaletteBody = (): React.JSX.Element => {
     activePaneId,
     openDiffPicker,
     openEmptyDiff,
+    openOutline,
     commandPaletteOpen,
     moveTargets,
     moveTargetsLoading,
@@ -139,6 +141,7 @@ const CommandPaletteBody = (): React.JSX.Element => {
       activePaneId: s.activePaneId,
       openDiffPicker: s.openDiffPicker,
       openEmptyDiff: s.openEmptyDiff,
+      openOutline: s.openOutline,
       commandPaletteOpen: s.commandPaletteOpen,
       moveTargets: s.moveTargets,
       moveTargetsLoading: s.moveTargetsLoading,
@@ -495,6 +498,17 @@ const CommandPaletteBody = (): React.JSX.Element => {
             >
               <EyeIcon /> Switch to {effectiveMode === 'visual' ? 'Raw' : 'Visual'} mode
             </CommandItem>
+            {activeTabId && !activeTabId.startsWith('diff:') && (
+              <CommandItem
+                value="outline table of contents toc headings structure reorder reorganize"
+                onSelect={() => {
+                  openOutline()
+                  dismiss()
+                }}
+              >
+                <ListTreeIcon /> Outline...
+              </CommandItem>
+            )}
             <CommandItem
               value="compare files diff"
               onSelect={() => {

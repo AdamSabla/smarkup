@@ -21,7 +21,9 @@ const files: MockFile[] = [
   {
     path: '/demo/notes.md',
     name: 'notes.md',
-    content: `# Notes\n\n- First thought\n- Second thought\n- Third thought\n`,
+    // Deliberately multi-level with a leading paragraph and a partial import —
+    // this is the fixture for exercising the outline dialog in the browser.
+    content: `Intro text that sits before any heading, so it can never belong to a section.\n\n# Builder prompt\n\nTop level overview.\n\n## Mid-session continuation\n\nYou are always mid-session.\n\n## Tools\n\nPick the right one.\n\n### update_resume\n\nAll resume-section mutations.\n\n### update_profile\n\nAll profile mutations. See {{> _shared/market-conventions}} for the rules.\n\n## Routing\n\nOne branch per turn.\n\n### Branch 3 — auto-draft\n\nDraft every section in one pass.\n\n### Branch 4 — clarification loop\n\nAsk the next gap question.\n\n## Polish posture\n\nReword, don't invent.\n`,
     mtimeMs: baseTime - 1000 * 60 * 60
   }
 ]

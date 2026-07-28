@@ -5,6 +5,23 @@ import type { Editor } from '@tiptap/react'
  *  placeholderHighlighter uses so the panel and the highlight agree. */
 export const VARIABLE_RE = /\{\{[^}]+\}\}/g
 
+/**
+ * Strip markdown escapes from inside `{{…}}` placeholders.
+ *
+ * prosemirror-markdown escapes punctuation that could be read as markup when
+ * it serializes a text node, so `{{> _shared/market-conventions}}` comes back
+ * out of the visual editor as `{{> \_shared/market-conventions}}`. The
+ * backslash is invisible in the editor but real in the file, and the template
+ * engine that consumes these placeholders downstream doesn't understand it —
+ * so it has to be hand-removed before every commit.
+ *
+ * Markdown markup has no meaning inside a placeholder (the whole span is a
+ * token for another system), so escapes there are pure noise and safe to drop.
+ * Escaping everywhere else is left exactly as it was.
+ */
+export const unescapeVariables = (markdown: string): string =>
+  markdown.replace(VARIABLE_RE, (span) => span.replace(/\\([^\w\s])/g, '$1'))
+
 export type VariableOccurrence = {
   /** Full matched text, e.g. `{{product_name}}` */
   raw: string

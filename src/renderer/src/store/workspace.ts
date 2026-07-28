@@ -399,6 +399,8 @@ type WorkspaceState = {
   commandPaletteOpen: boolean
   /** Keyboard shortcuts modal */
   shortcutsOpen: boolean
+  /** Outline modal — reorder the active document's headings */
+  outlineOpen: boolean
   /** ⌘F find/replace bar (per-window, attached to the active pane's editor) */
   findBarOpen: boolean
   /** Tab id currently being renamed inline (⌘R) */
@@ -583,6 +585,8 @@ type WorkspaceState = {
   closeCommandPalette: () => void
   openShortcuts: () => void
   closeShortcuts: () => void
+  openOutline: () => void
+  closeOutline: () => void
   openFindBar: () => void
   closeFindBar: () => void
   saveScrollPosition: (tabId: string, value: number | { line: number; offsetPx: number }) => void
@@ -762,6 +766,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   quickOpenOpen: false,
   commandPaletteOpen: false,
   shortcutsOpen: false,
+  outlineOpen: false,
   findBarOpen: false,
   renamingTabId: null,
   scrollPositions: {},
@@ -2233,6 +2238,9 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   closeCommandPalette: () => set({ commandPaletteOpen: false }),
   openShortcuts: () => set({ shortcutsOpen: true }),
   closeShortcuts: () => set({ shortcutsOpen: false }),
+
+  openOutline: () => set({ outlineOpen: true }),
+  closeOutline: () => set({ outlineOpen: false }),
   openFindBar: () => set({ findBarOpen: true }),
   closeFindBar: () => set({ findBarOpen: false }),
   saveScrollPosition: (tabId, value) =>

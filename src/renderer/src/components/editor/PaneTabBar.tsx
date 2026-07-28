@@ -208,10 +208,12 @@ const PaneTabBar = ({
                 const nextTab = paneTabs[index + 1]
                 const isActive = tab.id === paneActiveTabId
                 const nextIsActive = nextTab?.id === paneActiveTabId
+                const activeIndex = paneTabs.findIndex((t) => t.id === paneActiveTabId)
                 return (
                   <Tab
                     key={tab.id}
                     tab={tab}
+                    distance={activeIndex < 0 ? 0 : Math.abs(index - activeIndex)}
                     active={isActive}
                     renaming={tab.id === renamingTabId}
                     showRightSeparator={!isActive && !!nextTab && !nextIsActive}

@@ -11,6 +11,7 @@ import FolderDropZone from '@/components/FolderDropZone'
 import Toast from '@/components/Toast'
 import VariablesPanel from '@/components/VariablesPanel'
 import DiffPickerDialog from '@/components/DiffPickerDialog'
+import OutlineDialog from '@/components/OutlineDialog'
 import SplitContainer from '@/components/editor/SplitContainer'
 import { useShortcuts } from '@/hooks/useShortcuts'
 import { useUpdateSubscription } from '@/hooks/useUpdateSubscription'
@@ -215,6 +216,7 @@ const App = (): React.JSX.Element => {
       <KeyboardShortcuts />
       <UnsavedChangesDialog />
       <DiffPickerDialog />
+      <OutlineDialog />
       <FolderDropZone />
       <Toast />
       <UpdateBanner />

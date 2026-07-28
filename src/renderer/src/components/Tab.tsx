@@ -31,6 +31,9 @@ type TabProps = {
   active: boolean
   renaming: boolean
   showRightSeparator: boolean
+  /** How many tabs away from the active one this tab sits. Drives how eagerly
+   *  it gives up width when the bar overflows. */
+  distance: number
   onActivate: () => void
   onClose: () => void
   onCloseOthers: () => void
@@ -48,6 +51,7 @@ const Tab = ({
   active,
   renaming,
   showRightSeparator,
+  distance,
   onActivate,
   onClose,
   onCloseOthers,
@@ -92,12 +96,23 @@ const Tab = ({
     onCommitRename(trimmed)
   }
 
+  // Folder-qualified labels are long enough that equal-width tabs squeeze
+  // every one of them into illegibility. Instead each tab is sized to its own
+  // text and gives up width in proportion to how far it sits from the active
+  // one: the active tab never shrinks, its neighbours shrink last, and the
+  // ends of the strip collapse first. Selecting a tab re-centres the pressure
+  // around it, so the one you're reading is always the one at full width.
+  const sizing: React.CSSProperties = showTabParentFolder
+    ? { flexGrow: 0, flexShrink: active ? 0 : 1 + distance * 2, flexBasis: 'auto' }
+    : {}
+
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
     transition,
     zIndex: active ? 2 : isDragging ? 10 : 1,
     opacity: isDragging ? 0.92 : 1,
-    WebkitAppRegion: 'no-drag'
+    WebkitAppRegion: 'no-drag',
+    ...sizing
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } as any
 
@@ -124,8 +139,9 @@ const Tab = ({
         'group relative flex h-8 min-w-[60px] max-w-[180px] flex-1 basis-0 cursor-pointer items-center gap-1 rounded-t-[6px]',
         'pl-[10px] pr-[5px] select-none',
         'text-[12.5px] font-medium transition-colors duration-150',
-        // Folder-qualified labels need the extra room to stay readable.
-        showTabParentFolder && 'max-w-[260px]',
+        // Folder-qualified labels need the extra room to stay readable, and a
+        // tighter floor so a squeezed tab still shows part of its file name.
+        showTabParentFolder && 'min-w-[52px] max-w-[280px]',
         active
           ? 'bg-background text-foreground'
           : 'text-muted-foreground hover:bg-foreground/[0.04]'
@@ -180,9 +196,11 @@ const Tab = ({
             >
               {folder && (
                 <>
-                  {/* Shrinks (and truncates) before the file name does — the
-                      folder is context, the file name is the identity. */}
-                  <span className="min-w-0 shrink truncate font-normal text-current/55">
+                  {/* Gives up width before the file name does — the folder is
+                      context, the file name is the identity. Clipped rather
+                      than ellipsised: on a squeezed tab an "…" costs a
+                      character's width to say nothing. */}
+                  <span className="min-w-0 shrink overflow-hidden text-clip whitespace-nowrap font-normal text-current/55">
                     {folder}
                   </span>
                   <span className="shrink-0 px-[3px] font-normal text-current/35">/</span>

@@ -20,6 +20,7 @@ import { SearchHighlighter } from '@/extensions/search-highlight'
 import { getActiveEditor, setActiveEditor } from '@/lib/active-editor'
 import { useWorkspace } from '@/store/workspace'
 import { serializeSliceToText } from '@/lib/serialize-clipboard-text'
+import { unescapeVariables } from '@/lib/variables'
 import TableMenu from './TableMenu'
 
 // tiptap-markdown's default text serializer always HTML-escapes `<` and `>`,
@@ -111,9 +112,13 @@ const stripEmptyParagraphMarkers = (editor: Editor): void => {
   }
 }
 
+// Applied here rather than at the call sites so every consumer — the onUpdate
+// that writes the buffer and the value effect that compares against it — sees
+// the same string. Unescaping in only one of them would make them disagree and
+// trigger a setContent loop.
 const getMarkdown = (editor: Editor): string => {
   const storage = editor.storage as unknown as { markdown: MarkdownStorage }
-  return storage.markdown.getMarkdown()
+  return unescapeVariables(storage.markdown.getMarkdown())
 }
 
 type Props = {
