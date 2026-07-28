@@ -15,6 +15,7 @@ import SplitContainer from '@/components/editor/SplitContainer'
 import { useShortcuts } from '@/hooks/useShortcuts'
 import { useUpdateSubscription } from '@/hooks/useUpdateSubscription'
 import { useTheme } from '@/hooks/useTheme'
+import { useWindowFocus } from '@/hooks/useWindowFocus'
 import { useFileWatcher } from '@/hooks/useFileWatcher'
 import { usePersistOpenTabs } from '@/hooks/usePersistOpenTabs'
 import { useAutoSave } from '@/hooks/useAutoSave'
@@ -171,6 +172,7 @@ const App = (): React.JSX.Element => {
   useShortcuts()
   useUpdateSubscription()
   useTheme()
+  useWindowFocus()
   useFileWatcher()
   usePersistOpenTabs()
   useAutoSave()

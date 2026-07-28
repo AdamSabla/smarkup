@@ -151,18 +151,21 @@ const PaneTabBar = ({
     <div
       ref={tabBarRef}
       className={cn(
-        'drag-region flex h-8 w-full shrink-0 items-end gap-[2px] overflow-hidden',
+        'drag-region relative flex h-8 w-full shrink-0 items-end gap-[2px] overflow-hidden',
         'bg-tab-bar select-none',
         showTrafficSpacer ? 'pl-[74px]' : 'pl-1'
       )}
     >
+      {/* Contrast behind the macOS window buttons while the window is inactive */}
+      {showTrafficSpacer && <div className="traffic-light-shade" aria-hidden />}
+
       {/* Sidebar toggle (when sidebar hidden, first pane only) */}
       {showSidebarToggle && (
         <button
           onClick={() => void toggleSidebar()}
           style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
           className={cn(
-            'flex size-6 shrink-0 items-center justify-center self-center rounded-md',
+            'relative flex size-6 shrink-0 items-center justify-center self-center rounded-md',
             'text-muted-foreground hover:bg-accent hover:text-foreground transition-colors'
           )}
           aria-label="Toggle sidebar"

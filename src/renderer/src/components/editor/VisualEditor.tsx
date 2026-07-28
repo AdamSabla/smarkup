@@ -361,6 +361,13 @@ const VisualEditor = ({ value, onChange, isActive }: Props): React.JSX.Element =
     el.classList.toggle('syntax-highlight', visualSyntaxHighlight)
   }, [editor, visualSyntaxHighlight])
 
+  const visualHeadingMarkers = useWorkspace((s) => s.visualHeadingMarkers)
+  useEffect(() => {
+    if (!editor) return
+    const el = editor.view.dom
+    el.classList.toggle('heading-markers', visualHeadingMarkers)
+  }, [editor, visualHeadingMarkers])
+
   return (
     <div ref={scrollRef} className="relative h-full overflow-auto">
       <EditorContent editor={editor} className="h-full" />

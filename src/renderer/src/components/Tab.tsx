@@ -15,6 +15,17 @@ import { useWorkspace, type OpenFile } from '@/store/workspace'
 
 const isMac = navigator.userAgent.toLowerCase().includes('mac')
 
+/**
+ * Name of the folder a file sits in, or null when there isn't one to show
+ * (unsaved drafts, files at a filesystem root). Handles both separators so
+ * Windows paths resolve the same way.
+ */
+const parentFolderName = (path: string): string | null => {
+  if (path.startsWith('draft://')) return null
+  const segments = path.split(/[/\\]/).filter(Boolean)
+  return segments.length >= 2 ? segments[segments.length - 2] : null
+}
+
 type TabProps = {
   tab: OpenFile
   active: boolean
@@ -52,8 +63,12 @@ const Tab = ({
     id: tab.id
   })
 
+  const showTabParentFolder = useWorkspace((s) => s.showTabParentFolder)
+
   const dirty = tab.content !== tab.savedContent
   const displayName = tab.name.replace(/\.md$/i, '')
+  const folder = showTabParentFolder ? parentFolderName(tab.path) : null
+  const fullLabel = folder ? `${folder} / ${displayName}` : displayName
 
   const [renameValue, setRenameValue] = useState(displayName)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -109,6 +124,8 @@ const Tab = ({
         'group relative flex h-8 min-w-[60px] max-w-[180px] flex-1 basis-0 cursor-pointer items-center gap-1 rounded-t-[6px]',
         'pl-[10px] pr-[5px] select-none',
         'text-[12.5px] font-medium transition-colors duration-150',
+        // Folder-qualified labels need the extra room to stay readable.
+        showTabParentFolder && 'max-w-[260px]',
         active
           ? 'bg-background text-foreground'
           : 'text-muted-foreground hover:bg-foreground/[0.04]'
@@ -155,16 +172,26 @@ const Tab = ({
         <Tooltip>
           <TooltipTrigger asChild>
             <span
-              className="flex-1 overflow-hidden whitespace-nowrap"
+              className="flex min-w-0 flex-1 items-baseline overflow-hidden whitespace-nowrap"
               style={{
                 maskImage: 'linear-gradient(90deg, black calc(100% - 24px), transparent)',
                 WebkitMaskImage: 'linear-gradient(90deg, black calc(100% - 24px), transparent)'
               }}
             >
-              {displayName}
+              {folder && (
+                <>
+                  {/* Shrinks (and truncates) before the file name does — the
+                      folder is context, the file name is the identity. */}
+                  <span className="min-w-0 shrink truncate font-normal text-current/55">
+                    {folder}
+                  </span>
+                  <span className="shrink-0 px-[3px] font-normal text-current/35">/</span>
+                </>
+              )}
+              <span className="shrink-0">{displayName}</span>
             </span>
           </TooltipTrigger>
-          <TooltipContent>{displayName}</TooltipContent>
+          <TooltipContent>{fullLabel}</TooltipContent>
         </Tooltip>
       )}
       <button

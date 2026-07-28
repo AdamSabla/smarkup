@@ -54,10 +54,14 @@ export type Settings = {
   rawHeadingSizes: boolean
   rawWordWrap: boolean
   visualSyntaxHighlight: boolean
+  /** Show an H1–H4 tag in the left margin of every visual-editor heading. */
+  visualHeadingMarkers: boolean
   /** Whether the bottom Variables panel is shown. */
   variablesPanelVisible: boolean
   /** Whether the Recents section is shown in the sidebar. */
   showRecents: boolean
+  /** Prefix each tab label with its containing folder name. */
+  showTabParentFolder: boolean
   /**
    * Files (by absolute path) whose name is still being auto-derived from
    * their first non-empty line. Removed once the user explicitly renames.

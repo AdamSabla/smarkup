@@ -32,10 +32,18 @@ export type Settings = {
   rawWordWrap: boolean
   /** Colour headings, bold, and code in the visual editor to match the raw editor. */
   visualSyntaxHighlight: boolean
+  /** Show an H1–H4 tag in the left margin of every visual-editor heading. */
+  visualHeadingMarkers: boolean
   /** Whether the bottom Variables panel is shown. */
   variablesPanelVisible: boolean
   /** Whether the Recents section is shown in the sidebar. */
   showRecents: boolean
+  /**
+   * Prefix each tab label with its containing folder ("section-drafter /
+   * system-prompt") so same-named files in different folders can be told
+   * apart.
+   */
+  showTabParentFolder: boolean
   /**
    * Files (by absolute path) whose name is still being auto-derived from
    * their first non-empty line. Removed from this list once the user
@@ -70,8 +78,10 @@ const DEFAULT_SETTINGS: Settings = {
   rawHeadingSizes: false,
   rawWordWrap: true,
   visualSyntaxHighlight: false,
+  visualHeadingMarkers: false,
   variablesPanelVisible: false,
   showRecents: false,
+  showTabParentFolder: false,
   autoNamedPaths: [],
   collapsedSidebarSections: [],
   expandedSidebarSubfolders: []

@@ -52,6 +52,8 @@
   --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
   --color-sidebar-accent: var(--sidebar-accent);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-active: var(--sidebar-active);
+  --color-sidebar-active-foreground: var(--sidebar-active-foreground);
   --color-sidebar-selected: var(--sidebar-selected);
   --color-sidebar-selected-foreground: var(--sidebar-selected-foreground);
   --color-sidebar-border: var(--sidebar-border);
@@ -90,6 +92,11 @@
   --sidebar-primary-foreground: oklch(0.985 0 0);
   --sidebar-accent: oklch(0.97 0 0);
   --sidebar-accent-foreground: oklch(0.205 0 0);
+  /* Row of the file open in the active tab. Distinct from --sidebar-accent
+   * (hover) on purpose: at 0.97 the active row was all but invisible against
+   * the 0.985 sidebar. Faint blue tint ties it to --sidebar-selected. */
+  --sidebar-active: oklch(0.895 0.045 255);
+  --sidebar-active-foreground: oklch(0.28 0.04 255);
   --sidebar-selected: oklch(0.6 0.18 255);
   --sidebar-selected-foreground: oklch(0.99 0 0);
   --sidebar-border: oklch(0.922 0 0);
@@ -123,6 +130,8 @@
   --sidebar-primary-foreground: oklch(0.935 0.01 80);
   --sidebar-accent: oklch(0.255 0.015 70);
   --sidebar-accent-foreground: oklch(0.935 0.01 80);
+  --sidebar-active: oklch(0.295 0.015 70);
+  --sidebar-active-foreground: oklch(0.96 0.01 80);
   --sidebar-selected: oklch(0.5 0.17 257);
   --sidebar-selected-foreground: oklch(0.985 0.005 80);
   --sidebar-border: oklch(0.935 0.01 80 / 10%);
@@ -152,6 +161,39 @@
   .no-drag {
     -webkit-app-region: no-drag;
   }
+}
+
+/* --- macOS traffic lights on an inactive window ------------------------ */
+/*
+ * When the window loses focus macOS repaints close/minimise/zoom as pale grey
+ * circles (~#dedede) — practically the same value as the light-theme tab bar
+ * (#e3e3e3), so they disappear. The buttons are drawn by the OS *above* the
+ * web view, so the only thing we control is what sits behind them: darken the
+ * corner just enough for the circles to read, fading out to the right so it
+ * looks like a soft shade rather than a panel. Dark mode already has ample
+ * contrast and is left alone.
+ */
+.traffic-light-shade {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 104px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 120ms ease-out;
+  background: linear-gradient(
+    90deg,
+    rgba(0, 0, 0, 0.17) 0,
+    rgba(0, 0, 0, 0.17) 62px,
+    rgba(0, 0, 0, 0) 104px
+  );
+}
+.window-blurred .traffic-light-shade {
+  opacity: 1;
+}
+.dark .traffic-light-shade {
+  display: none;
 }
 
 /* --- Variables panel flash highlight ---------------------------------- */

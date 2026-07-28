@@ -352,14 +352,14 @@ const FileRow = ({
           className={cn(
             'group/row relative flex w-full items-center gap-2 pr-2 py-1 text-left text-sm',
             !active && !focused && 'hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
-            active && 'bg-sidebar-accent text-sidebar-accent-foreground font-medium',
+            active && 'bg-sidebar-active text-sidebar-active-foreground font-medium',
             focused && 'bg-sidebar-selected text-sidebar-selected-foreground'
           )}
         >
           <FileTextIcon
             className={cn(
               'size-3.5 shrink-0',
-              focused ? 'text-current/80' : 'text-muted-foreground'
+              focused || active ? 'text-current/80' : 'text-muted-foreground'
             )}
           />
           <TruncatedName>{displayName}</TruncatedName>
@@ -376,12 +376,19 @@ const FileRow = ({
                 className={cn(
                   'absolute right-1 inline-flex items-center justify-center rounded-sm size-5',
                   'opacity-0 group-hover/row:opacity-100',
-                  focused ? 'bg-sidebar-selected' : 'bg-sidebar-accent',
+                  focused
+                    ? 'bg-sidebar-selected'
+                    : active
+                      ? 'bg-sidebar-active'
+                      : 'bg-sidebar-accent',
                   menuOpen && 'opacity-100'
                 )}
               >
                 <MoreHorizontalIcon
-                  className={cn('size-3.5', focused ? 'text-current/80' : 'text-muted-foreground')}
+                  className={cn(
+                    'size-3.5',
+                    focused || active ? 'text-current/80' : 'text-muted-foreground'
+                  )}
                 />
               </span>
             </DropdownMenuTrigger>
@@ -860,10 +867,12 @@ const RecentsRow = ({ path, active, onOpen, onRemove }: RecentsRowProps): React.
         className={cn(
           'flex w-full items-center gap-2 pl-2 pr-2 py-1 text-left text-sm',
           !active && 'hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
-          active && 'bg-sidebar-accent text-sidebar-accent-foreground font-medium'
+          active && 'bg-sidebar-active text-sidebar-active-foreground font-medium'
         )}
       >
-        <FileTextIcon className="size-3.5 shrink-0 text-muted-foreground" />
+        <FileTextIcon
+          className={cn('size-3.5 shrink-0', active ? 'text-current/80' : 'text-muted-foreground')}
+        />
         <TruncatedName>{displayName}</TruncatedName>
       </button>
       <button
@@ -875,7 +884,8 @@ const RecentsRow = ({ path, active, onOpen, onRemove }: RecentsRowProps): React.
         aria-label={`Remove ${displayName} from recents`}
         className={cn(
           'absolute right-1 inline-flex items-center justify-center rounded-sm size-5',
-          'opacity-0 group-hover/row:opacity-100 bg-sidebar-accent text-muted-foreground',
+          'opacity-0 group-hover/row:opacity-100 text-muted-foreground',
+          active ? 'bg-sidebar-active' : 'bg-sidebar-accent',
           'hover:text-foreground'
         )}
       >

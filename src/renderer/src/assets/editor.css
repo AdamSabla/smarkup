@@ -403,6 +403,47 @@
   border-color: rgba(248, 113, 113, 0.2);
 }
 
+/* --- Heading level markers -------------------------------------------- */
+/*
+ * With `.heading-markers` on, each heading gets an "H1"…"H4" tag in the left
+ * margin — the visual editor's answer to counting `#`s in the raw editor.
+ *
+ * The marker is an inline-block ::before rather than an absolutely positioned
+ * box so it rides the first line's baseline for free, whatever top padding
+ * that heading ended up with (first-child and consecutive-heading rules both
+ * change it). Its width, negative left margin and right margin sum to zero,
+ * so the heading text does not move when markers are switched on.
+ */
+.smarkup-editor.heading-markers :is(h1, h2, h3, h4)::before {
+  display: inline-block;
+  width: 30px;
+  margin-left: -42px;
+  margin-right: 12px;
+  text-align: right;
+  vertical-align: baseline;
+  font-family: 'Roboto Mono', ui-monospace, monospace;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: inherit;
+  letter-spacing: 0;
+  color: var(--muted-foreground);
+  opacity: 0.7;
+  user-select: none;
+  pointer-events: none;
+}
+.smarkup-editor.heading-markers h1::before {
+  content: 'H1';
+}
+.smarkup-editor.heading-markers h2::before {
+  content: 'H2';
+}
+.smarkup-editor.heading-markers h3::before {
+  content: 'H3';
+}
+.smarkup-editor.heading-markers h4::before {
+  content: 'H4';
+}
+
 /* --- Placeholder ------------------------------------------------------ */
 .smarkup-editor p.is-editor-empty:first-child::before {
   content: attr(data-placeholder);

@@ -42,8 +42,10 @@ let mockSettings: Settings = {
   rawHeadingSizes: false,
   rawWordWrap: true,
   visualSyntaxHighlight: false,
+  visualHeadingMarkers: false,
   variablesPanelVisible: false,
   showRecents: false,
+  showTabParentFolder: false,
   autoNamedPaths: [],
   collapsedSidebarSections: [],
   expandedSidebarSubfolders: []

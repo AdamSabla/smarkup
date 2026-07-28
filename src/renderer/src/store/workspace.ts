@@ -372,10 +372,14 @@ type WorkspaceState = {
   rawHeadingSizes: boolean
   rawWordWrap: boolean
   visualSyntaxHighlight: boolean
+  /** Show an H1–H4 tag in the left margin of every visual-editor heading. */
+  visualHeadingMarkers: boolean
   /** Whether the bottom Variables panel is shown. */
   variablesPanelVisible: boolean
   /** Whether the Recents section is shown in the sidebar. */
   showRecents: boolean
+  /** Prefix each tab label with its containing folder name. */
+  showTabParentFolder: boolean
 
   // --- Volatile UI state ---
   sections: SidebarSection[]
@@ -566,7 +570,9 @@ type WorkspaceState = {
   setRawHeadingSizes: (enabled: boolean) => Promise<void>
   setRawWordWrap: (enabled: boolean) => Promise<void>
   setVisualSyntaxHighlight: (enabled: boolean) => Promise<void>
+  setVisualHeadingMarkers: (enabled: boolean) => Promise<void>
   setShowRecents: (enabled: boolean) => Promise<void>
+  setShowTabParentFolder: (enabled: boolean) => Promise<void>
   toggleVariablesPanel: () => Promise<void>
   setVariablesPanelVisible: (visible: boolean) => Promise<void>
   openSettings: () => void
@@ -739,8 +745,10 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   rawHeadingSizes: false,
   rawWordWrap: true,
   visualSyntaxHighlight: false,
+  visualHeadingMarkers: false,
   variablesPanelVisible: false,
   showRecents: false,
+  showTabParentFolder: false,
 
   sections: [],
   moveTargets: [],
@@ -792,8 +800,10 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       rawHeadingSizes: settings.rawHeadingSizes ?? false,
       rawWordWrap: settings.rawWordWrap ?? true,
       visualSyntaxHighlight: settings.visualSyntaxHighlight ?? false,
+      visualHeadingMarkers: settings.visualHeadingMarkers ?? false,
       variablesPanelVisible: settings.variablesPanelVisible ?? false,
       showRecents: settings.showRecents ?? false,
+      showTabParentFolder: settings.showTabParentFolder ?? false,
       autoNamedPaths: new Set(settings.autoNamedPaths ?? []),
       collapsedSectionIds: new Set(settings.collapsedSidebarSections ?? []),
       expandedSubfolderPaths: new Set(settings.expandedSidebarSubfolders ?? [])
@@ -2188,9 +2198,19 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     await persistSettings({ visualSyntaxHighlight: enabled })
   },
 
+  setVisualHeadingMarkers: async (enabled) => {
+    set({ visualHeadingMarkers: enabled })
+    await persistSettings({ visualHeadingMarkers: enabled })
+  },
+
   setShowRecents: async (enabled) => {
     set({ showRecents: enabled })
     await persistSettings({ showRecents: enabled })
+  },
+
+  setShowTabParentFolder: async (enabled) => {
+    set({ showTabParentFolder: enabled })
+    await persistSettings({ showTabParentFolder: enabled })
   },
 
   toggleVariablesPanel: async () => {

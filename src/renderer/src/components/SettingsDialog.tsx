@@ -44,8 +44,12 @@ const SettingsDialog = (): React.JSX.Element => {
     setRawHeadingSizes,
     visualSyntaxHighlight,
     setVisualSyntaxHighlight,
+    visualHeadingMarkers,
+    setVisualHeadingMarkers,
     showRecents,
-    setShowRecents
+    setShowRecents,
+    showTabParentFolder,
+    setShowTabParentFolder
   } = useWorkspace()
 
   const handlePickDraftsFolder = async (): Promise<void> => {
@@ -155,6 +159,36 @@ const SettingsDialog = (): React.JSX.Element => {
             </div>
           </div>
 
+          {/* Parent folder in tab labels */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <label className="text-sm font-medium">Show parent folder in tab name</label>
+                <p className="text-xs text-muted-foreground">
+                  Label tabs “folder / file” so same-named files in different folders can be told
+                  apart.
+                </p>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={showTabParentFolder}
+                onClick={() => void setShowTabParentFolder(!showTabParentFolder)}
+                className={cn(
+                  'relative inline-flex h-5 w-9 shrink-0 items-center rounded-full border transition-colors',
+                  showTabParentFolder ? 'bg-primary border-primary' : 'bg-muted border-border'
+                )}
+              >
+                <span
+                  className={cn(
+                    'inline-block size-3.5 rounded-full bg-background shadow transition-transform',
+                    showTabParentFolder ? 'translate-x-[18px]' : 'translate-x-[2px]'
+                  )}
+                />
+              </button>
+            </div>
+          </div>
+
           {/* Auto-save */}
           <div className="space-y-2">
             <div className="flex items-center justify-between gap-4">
@@ -240,6 +274,36 @@ const SettingsDialog = (): React.JSX.Element => {
               </button>
             </div>
           </div>
+          {/* Heading level markers */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <label className="text-sm font-medium">Heading levels in visual editor</label>
+                <p className="text-xs text-muted-foreground">
+                  Show an H1–H4 tag in the margin next to each heading, so the hierarchy is visible
+                  without counting #.
+                </p>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={visualHeadingMarkers}
+                onClick={() => void setVisualHeadingMarkers(!visualHeadingMarkers)}
+                className={cn(
+                  'relative inline-flex h-5 w-9 shrink-0 items-center rounded-full border transition-colors',
+                  visualHeadingMarkers ? 'bg-primary border-primary' : 'bg-muted border-border'
+                )}
+              >
+                <span
+                  className={cn(
+                    'inline-block size-3.5 rounded-full bg-background shadow transition-transform',
+                    visualHeadingMarkers ? 'translate-x-[18px]' : 'translate-x-[2px]'
+                  )}
+                />
+              </button>
+            </div>
+          </div>
+
           {/* Raw heading sizes */}
           <div className="space-y-2">
             <div className="flex items-center justify-between gap-4">
