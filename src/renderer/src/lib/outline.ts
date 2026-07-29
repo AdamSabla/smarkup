@@ -139,6 +139,27 @@ export const applyOutline = (content: string, moves: OutlineMove[]): string => {
   return next === content ? content : next
 }
 
+/**
+ * Where section `id` starts in the document `applyOutline(content, moves)`
+ * would produce — including the case where nothing moved, which is just its
+ * offset in `content`.
+ *
+ * Walks the same rewrite `applyOutline` performs, because a level change can
+ * change a heading line's length (`##` → `###`) and every later offset with it.
+ */
+export const offsetOfSection = (content: string, moves: OutlineMove[], id: number): number => {
+  const { preamble, sections } = parseOutline(content)
+  const byId = new Map(sections.map((s) => [s.id, s]))
+  let offset = preamble.length
+  for (const m of moves) {
+    if (m.id === id) return offset
+    const s = byId.get(m.id)
+    if (!s) continue
+    offset += (s.level === m.level ? s.raw : atLevel(s.raw, m.level)).length
+  }
+  return offset
+}
+
 /** Number of sections nested under `index` (its whole subtree). */
 export const descendantCount = (sections: { level: number }[], index: number): number => {
   const level = sections[index].level

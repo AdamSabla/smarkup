@@ -6,6 +6,7 @@ import {
   ChevronRightIcon,
   ChevronsDownUpIcon,
   ChevronsUpDownIcon,
+  CornerDownLeftIcon,
   PinIcon,
   Redo2Icon,
   Undo2Icon
@@ -23,10 +24,12 @@ import { cn } from '@/lib/utils'
 import {
   applyOutline,
   descendantCount,
+  offsetOfSection,
   parseOutline,
   type Outline,
   type OutlineMove
 } from '@/lib/outline'
+import { revealHeading } from '@/lib/heading-jump'
 import { useWorkspace } from '@/store/workspace'
 
 const isMac = navigator.userAgent.toLowerCase().includes('mac')
@@ -140,6 +143,8 @@ const OutlineDialog = (): React.JSX.Element => {
   const [folded, setFolded] = useState<Set<number>>(new Set())
   const [sel, setSel] = useState(0)
   const [confirmDiscard, setConfirmDiscard] = useState(false)
+  /** Row index waiting on the "apply and go?" confirmation, if any. */
+  const [pendingJump, setPendingJump] = useState<number | null>(null)
   const [dragIndex, setDragIndex] = useState(-1)
   const [gap, setGap] = useState(-1)
 
@@ -161,6 +166,7 @@ const OutlineDialog = (): React.JSX.Element => {
     setFolded(new Set())
     setSel(0)
     setConfirmDiscard(false)
+    setPendingJump(null)
     setDragIndex(-1)
     setGap(-1)
     requestAnimationFrame(() => listRef.current?.focus())
@@ -388,6 +394,39 @@ const OutlineDialog = (): React.JSX.Element => {
     closeOutline()
   }, [dirty, confirmDiscard, closeOutline])
 
+  /**
+   * Close the dialog and reveal a heading in the editor.
+   *
+   * Pending changes are applied on the way out rather than discarded: you
+   * arranged them deliberately, and applying is recoverable with one ⌘Z in the
+   * editor while discarding is not. The section you clicked is the section you
+   * land on either way — moving it changed where it sits, not what it is.
+   */
+  const goToHeading = useCallback(
+    (index: number) => {
+      const row = rows[index]
+      if (!row) return
+      const moves: OutlineMove[] = rows.map((r) => ({ id: r.id, level: r.level }))
+      const offset = offsetOfSection(source, moves, row.id)
+      if (dirty) {
+        updateActiveContent(applyOutline(source, moves))
+        showToast('Outline applied — ⌘Z in the editor undoes it')
+      }
+      closeOutline()
+      revealHeading(index, offset)
+    },
+    [rows, source, dirty, updateActiveContent, closeOutline, showToast]
+  )
+
+  /** Jumping with unsaved moves is a decision, not a side effect — ask first. */
+  const requestJump = useCallback(
+    (index: number) => {
+      if (dirty) setPendingJump(index)
+      else goToHeading(index)
+    },
+    [dirty, goToHeading]
+  )
+
   const revert = (): void => {
     if (!dirty) return
     commit(base, 'Reverted to the original order', 0)
@@ -404,6 +443,11 @@ const OutlineDialog = (): React.JSX.Element => {
     if ((isMac ? e.metaKey : e.ctrlKey) && e.key === 'Enter') {
       e.preventDefault()
       apply()
+      return
+    }
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      requestJump(sel)
       return
     }
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
@@ -598,8 +642,9 @@ const OutlineDialog = (): React.JSX.Element => {
                         listRef.current?.focus()
                       }}
                       style={{ marginLeft: (row.level - 1) * INDENT }}
+                      onDoubleClick={() => requestJump(index)}
                       className={cn(
-                        'flex cursor-grab items-center gap-2 rounded-md border border-transparent px-2 py-1.5',
+                        'group/row flex cursor-grab items-center gap-2 rounded-md border border-transparent px-2 py-1.5',
                         'select-none active:cursor-grabbing',
                         inDrag && 'opacity-40',
                         index === sel
@@ -647,6 +692,25 @@ const OutlineDialog = (): React.JSX.Element => {
                         {subtreeWords(rows, index).toLocaleString()} w
                         {kids > 0 && isFolded ? ` · ${kids} inside` : ''}
                       </span>
+                      {/* Revealed on hover or when selected, so the row stays
+                          quiet until you're actually pointing at it. */}
+                      <span
+                        role="button"
+                        tabIndex={-1}
+                        title={dirty ? 'Apply changes and go to heading' : 'Go to heading'}
+                        aria-label="Go to heading"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          requestJump(index)
+                        }}
+                        className={cn(
+                          'flex size-5 shrink-0 items-center justify-center rounded-sm',
+                          'text-muted-foreground hover:bg-background hover:text-foreground',
+                          index === sel ? 'opacity-100' : 'opacity-0 group-hover/row:opacity-100'
+                        )}
+                      >
+                        <CornerDownLeftIcon className="size-3.5" />
+                      </span>
                     </div>
                   </div>
                 )
@@ -681,12 +745,30 @@ const OutlineDialog = (): React.JSX.Element => {
                 <Kbd>{isMac ? '⌘Z' : 'Ctrl+Z'}</Kbd> undo
               </span>
               <span>
+                <Kbd>↩</Kbd> go to heading
+              </span>
+              <span>
                 <Kbd>{isMac ? '⌘↩' : 'Ctrl+Enter'}</Kbd> apply
               </span>
             </div>
 
             <div className="flex shrink-0 items-center justify-between gap-3 border-t pt-3">
-              {confirmDiscard ? (
+              {pendingJump != null ? (
+                <>
+                  <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+                    Apply {past.length} {past.length === 1 ? 'change' : 'changes'} and go to “
+                    {rows[pendingJump]?.title}”?
+                  </span>
+                  <div className="flex shrink-0 gap-2">
+                    <Button size="sm" variant="ghost" onClick={() => setPendingJump(null)}>
+                      Cancel
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => goToHeading(pendingJump)}>
+                      Apply and go
+                    </Button>
+                  </div>
+                </>
+              ) : confirmDiscard ? (
                 <>
                   <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
                     Discard {past.length} {past.length === 1 ? 'change' : 'changes'}?

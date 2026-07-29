@@ -199,6 +199,24 @@ const readTiptapInfo = (editor: Editor): MatchInfo => {
   return { count: s.matches.length, current: s.currentIndex + 1 }
 }
 
+/**
+ * Scroll a position to the middle of the editor's viewport.
+ *
+ * ProseMirror's own `scrollIntoView()` does the *minimum* scroll that reveals
+ * the position, which parks a match flush against the bottom edge — under the
+ * variables panel, and reading as "it didn't scroll at all". The raw editor
+ * already centres its matches (`EditorView.scrollIntoView(pos, {y:'center'})`),
+ * so this brings the visual editor in line.
+ */
+const centerPos = (editor: Editor, pos: number): void => {
+  const scrollEl = findScrollContainer(editor.view.dom)
+  if (!scrollEl) return
+  const coords = editor.view.coordsAtPos(pos)
+  const top = scrollEl.getBoundingClientRect().top
+  const yInContent = coords.top - top + scrollEl.scrollTop
+  scrollEl.scrollTo({ top: Math.max(0, yInContent - scrollEl.clientHeight / 2) })
+}
+
 export const createTiptapSearchAdapter = (editor: Editor): SearchAdapter => {
   const applyAndReadAfter = (
     meta: unknown,
@@ -214,7 +232,8 @@ export const createTiptapSearchAdapter = (editor: Editor): SearchAdapter => {
       const { state, dispatch } = editor.view
       const from = Math.min(target.from, state.doc.content.size)
       const to = Math.min(target.to, state.doc.content.size)
-      dispatch(state.tr.setSelection(TextSelection.create(state.doc, from, to)).scrollIntoView())
+      dispatch(state.tr.setSelection(TextSelection.create(state.doc, from, to)))
+      centerPos(editor, from)
     }
     return readTiptapInfo(editor)
   }
@@ -245,11 +264,8 @@ export const createTiptapSearchAdapter = (editor: Editor): SearchAdapter => {
       if (after && after.matches.length > 0) {
         const target = after.matches[after.currentIndex]
         const { state, dispatch } = editor.view
-        dispatch(
-          state.tr
-            .setSelection(TextSelection.create(state.doc, target.from, target.to))
-            .scrollIntoView()
-        )
+        dispatch(state.tr.setSelection(TextSelection.create(state.doc, target.from, target.to)))
+        centerPos(editor, target.from)
       }
       return readTiptapInfo(editor)
     },
@@ -320,7 +336,8 @@ export const createTiptapSearchAdapter = (editor: Editor): SearchAdapter => {
         const { state, dispatch } = editor.view
         const from = Math.min(target.from, state.doc.content.size)
         const to = Math.min(target.to, state.doc.content.size)
-        dispatch(state.tr.setSelection(TextSelection.create(state.doc, from, to)).scrollIntoView())
+        dispatch(state.tr.setSelection(TextSelection.create(state.doc, from, to)))
+        centerPos(editor, from)
       }
       return readTiptapInfo(editor)
     }

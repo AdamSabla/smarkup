@@ -374,7 +374,7 @@ const FileRow = ({
                   setMenuOpen(true)
                 }}
                 className={cn(
-                  'absolute right-1 inline-flex items-center justify-center rounded-sm size-5',
+                  'absolute right-3 inline-flex items-center justify-center rounded-sm size-5',
                   'opacity-0 group-hover/row:opacity-100',
                   focused
                     ? 'bg-sidebar-selected'
@@ -495,6 +495,7 @@ type SubfolderViewProps = {
   onCancelRename: () => void
   onFocusItem: (path: string) => void
   onCreateSubfolder: (parentPath: string) => void
+  onStartRenameFolder: (path: string) => void
   onCommitFolderRename: (oldPath: string, newName: string) => void
   onCancelFolderRename: () => void
 }
@@ -511,6 +512,7 @@ const SubfolderView = ({
   onCancelRename,
   onFocusItem,
   onCreateSubfolder,
+  onStartRenameFolder,
   onCommitFolderRename,
   onCancelFolderRename
 }: SubfolderViewProps): React.JSX.Element => {
@@ -520,6 +522,44 @@ const SubfolderView = ({
   const isEmpty = folder.files.length === 0 && folder.subfolders.length === 0
   const isRenaming = renamingFolderPath === folder.path
   const dnd = useSidebarDnd()
+  const [folderMenuOpen, setFolderMenuOpen] = useState(false)
+  const { createFileInFolder, deleteFolder } = useWorkspace()
+
+  // Declared as data so the right-click menu and the "…" button render exactly
+  // the same actions through their own (incompatible) item primitives.
+  const folderActions: {
+    label: string
+    icon: React.ElementType
+    destructive?: boolean
+    run: () => void
+  }[] = [
+    {
+      label: 'New file',
+      icon: FilePlusIcon,
+      run: () => void createFileInFolder(folder.path)
+    },
+    { label: 'New folder', icon: FolderPlusIcon, run: () => onCreateSubfolder(folder.path) },
+    { label: 'Rename', icon: PencilIcon, run: () => onStartRenameFolder(folder.path) },
+    {
+      label: revealLabel,
+      icon: FolderOpenIcon,
+      run: () => void window.api.revealInFolder(folder.path)
+    },
+    {
+      label: 'Delete folder',
+      icon: TrashIcon,
+      destructive: true,
+      // `fs.rm` is recursive and doesn't go through the trash, so a folder
+      // delete is unrecoverable in a way a single-file delete isn't.
+      run: () => {
+        const count = folder.files.length + folder.subfolders.length
+        const detail = count > 0 ? ` and the ${count} item${count === 1 ? '' : 's'} in it` : ''
+        if (window.confirm(`Delete “${folder.name}”${detail}? This can't be undone.`)) {
+          void deleteFolder(folder.path)
+        }
+      }
+    }
+  ]
   // Suppress drop highlight when the user hovers the folder they're dragging
   // (no-op anyway, but it would look like a valid target otherwise).
   const isDropTarget = dnd.dragOverPath === folder.path && dnd.draggingPath !== folder.path
@@ -537,56 +577,108 @@ const SubfolderView = ({
 
   return (
     <div>
-      <div className="group/folder relative flex items-center">
-        <button
-          data-sidebar-path={folder.path}
-          draggable
-          onDragStart={(e) => dnd.onItemDragStart(e, { kind: 'folder', path: folder.path })}
-          onDragEnd={dnd.onItemDragEnd}
-          onDragEnter={(e) => dnd.onTargetDragOver(e, folder.path, folder.path)}
-          onDragOver={(e) => dnd.onTargetDragOver(e, folder.path, folder.path)}
-          onDrop={(e) => dnd.onTargetDrop(e, folder.path)}
-          onClick={() => {
-            onFocusItem(folder.path)
-            onToggleExpanded(folder.path)
-          }}
-          style={{ paddingLeft }}
-          className={cn(
-            'flex w-full items-center gap-1.5 pr-2 py-1 text-left text-sm',
-            'text-muted-foreground',
-            !focused &&
-              !isDropTarget &&
-              'hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
-            focused && 'bg-sidebar-selected text-sidebar-selected-foreground',
-            isDropTarget &&
-              'bg-sidebar-accent/70 ring-1 ring-inset ring-primary/60 text-sidebar-accent-foreground'
-          )}
-        >
-          <ChevronRightIcon
-            className={cn(
-              'size-3 shrink-0 transition-transform duration-150',
-              expanded && 'rotate-90'
-            )}
-          />
-          {expanded ? (
-            <FolderOpenIcon className="size-3.5 shrink-0" />
-          ) : (
-            <FolderIcon className="size-3.5 shrink-0" />
-          )}
-          <TruncatedName>{folder.name}</TruncatedName>
-        </button>
-        <span
-          role="button"
-          tabIndex={-1}
-          onClick={(e) => {
-            e.stopPropagation()
-            onCreateSubfolder(folder.path)
-          }}
-          className="absolute right-1 inline-flex items-center justify-center rounded-sm size-5 opacity-0 group-hover/folder:opacity-100 bg-sidebar-accent"
-        >
-          <PlusIcon className="size-3 text-muted-foreground" />
-        </span>
-      </div>
+      <ContextMenu>
+        <ContextMenuTrigger asChild>
+          <div className="group/folder relative flex items-center">
+            <button
+              data-sidebar-path={folder.path}
+              draggable
+              onDragStart={(e) => dnd.onItemDragStart(e, { kind: 'folder', path: folder.path })}
+              onDragEnd={dnd.onItemDragEnd}
+              onDragEnter={(e) => dnd.onTargetDragOver(e, folder.path, folder.path)}
+              onDragOver={(e) => dnd.onTargetDragOver(e, folder.path, folder.path)}
+              onDrop={(e) => dnd.onTargetDrop(e, folder.path)}
+              onClick={() => {
+                onFocusItem(folder.path)
+                onToggleExpanded(folder.path)
+              }}
+              style={{ paddingLeft }}
+              className={cn(
+                'flex w-full items-center gap-1.5 pr-2 py-1 text-left text-sm',
+                'text-muted-foreground',
+                !focused &&
+                  !isDropTarget &&
+                  'hover:bg-sidebar-accent hover:text-sidebar-accent-foreground',
+                focused && 'bg-sidebar-selected text-sidebar-selected-foreground',
+                isDropTarget &&
+                  'bg-sidebar-accent/70 ring-1 ring-inset ring-primary/60 text-sidebar-accent-foreground'
+              )}
+            >
+              <ChevronRightIcon
+                className={cn(
+                  'size-3 shrink-0 transition-transform duration-150',
+                  expanded && 'rotate-90'
+                )}
+              />
+              {expanded ? (
+                <FolderOpenIcon className="size-3.5 shrink-0" />
+              ) : (
+                <FolderIcon className="size-3.5 shrink-0" />
+              )}
+              <TruncatedName>{folder.name}</TruncatedName>
+            </button>
+            {/* Sits at right-3, not right-1: the scroll area's bar overlays the
+            last ~10px of the row and was swallowing clicks on these. */}
+            <span
+              role="button"
+              tabIndex={-1}
+              aria-label={`New folder in ${folder.name}`}
+              onClick={(e) => {
+                e.stopPropagation()
+                onCreateSubfolder(folder.path)
+              }}
+              className="absolute right-8 inline-flex items-center justify-center rounded-sm size-5 opacity-0 group-hover/folder:opacity-100 bg-sidebar-accent"
+            >
+              <PlusIcon className="size-3 text-muted-foreground" />
+            </span>
+            <DropdownMenu open={folderMenuOpen} onOpenChange={setFolderMenuOpen}>
+              <DropdownMenuTrigger asChild>
+                <span
+                  role="button"
+                  tabIndex={-1}
+                  aria-label={`${folder.name} options`}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setFolderMenuOpen(true)
+                  }}
+                  className={cn(
+                    'absolute right-3 inline-flex items-center justify-center rounded-sm size-5',
+                    'opacity-0 group-hover/folder:opacity-100 bg-sidebar-accent',
+                    folderMenuOpen && 'opacity-100'
+                  )}
+                >
+                  <MoreHorizontalIcon className="size-3.5 text-muted-foreground" />
+                </span>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent side="right" align="start">
+                {folderActions.map((a, i) => (
+                  <span key={a.label}>
+                    {i === folderActions.length - 1 && <DropdownMenuSeparator />}
+                    <DropdownMenuItem
+                      variant={a.destructive ? 'destructive' : undefined}
+                      onSelect={a.run}
+                    >
+                      <a.icon className="size-3.5" />
+                      {a.label}
+                    </DropdownMenuItem>
+                  </span>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        </ContextMenuTrigger>
+        <ContextMenuContent>
+          {folderActions.map((a, i) => (
+            <span key={a.label}>
+              {i === folderActions.length - 1 && <ContextMenuSeparator />}
+              <ContextMenuItem variant={a.destructive ? 'destructive' : undefined} onSelect={a.run}>
+                <a.icon className="size-3.5" />
+                {a.label}
+              </ContextMenuItem>
+            </span>
+          ))}
+        </ContextMenuContent>
+      </ContextMenu>
 
       {expanded && (
         <div>
@@ -613,6 +705,7 @@ const SubfolderView = ({
               onCancelRename={onCancelRename}
               onFocusItem={onFocusItem}
               onCreateSubfolder={onCreateSubfolder}
+              onStartRenameFolder={onStartRenameFolder}
               onCommitFolderRename={onCommitFolderRename}
               onCancelFolderRename={onCancelFolderRename}
             />
@@ -647,6 +740,7 @@ type SectionViewProps = {
   onFocusItem: (path: string) => void
   onToggleShowAll: () => void
   onCreateSubfolder: (parentPath: string) => void
+  onStartRenameFolder: (path: string) => void
   onCommitFolderRename: (oldPath: string, newName: string) => void
   onCancelFolderRename: () => void
   /** Optional reorder handle. Rendered absolutely-positioned on the left
@@ -672,6 +766,7 @@ const SectionView = ({
   onFocusItem,
   onToggleShowAll,
   onCreateSubfolder,
+  onStartRenameFolder,
   onCommitFolderRename,
   onCancelFolderRename,
   dragHandle,
@@ -679,7 +774,7 @@ const SectionView = ({
 }: SectionViewProps): React.JSX.Element => {
   const expanded = expandedPaths.has(section.id)
   const focused = focusedItem === section.id
-  const { createDraft } = useWorkspace()
+  const { createDraft, createSubfolder } = useWorkspace()
   const dnd = useSidebarDnd()
   const isDropTarget = section.path != null && dnd.dragOverPath === section.id
 
@@ -767,6 +862,20 @@ const SectionView = ({
               </DropdownMenuItem>
             )}
             {section.path && (
+              <DropdownMenuItem
+                onSelect={() => void useWorkspace.getState().createFileInFolder(section.path!)}
+              >
+                <FilePlusIcon className="size-3.5" />
+                New file
+              </DropdownMenuItem>
+            )}
+            {section.path && (
+              <DropdownMenuItem onSelect={() => void createSubfolder(section.path!)}>
+                <FolderPlusIcon className="size-3.5" />
+                New folder
+              </DropdownMenuItem>
+            )}
+            {section.path && (
               <DropdownMenuItem onSelect={() => void window.api.revealInFolder(section.path!)}>
                 <FolderOpenIcon className="size-3.5" />
                 {revealLabel}
@@ -821,6 +930,7 @@ const SectionView = ({
               onCancelRename={onCancelRename}
               onFocusItem={onFocusItem}
               onCreateSubfolder={onCreateSubfolder}
+              onStartRenameFolder={onStartRenameFolder}
               onCommitFolderRename={onCommitFolderRename}
               onCancelFolderRename={onCancelFolderRename}
             />
@@ -883,7 +993,7 @@ const RecentsRow = ({ path, active, onOpen, onRemove }: RecentsRowProps): React.
         }}
         aria-label={`Remove ${displayName} from recents`}
         className={cn(
-          'absolute right-1 inline-flex items-center justify-center rounded-sm size-5',
+          'absolute right-3 inline-flex items-center justify-center rounded-sm size-5',
           'opacity-0 group-hover/row:opacity-100 text-muted-foreground',
           active ? 'bg-sidebar-active' : 'bg-sidebar-accent',
           'hover:text-foreground'
@@ -1463,6 +1573,7 @@ const Sidebar = (): React.JSX.Element => {
     onCancelRename: () => setRenamingPath(null),
     onFocusItem: handleFocusItem,
     onCreateSubfolder: handleCreateSubfolder,
+    onStartRenameFolder: setRenamingFolderPath,
     onCommitFolderRename: handleCommitFolderRename,
     onCancelFolderRename: handleCancelFolderRename
   }

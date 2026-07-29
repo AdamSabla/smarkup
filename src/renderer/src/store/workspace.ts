@@ -474,6 +474,10 @@ type WorkspaceState = {
   setDraftsFolder: (path: string | null) => Promise<void>
   addFolder: (path: string) => Promise<void>
   removeFolder: (path: string) => Promise<void>
+  /** Create a new auto-named markdown file inside `parentPath` and open it. */
+  createFileInFolder: (parentPath: string) => Promise<string>
+  /** Delete a folder and everything in it from disk. */
+  deleteFolder: (path: string) => Promise<void>
   /**
    * Reorder the user's top-level additional folders. Indexes address the
    * `additionalFolders` array, which is the source of truth for sidebar
@@ -1154,6 +1158,32 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     if (section) await get().refreshSection(section.id)
     void get().refreshMoveTargets()
     return newPath
+  },
+
+  createFileInFolder: async (parentPath) => {
+    // Same auto-naming contract as createDraft: the file starts as
+    // `untitled-…` and renames itself from the first line the user types.
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
+    const newPath = await window.api.createFile(parentPath, `untitled-${timestamp}.md`)
+    const nextAutoNamed = new Set(get().autoNamedPaths)
+    nextAutoNamed.add(newPath)
+    set({ autoNamedPaths: nextAutoNamed })
+    void persistSettings({ autoNamedPaths: Array.from(nextAutoNamed) })
+    const section = get().sections.find(
+      (s) => s.path && (parentPath === s.path || parentPath.startsWith(s.path + '/'))
+    )
+    if (section) await get().refreshSection(section.id)
+    await get().openFile(newPath)
+    return newPath
+  },
+
+  deleteFolder: async (path) => {
+    await window.api.deletePath(path)
+    const section = get().sections.find(
+      (s) => s.path && (path === s.path || path.startsWith(s.path + '/'))
+    )
+    if (section) await get().refreshSection(section.id)
+    void get().refreshMoveTargets()
   },
 
   renameFolder: async (oldPath, newName) => {

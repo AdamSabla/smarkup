@@ -72,8 +72,16 @@ const FindBar = (): React.JSX.Element | null => {
   // When the active editor swaps (tab switch, raw↔visual toggle), re-apply
   // the persisted query against the new adapter so highlights survive the
   // swap, and clean them up when this adapter goes away.
+  // Also keyed on `open`: closing the bar renders null but does NOT unmount
+  // this component, so the cleanup below never ran on close and the yellow
+  // highlights survived Escape. Clearing on `open === false` is what actually
+  // ends the search; the query itself is kept so ⌘F reopens where you left off.
   useEffect(() => {
     if (!adapter) return
+    if (!open) {
+      adapter.clear()
+      return
+    }
     // Defer the setInfo to a microtask so we don't call setState
     // synchronously inside an effect (react-hooks/set-state-in-effect). The
     // microtask flushes before paint, so the counter still reflects the
@@ -81,7 +89,7 @@ const FindBar = (): React.JSX.Element | null => {
     const result = adapter.setQuery(queryRef.current)
     queueMicrotask(() => setInfo(result))
     return () => adapter.clear()
-  }, [adapter])
+  }, [adapter, open])
 
   // When the bar opens, focus + select the existing query so the user can
   // immediately start typing to overwrite it (Chrome behavior).
