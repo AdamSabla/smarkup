@@ -438,7 +438,11 @@ const OutlineDialog = (): React.JSX.Element => {
 
   return (
     <Dialog open={outlineOpen} onOpenChange={(open) => !open && requestClose()}>
-      <DialogContent className="flex max-h-[85vh] flex-col overflow-hidden sm:max-w-xl">
+      {/* Anchored near the top rather than centred: the list grows and shrinks
+          as sections fold, and a centred dialog re-centres on every change, so
+          the row you just clicked slides out from under the pointer. Same
+          position the command palette uses. */}
+      <DialogContent className="top-[10%] flex max-h-[80vh] translate-y-0 flex-col overflow-hidden sm:max-w-xl">
         <div className="flex shrink-0 items-start justify-between gap-4">
           <div>
             <DialogTitle className="pr-0 text-base">Outline</DialogTitle>
