@@ -4,11 +4,20 @@ import {
   ChevronDownIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
+  ChevronsDownUpIcon,
+  ChevronsUpDownIcon,
   PinIcon,
   Redo2Icon,
   Undo2Icon
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger
+} from '@/components/ui/dropdown-menu'
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog'
 import { cn } from '@/lib/utils'
 import {
@@ -263,6 +272,36 @@ const OutlineDialog = (): React.JSX.Element => {
     })
   }, [])
 
+  /** Rows that have something to fold — the only ones a fold set can contain. */
+  const foldable = useMemo(() => rows.filter((_, i) => descendantCount(rows, i) > 0), [rows])
+  const allFolded = foldable.length > 0 && foldable.every((r) => folded.has(r.id))
+  const deepest = rows.reduce((max, r) => Math.max(max, r.level), 1)
+
+  /**
+   * Fold everything deeper than `level`, so the list bottoms out at that
+   * heading level. Folding a row hides its children, so folding every row at
+   * or below `level` is exactly "show H1…H{level}".
+   */
+  const showToLevel = useCallback(
+    (level: number) => {
+      setFolded(new Set(foldable.filter((r) => r.level >= level).map((r) => r.id)))
+    },
+    [foldable]
+  )
+
+  // A collapse can hide the selected row. Walking up to its nearest visible
+  // ancestor keeps ↑↓ and the level buttons pointing at something on screen.
+  useEffect(() => {
+    if (visible.includes(sel) || rows.length === 0) return
+    for (let i = sel - 1; i >= 0; i--) {
+      if (visible.includes(i)) {
+        setSel(i)
+        return
+      }
+    }
+    setSel(visible[0] ?? 0)
+  }, [visible, sel, rows.length])
+
   // --- Drag ----------------------------------------------------------------
   // Row midpoints are measured once per drag and the dragover handler is
   // throttled to a frame, so pointer movement never triggers a re-render
@@ -409,6 +448,59 @@ const OutlineDialog = (): React.JSX.Element => {
             </DialogDescription>
           </div>
           <div className="flex shrink-0 items-center gap-1">
+            {/* Split button: the main half toggles everything, the chevron
+                opens depth presets for documents too deep to read whole. */}
+            <div className="flex items-center overflow-hidden rounded-md border">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-7 rounded-none border-0"
+                aria-label={allFolded ? 'Expand all' : 'Collapse all'}
+                title={allFolded ? 'Expand all' : 'Collapse all'}
+                onClick={() => {
+                  if (allFolded) setFolded(new Set())
+                  else setFolded(new Set(foldable.map((r) => r.id)))
+                  listRef.current?.focus()
+                }}
+              >
+                {allFolded ? (
+                  <ChevronsUpDownIcon className="size-4" />
+                ) : (
+                  <ChevronsDownUpIcon className="size-4" />
+                )}
+              </Button>
+              <div className="h-4 w-px bg-border" />
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="size-7 rounded-none border-0"
+                    aria-label="Fold options"
+                  >
+                    <ChevronDownIcon className="size-3" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onSelect={() => setFolded(new Set())}>
+                    <ChevronsUpDownIcon className="size-3.5" />
+                    Expand all
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => setFolded(new Set(foldable.map((r) => r.id)))}>
+                    <ChevronsDownUpIcon className="size-3.5" />
+                    Collapse all
+                  </DropdownMenuItem>
+                  {deepest > 1 && <DropdownMenuSeparator />}
+                  {Array.from({ length: deepest - 1 }, (_, i) => i + 1).map((level) => (
+                    <DropdownMenuItem key={level} onSelect={() => showToLevel(level)}>
+                      <span className="w-3.5" />
+                      {level === 1 ? 'Show H1 only' : `Show down to H${level}`}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+            <div className="mx-1 h-4 w-px bg-border" />
             <Button
               variant="ghost"
               size="icon"
