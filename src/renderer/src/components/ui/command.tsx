@@ -10,6 +10,10 @@ const Command = ({
 }: React.ComponentProps<typeof CommandPrimitive>): React.JSX.Element => (
   <CommandPrimitive
     data-slot="command"
+    // Arrow keys wrap: ↑ on the first item lands on the last one. The lists
+    // here are short and the last group (commands) is often what you want
+    // when the first group (files) has focus.
+    loop
     className={cn(
       'bg-popover text-popover-foreground flex h-full w-full flex-col overflow-hidden rounded-md',
       className

@@ -507,6 +507,7 @@ const CommandPaletteBody = (): React.JSX.Element => {
                 }}
               >
                 <ListTreeIcon /> Outline...
+                <CommandShortcut>{isMac ? '⌘⇧O' : 'Ctrl+Shift+O'}</CommandShortcut>
               </CommandItem>
             )}
             <CommandItem

@@ -34,6 +34,7 @@ export const useShortcuts = (): void => {
     openCommandPalette,
     startRenamingTab,
     openShortcuts,
+    openOutline,
     openFindBar,
     openDiffPicker,
     openFile,
@@ -186,6 +187,14 @@ export const useShortcuts = (): void => {
         return
       }
 
+      // Outline: cmd/ctrl+shift+o — sibling of ⌘O (open a file), and the same
+      // key VS Code uses for "go to symbol in file", which is the same idea.
+      if (key === 'o' && e.shiftKey && !e.altKey) {
+        e.preventDefault()
+        if (activeTabId && !activeTabId.startsWith('diff:')) openOutline()
+        return
+      }
+
       // Keyboard shortcuts: cmd/ctrl+shift+/
       if (e.key === '/' && e.shiftKey && !e.altKey) {
         e.preventDefault()
@@ -258,6 +267,7 @@ export const useShortcuts = (): void => {
     openCommandPalette,
     startRenamingTab,
     openShortcuts,
+    openOutline,
     openFindBar,
     openDiffPicker,
     openFile,
