@@ -16,6 +16,7 @@ const shortcuts: { section: string; items: { label: string; keys: string }[] }[]
       { label: 'Quick open', keys: `${mod} P` },
       { label: 'Command palette', keys: `${mod} K` },
       { label: 'Outline', keys: `${mod} Shift O` },
+      { label: 'Toggle outline panel', keys: `${mod} Alt O` },
       { label: 'Settings', keys: `${mod} ,` },
       { label: 'Keyboard shortcuts', keys: `${mod} Shift /` },
       { label: 'Toggle variables panel', keys: `${mod} Shift V` },

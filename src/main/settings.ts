@@ -36,6 +36,12 @@ export type Settings = {
   visualHeadingMarkers: boolean
   /** Whether the bottom Variables panel is shown. */
   variablesPanelVisible: boolean
+  /** Whether the outline is docked beside the editor inside each pane. */
+  outlinePanelVisible: boolean
+  /** Width of the docked outline panel, in px. */
+  outlinePanelWidth: number
+  /** Which side of the editor the docked outline sits on. */
+  outlinePanelSide: 'left' | 'right'
   /** Whether the Recents section is shown in the sidebar. */
   showRecents: boolean
   /**
@@ -80,6 +86,9 @@ const DEFAULT_SETTINGS: Settings = {
   visualSyntaxHighlight: false,
   visualHeadingMarkers: false,
   variablesPanelVisible: false,
+  outlinePanelVisible: false,
+  outlinePanelWidth: 260,
+  outlinePanelSide: 'right',
   showRecents: false,
   showTabParentFolder: false,
   autoNamedPaths: [],

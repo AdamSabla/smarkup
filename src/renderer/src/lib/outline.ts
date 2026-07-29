@@ -122,20 +122,37 @@ const atLevel = (raw: string, level: number): string =>
   raw.replace(ATX_RE, (_m, _hashes: string, rest: string) => `${'#'.repeat(level)} ${rest}`)
 
 /**
- * Rebuild the document from a reordered list of sections.
+ * The reordered sections as text, ready to concatenate.
  *
- * Returns the original content unchanged when the moves describe the order
- * the file is already in, so an untouched dialog can't dirty the buffer.
+ * A section's `raw` reaches the end of the file, so the last one often has no
+ * trailing newline — the visual editor's markdown serializer doesn't emit one.
+ * Move that section anywhere but last and the following heading would land on
+ * the end of its final paragraph, where `#` is literal text rather than a
+ * heading: the section silently disappears from the document *and* from the
+ * outline. Every part except the last therefore ends in a newline.
  */
-export const applyOutline = (content: string, moves: OutlineMove[]): string => {
-  const { preamble, sections } = parseOutline(content)
+const partsOf = (content: string, moves: OutlineMove[]): string[] => {
+  const { sections } = parseOutline(content)
   const byId = new Map(sections.map((s) => [s.id, s]))
   const parts = moves.map((m) => {
     const s = byId.get(m.id)
     if (!s) return ''
     return s.level === m.level ? s.raw : atLevel(s.raw, m.level)
   })
-  const next = preamble + parts.join('')
+  return parts.map((p, i) =>
+    i < parts.length - 1 && p.length > 0 && !p.endsWith('\n') ? `${p}\n` : p
+  )
+}
+
+/**
+ * Rebuild the document from a reordered list of sections.
+ *
+ * Returns the original content unchanged when the moves describe the order
+ * the file is already in, so an untouched dialog can't dirty the buffer.
+ */
+export const applyOutline = (content: string, moves: OutlineMove[]): string => {
+  const { preamble } = parseOutline(content)
+  const next = preamble + partsOf(content, moves).join('')
   return next === content ? content : next
 }
 
@@ -148,16 +165,29 @@ export const applyOutline = (content: string, moves: OutlineMove[]): string => {
  * change a heading line's length (`##` → `###`) and every later offset with it.
  */
 export const offsetOfSection = (content: string, moves: OutlineMove[], id: number): number => {
-  const { preamble, sections } = parseOutline(content)
-  const byId = new Map(sections.map((s) => [s.id, s]))
+  const { preamble } = parseOutline(content)
+  const parts = partsOf(content, moves)
   let offset = preamble.length
-  for (const m of moves) {
-    if (m.id === id) return offset
-    const s = byId.get(m.id)
-    if (!s) continue
-    offset += (s.level === m.level ? s.raw : atLevel(s.raw, m.level)).length
+  for (let i = 0; i < moves.length; i++) {
+    if (moves[i].id === id) return offset
+    offset += parts[i].length
   }
   return offset
+}
+
+/**
+ * Byte offset of every section's heading line in the content the outline was
+ * parsed from. The unmoved case of `offsetOfSection`, computed once for the
+ * whole list — what a live outline needs, since it always addresses the
+ * document as it currently is.
+ */
+export const sectionOffsets = (outline: Outline): number[] => {
+  let offset = outline.preamble.length
+  return outline.sections.map((s) => {
+    const at = offset
+    offset += s.raw.length
+    return at
+  })
 }
 
 /** Number of sections nested under `index` (its whole subtree). */

@@ -20,6 +20,7 @@ import { getActiveRawEditor, setActiveRawEditor } from '@/lib/active-raw-editor'
 import {
   markdownHighlight,
   placeholderHighlighter,
+  partialLinkHandler,
   inlineCodeHighlighter,
   todoCommentHighlighter,
   todoColonAutoBracket,
@@ -601,6 +602,7 @@ const RawEditor = ({ value, onChange, isActive }: Props): React.JSX.Element => {
       Prec.high(drawSelection({ cursorBlinkRate: 0 })),
       checklistKeymap,
       placeholderHighlighter,
+      partialLinkHandler,
       inlineCodeHighlighter,
       todoCommentHighlighter,
       todoColonAutoBracket,

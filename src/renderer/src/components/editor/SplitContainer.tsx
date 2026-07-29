@@ -3,6 +3,7 @@ import { useWorkspace, type PaneNode } from '@/store/workspace'
 import { cn } from '@/lib/utils'
 import PaneTabBar from './PaneTabBar'
 import EditorPane from './EditorPane'
+import OutlinePanel from './OutlinePanel'
 
 type SplitContainerProps = {
   node: PaneNode
@@ -18,6 +19,7 @@ const SplitContainer = ({
   const activePaneId = useWorkspace((s) => s.activePaneId)
   const resizePanes = useWorkspace((s) => s.resizePanes)
   const paneRoot = useWorkspace((s) => s.paneRoot)
+  const outlineSide = useWorkspace((s) => s.outlinePanelSide)
   const isMultiPane = paneRoot.type === 'split'
 
   if (node.type === 'leaf') {
@@ -31,8 +33,15 @@ const SplitContainer = ({
         )}
       >
         <PaneTabBar paneId={node.id} isFirst={isFirst} isLast={isLast} />
-        <div className="min-h-0 flex-1">
-          <EditorPane tabId={node.activeTabId} paneId={node.id} />
+        {/* The outline docks inside the pane, under the tab bar: it belongs to
+            the document you're reading, so it follows the tab rather than the
+            window. */}
+        <div className="flex min-h-0 flex-1">
+          {outlineSide === 'left' && <OutlinePanel tabId={node.activeTabId} paneId={node.id} />}
+          <div className="min-w-0 flex-1">
+            <EditorPane tabId={node.activeTabId} paneId={node.id} />
+          </div>
+          {outlineSide === 'right' && <OutlinePanel tabId={node.activeTabId} paneId={node.id} />}
         </div>
       </div>
     )

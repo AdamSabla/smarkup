@@ -35,6 +35,7 @@ export const useShortcuts = (): void => {
     startRenamingTab,
     openShortcuts,
     openOutline,
+    toggleOutlinePanel,
     openFindBar,
     openDiffPicker,
     openFile,
@@ -195,6 +196,15 @@ export const useShortcuts = (): void => {
         return
       }
 
+      // Dock/undock the outline panel: cmd/ctrl+alt+o — the persistent
+      // sibling of ⌘⇧O's one-shot modal. Matched on `code` as well because
+      // Option rewrites the character on macOS (⌥O arrives as "ø").
+      if ((key === 'o' || e.code === 'KeyO') && e.altKey && !e.shiftKey) {
+        e.preventDefault()
+        if (activeTabId && !activeTabId.startsWith('diff:')) void toggleOutlinePanel()
+        return
+      }
+
       // Keyboard shortcuts: cmd/ctrl+shift+/
       if (e.key === '/' && e.shiftKey && !e.altKey) {
         e.preventDefault()
@@ -268,6 +278,7 @@ export const useShortcuts = (): void => {
     startRenamingTab,
     openShortcuts,
     openOutline,
+    toggleOutlinePanel,
     openFindBar,
     openDiffPicker,
     openFile,

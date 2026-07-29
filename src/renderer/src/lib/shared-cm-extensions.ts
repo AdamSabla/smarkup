@@ -9,11 +9,13 @@ import {
   Decoration,
   type DecorationSet,
   ViewPlugin,
+  WidgetType,
   type ViewUpdate
 } from '@codemirror/view'
 import { RangeSetBuilder } from '@codemirror/state'
 import { HighlightStyle } from '@codemirror/language'
 import { tags } from '@lezer/highlight'
+import { openPartial, partialRefOf } from '@/lib/partials'
 
 /* ------------------------------------------------------------------ */
 /*  Heading syntax highlight style                                     */
@@ -46,6 +48,65 @@ const todoMark = Decoration.mark({ class: 'cm-todo-highlight' })
 /*  ViewPlugin highlighters                                            */
 /* ------------------------------------------------------------------ */
 
+const isMacUA = navigator.userAgent.toLowerCase().includes('mac')
+const MOD_LABEL = isMacUA ? '⌘' : 'Ctrl'
+
+/**
+ * An import placeholder (`{{> _shared/x}}`) names another file, so it's
+ * treated as a link: this mark carries the reference for the click handler,
+ * and `PartialOpenWidget` puts a visible affordance next to it.
+ */
+const partialMark = (ref: string): Decoration =>
+  Decoration.mark({
+    class: 'cm-placeholder-highlight cm-partial-ref',
+    attributes: { 'data-partial-ref': ref, title: `${MOD_LABEL}-click to open ${ref}` }
+  })
+
+class PartialOpenWidget extends WidgetType {
+  constructor(readonly ref: string) {
+    super()
+  }
+
+  // Two widgets for the same reference are interchangeable, so CodeMirror can
+  // reuse the DOM instead of rebuilding it on every viewport update.
+  eq(other: PartialOpenWidget): boolean {
+    return other.ref === this.ref
+  }
+
+  toDOM(): HTMLElement {
+    const el = document.createElement('span')
+    el.className = 'cm-partial-open'
+    el.dataset.partialRef = this.ref
+    el.setAttribute('role', 'button')
+    el.title = `Open ${this.ref}`
+    el.innerHTML =
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17 17 7"/><path d="M8 7h9v9"/></svg>'
+    return el
+  }
+
+  ignoreEvent(): boolean {
+    return false
+  }
+}
+
+/**
+ * Open the referenced file when the icon is clicked, or when a placeholder is
+ * mod-clicked. Bound on mousedown so the caret doesn't move first.
+ */
+export const partialLinkHandler = EditorView.domEventHandlers({
+  mousedown: (event) => {
+    const el = event.target instanceof HTMLElement ? event.target : null
+    if (!el) return false
+    const onIcon = !!el.closest('.cm-partial-open')
+    if (!onIcon && !(isMacUA ? event.metaKey : event.ctrlKey)) return false
+    const ref = el.closest<HTMLElement>('[data-partial-ref]')?.dataset.partialRef
+    if (!ref) return false
+    event.preventDefault()
+    void openPartial(ref)
+    return true
+  }
+})
+
 export const placeholderHighlighter = ViewPlugin.fromClass(
   class {
     decorations: DecorationSet
@@ -67,7 +128,13 @@ export const placeholderHighlighter = ViewPlugin.fromClass(
       const re = /\{\{[^}]+\}\}/g
       let match
       while ((match = re.exec(text))) {
-        builder.add(from + match.index, from + match.index + match[0].length, placeholderMark)
+        const start = from + match.index
+        const end = start + match[0].length
+        const ref = partialRefOf(match[0])
+        builder.add(start, end, ref ? partialMark(ref) : placeholderMark)
+        if (ref) {
+          builder.add(end, end, Decoration.widget({ widget: new PartialOpenWidget(ref), side: 1 }))
+        }
       }
       return builder.finish()
     }
@@ -183,6 +250,33 @@ export const sharedEditorTokenTheme = EditorView.theme({
     color: '#e879f9',
     borderRadius: '3px',
     backgroundColor: 'rgba(232, 121, 249, 0.12)'
+  },
+  // An import placeholder points at a file, so it gets a link's affordances:
+  // an underline and a pointer while the modifier is held, plus the open icon
+  // below. Both stay quiet until you're actually reaching for them.
+  '.cm-partial-ref': {
+    textDecorationColor: 'rgba(232, 121, 249, 0.5)'
+  },
+  '.cm-partial-ref:hover': {
+    textDecoration: 'underline'
+  },
+  '.cm-partial-open': {
+    display: 'inline-flex',
+    alignItems: 'center',
+    verticalAlign: 'text-top',
+    width: '0.85em',
+    height: '0.85em',
+    marginLeft: '0.15em',
+    color: '#e879f9',
+    opacity: '0.55',
+    cursor: 'pointer'
+  },
+  '.cm-partial-open:hover': {
+    opacity: '1'
+  },
+  '.cm-partial-open svg': {
+    width: '100%',
+    height: '100%'
   },
   '.cm-inline-code-highlight': {
     color: '#f87171',

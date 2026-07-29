@@ -25,8 +25,32 @@ const files: MockFile[] = [
     // this is the fixture for exercising the outline dialog in the browser.
     content: `Intro text that sits before any heading, so it can never belong to a section.\n\n# Builder prompt\n\nTop level overview.\n\n## Mid-session continuation\n\nYou are always mid-session.\n\n## Tools\n\nPick the right one.\n\n### update_resume\n\nAll resume-section mutations.\n\n### update_profile\n\nAll profile mutations. See {{> _shared/market-conventions}} for the rules.\n\n## Routing\n\nOne branch per turn.\n\n### Branch 3 — auto-draft\n\nDraft every section in one pass.\n\n### Branch 4 — clarification loop\n\nAsk the next gap question.\n\n## Polish posture\n\nReword, don't invent.\n`,
     mtimeMs: baseTime - 1000 * 60 * 60
+  },
+  {
+    // The target of notes.md's `{{> _shared/market-conventions}}` import —
+    // here so the preview can exercise click-to-open on a partial.
+    path: '/demo/_shared/market-conventions.md',
+    name: 'market-conventions.md',
+    content: `# Market conventions\n\nShared rules pulled into the prompts that import this file.\n`,
+    mtimeMs: baseTime - 1000 * 60 * 30
+  },
+  {
+    path: '/demo/archive/older-notes.md',
+    name: 'older-notes.md',
+    content: `# Older notes\n\nKept around so the preview has something inside a folder.\n`,
+    mtimeMs: baseTime - 1000 * 60 * 60 * 24
   }
 ]
+
+/** Directories, tracked as plain paths — enough for the sidebar's folder rows,
+ *  their context menus, and creating/renaming/deleting them. */
+const dirs: string[] = ['/demo/_shared', '/demo/archive']
+
+const parentOf = (path: string): string => path.slice(0, path.lastIndexOf('/')) || '/'
+
+/** Everything at or below `path` — what a recursive delete or rename has to
+ *  drag along with it. */
+const isUnder = (path: string, root: string): boolean => path.startsWith(`${root}/`)
 
 let mockSettings: Settings = {
   draftsFolder: '/demo',
@@ -46,6 +70,9 @@ let mockSettings: Settings = {
   visualSyntaxHighlight: false,
   visualHeadingMarkers: false,
   variablesPanelVisible: false,
+  outlinePanelVisible: false,
+  outlinePanelWidth: 260,
+  outlinePanelSide: 'right',
   showRecents: false,
   showTabParentFolder: false,
   autoNamedPaths: [],
@@ -53,8 +80,17 @@ let mockSettings: Settings = {
   expandedSidebarSubfolders: []
 }
 
-const listEntries = (): FileEntry[] =>
-  files
+const listEntries = (dir: string): FileEntry[] => {
+  const folders = dirs
+    .filter((d) => parentOf(d) === dir)
+    .map<FileEntry>((d) => ({
+      name: d.slice(d.lastIndexOf('/') + 1),
+      path: d,
+      isDirectory: true,
+      mtimeMs: baseTime
+    }))
+  const children = files
+    .filter((f) => parentOf(f.path) === dir)
     .map<FileEntry>((f) => ({
       name: f.name,
       path: f.path,
@@ -62,6 +98,8 @@ const listEntries = (): FileEntry[] =>
       mtimeMs: f.mtimeMs
     }))
     .sort((a, b) => b.mtimeMs - a.mtimeMs)
+  return [...folders, ...children]
+}
 
 const mockApi: SmarkupApi = {
   openDirectory: async () => '/demo',
@@ -71,7 +109,7 @@ const mockApi: SmarkupApi = {
   openFile: async () => null,
   saveFileDialog: async () => null,
 
-  readDirectory: async () => listEntries(),
+  readDirectory: async (path) => listEntries(path),
 
   readFile: async (path) => {
     const file = files.find((f) => f.path === path)
@@ -96,10 +134,20 @@ const mockApi: SmarkupApi = {
   },
 
   rename: async (oldPath, newName) => {
+    const newPath = `${parentOf(oldPath)}/${newName}`
+    const dirIndex = dirs.indexOf(oldPath)
+    if (dirIndex >= 0) {
+      dirs[dirIndex] = newPath
+      for (let i = 0; i < dirs.length; i++) {
+        if (isUnder(dirs[i], oldPath)) dirs[i] = newPath + dirs[i].slice(oldPath.length)
+      }
+      for (const f of files) {
+        if (isUnder(f.path, oldPath)) f.path = newPath + f.path.slice(oldPath.length)
+      }
+      return newPath
+    }
     const file = files.find((f) => f.path === oldPath)
     if (!file) throw new Error(`File not found: ${oldPath}`)
-    const parent = oldPath.slice(0, oldPath.lastIndexOf('/'))
-    const newPath = `${parent}/${newName}`
     file.path = newPath
     file.name = newName
     return newPath
@@ -113,15 +161,24 @@ const mockApi: SmarkupApi = {
     return newPath
   },
 
-  createDirectory: async (parent, name) => `${parent.replace(/\/$/, '')}/${name}`,
+  createDirectory: async (parent, name) => {
+    const path = `${parent.replace(/\/$/, '')}/${name}`
+    if (!dirs.includes(path)) dirs.push(path)
+    return path
+  },
 
-  listFoldersRecursive: async () => [],
+  listFoldersRecursive: async (root) => dirs.filter((d) => isUnder(d, root)),
 
   revealInFolder: async () => true,
 
   deletePath: async (path) => {
-    const idx = files.findIndex((f) => f.path === path)
-    if (idx >= 0) files.splice(idx, 1)
+    // Folders go recursively, matching the real `fs.rm` the menu warns about.
+    for (let i = dirs.length - 1; i >= 0; i--) {
+      if (dirs[i] === path || isUnder(dirs[i], path)) dirs.splice(i, 1)
+    }
+    for (let i = files.length - 1; i >= 0; i--) {
+      if (files[i].path === path || isUnder(files[i].path, path)) files.splice(i, 1)
+    }
     return true
   },
 
@@ -132,9 +189,9 @@ const mockApi: SmarkupApi = {
     return idx === 0 ? '/' : path.slice(0, idx)
   },
 
-  // Folder drag-drop — no filesystem in browser mode, stub as no-ops.
-  isDirectory: async () => false,
-  pathExists: async () => false,
+  isDirectory: async (path) => dirs.includes(path),
+  pathExists: async (path) => dirs.includes(path) || files.some((f) => f.path === path),
+  // Native drag-drop of OS folders — nothing to resolve in browser mode.
   getPathForFile: () => '',
 
   // Settings: stored in module scope for the lifetime of the browser tab

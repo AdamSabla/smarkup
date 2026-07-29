@@ -376,6 +376,12 @@ type WorkspaceState = {
   visualHeadingMarkers: boolean
   /** Whether the bottom Variables panel is shown. */
   variablesPanelVisible: boolean
+  /** Whether the outline is docked beside the editor inside each pane. */
+  outlinePanelVisible: boolean
+  /** Width of the docked outline panel, in px. */
+  outlinePanelWidth: number
+  /** Which side of the editor the docked outline sits on. */
+  outlinePanelSide: 'left' | 'right'
   /** Whether the Recents section is shown in the sidebar. */
   showRecents: boolean
   /** Prefix each tab label with its containing folder name. */
@@ -581,6 +587,11 @@ type WorkspaceState = {
   setShowTabParentFolder: (enabled: boolean) => Promise<void>
   toggleVariablesPanel: () => Promise<void>
   setVariablesPanelVisible: (visible: boolean) => Promise<void>
+  toggleOutlinePanel: () => Promise<void>
+  setOutlinePanelVisible: (visible: boolean) => Promise<void>
+  /** Live during a resize drag — the write to disk is debounced. */
+  setOutlinePanelWidth: (width: number) => void
+  setOutlinePanelSide: (side: 'left' | 'right') => Promise<void>
   openSettings: () => void
   closeSettings: () => void
   openQuickOpen: () => void
@@ -718,6 +729,9 @@ const sectionContainsFile = (section: SidebarSection, filePath: string): boolean
 const persistSettings = (patch: Partial<Settings>): Promise<Settings> =>
   window.api.saveSettings(patch)
 
+/** Debounce handle for the outline panel's width — see `setOutlinePanelWidth`. */
+let outlineWidthTimer: ReturnType<typeof setTimeout> | null = null
+
 /**
  * Resolve the effective editor mode for a given file path:
  * per-file override if one exists, otherwise the global default.
@@ -755,6 +769,9 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   visualSyntaxHighlight: false,
   visualHeadingMarkers: false,
   variablesPanelVisible: false,
+  outlinePanelVisible: false,
+  outlinePanelWidth: 260,
+  outlinePanelSide: 'right',
   showRecents: false,
   showTabParentFolder: false,
 
@@ -811,6 +828,9 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       visualSyntaxHighlight: settings.visualSyntaxHighlight ?? false,
       visualHeadingMarkers: settings.visualHeadingMarkers ?? false,
       variablesPanelVisible: settings.variablesPanelVisible ?? false,
+      outlinePanelVisible: settings.outlinePanelVisible ?? false,
+      outlinePanelWidth: settings.outlinePanelWidth ?? 260,
+      outlinePanelSide: settings.outlinePanelSide ?? 'right',
       showRecents: settings.showRecents ?? false,
       showTabParentFolder: settings.showTabParentFolder ?? false,
       autoNamedPaths: new Set(settings.autoNamedPaths ?? []),
@@ -2258,6 +2278,36 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     if (get().variablesPanelVisible === visible) return
     set({ variablesPanelVisible: visible })
     await persistSettings({ variablesPanelVisible: visible })
+  },
+
+  toggleOutlinePanel: async () => {
+    const next = !get().outlinePanelVisible
+    set({ outlinePanelVisible: next })
+    await persistSettings({ outlinePanelVisible: next })
+  },
+
+  setOutlinePanelVisible: async (visible) => {
+    if (get().outlinePanelVisible === visible) return
+    set({ outlinePanelVisible: visible })
+    await persistSettings({ outlinePanelVisible: visible })
+  },
+
+  // A resize drag fires this on every pointer move, so the state update is
+  // synchronous (the panel has to track the pointer) and only the write to
+  // disk waits for the drag to settle.
+  setOutlinePanelWidth: (width) => {
+    set({ outlinePanelWidth: width })
+    if (outlineWidthTimer) clearTimeout(outlineWidthTimer)
+    outlineWidthTimer = setTimeout(() => {
+      outlineWidthTimer = null
+      void persistSettings({ outlinePanelWidth: useWorkspace.getState().outlinePanelWidth })
+    }, 300)
+  },
+
+  setOutlinePanelSide: async (side) => {
+    if (get().outlinePanelSide === side) return
+    set({ outlinePanelSide: side })
+    await persistSettings({ outlinePanelSide: side })
   },
 
   openSettings: () => set({ settingsOpen: true }),

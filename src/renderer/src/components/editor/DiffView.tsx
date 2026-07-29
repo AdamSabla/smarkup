@@ -17,6 +17,7 @@ import {
 import {
   markdownHighlight,
   placeholderHighlighter,
+  partialLinkHandler,
   inlineCodeHighlighter,
   todoCommentHighlighter,
   sharedEditorTokenTheme
@@ -312,6 +313,7 @@ const DiffView = ({ diffTab }: Props): React.JSX.Element => {
           color: 'inherit !important',
           backgroundColor: 'transparent !important'
         },
+        '& .cm-partial-open': { color: 'inherit !important' },
         '& .cm-inline-code-highlight': {
           color: 'inherit !important',
           backgroundColor: 'transparent !important'
@@ -344,6 +346,7 @@ const DiffView = ({ diffTab }: Props): React.JSX.Element => {
       Prec.highest(syntaxHighlighting(markdownHighlight)),
       Prec.high(drawSelection({ cursorBlinkRate: 0 })),
       placeholderHighlighter,
+      partialLinkHandler,
       inlineCodeHighlighter,
       todoCommentHighlighter,
       sharedEditorTokenTheme,

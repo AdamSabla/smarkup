@@ -29,6 +29,7 @@ import {
   TrashIcon,
   KeyboardIcon,
   ListTreeIcon,
+  PanelRightIcon,
   XIcon,
   RotateCcwIcon
 } from 'lucide-react'
@@ -98,6 +99,8 @@ const CommandPaletteBody = (): React.JSX.Element => {
     openDiffPicker,
     openEmptyDiff,
     openOutline,
+    outlinePanelVisible,
+    toggleOutlinePanel,
     commandPaletteOpen,
     moveTargets,
     moveTargetsLoading,
@@ -142,6 +145,8 @@ const CommandPaletteBody = (): React.JSX.Element => {
       openDiffPicker: s.openDiffPicker,
       openEmptyDiff: s.openEmptyDiff,
       openOutline: s.openOutline,
+      outlinePanelVisible: s.outlinePanelVisible,
+      toggleOutlinePanel: s.toggleOutlinePanel,
       commandPaletteOpen: s.commandPaletteOpen,
       moveTargets: s.moveTargets,
       moveTargetsLoading: s.moveTargetsLoading,
@@ -508,6 +513,18 @@ const CommandPaletteBody = (): React.JSX.Element => {
               >
                 <ListTreeIcon /> Outline...
                 <CommandShortcut>{isMac ? '⌘⇧O' : 'Ctrl+Shift+O'}</CommandShortcut>
+              </CommandItem>
+            )}
+            {activeTabId && !activeTabId.startsWith('diff:') && (
+              <CommandItem
+                value="outline panel dock sidebar table of contents toc always visible headings"
+                onSelect={() => {
+                  void toggleOutlinePanel()
+                  dismiss()
+                }}
+              >
+                <PanelRightIcon /> {outlinePanelVisible ? 'Hide' : 'Show'} outline panel
+                <CommandShortcut>{isMac ? '⌥⌘O' : 'Ctrl+Alt+O'}</CommandShortcut>
               </CommandItem>
             )}
             <CommandItem
