@@ -23,7 +23,8 @@ export default defineConfig({
   },
   plugins: [react(), tailwindcss()],
   server: {
-    port: 51740,
+    // PORT lets a second preview run alongside one that already holds 51740.
+    port: Number(process.env.PORT) || 51740,
     strictPort: false,
     open: true
   },

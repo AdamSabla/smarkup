@@ -2,13 +2,12 @@ import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { useEditor, EditorContent, type Editor } from '@tiptap/react'
 import { TextSelection } from '@tiptap/pm/state'
 import StarterKit from '@tiptap/starter-kit'
-import { Paragraph } from '@tiptap/extension-paragraph'
 import { Text } from '@tiptap/extension-text'
 import { Table } from '@tiptap/extension-table'
 import { TableRow } from '@tiptap/extension-table-row'
 import { TableHeader } from '@tiptap/extension-table-header'
 import { TableCell } from '@tiptap/extension-table-cell'
-import { Markdown, type MarkdownStorage } from 'tiptap-markdown'
+import { Markdown } from 'tiptap-markdown'
 import { cn } from '@/lib/utils'
 import { FlatTaskItem } from '@/extensions/flat-task-item'
 import { Tab } from '@/extensions/tab'
@@ -20,19 +19,30 @@ import { SearchHighlighter } from '@/extensions/search-highlight'
 import { getActiveEditor, setActiveEditor } from '@/lib/active-editor'
 import { useWorkspace } from '@/store/workspace'
 import { serializeSliceToText } from '@/lib/serialize-clipboard-text'
-import { unescapeVariables } from '@/lib/variables'
+import { writeText, type MarkdownWriter } from '@/lib/markdown-escape'
+import {
+  getInlineProbe,
+  reconcileMarkdown,
+  serializeMarkdown,
+  stabilizeParser
+} from '@/lib/markdown-roundtrip'
 import TableMenu from './TableMenu'
 
 // tiptap-markdown's default text serializer always HTML-escapes `<` and `>`,
 // so any literal angle bracket (e.g. pasted HTML, "1 < 2") becomes `&lt;`/`&gt;`
-// in the saved markdown. Override it to leave text alone — markdown escaping
-// for `*`, `_`, `[` etc. is already handled by prosemirror-markdown's state.text.
+// in the saved markdown. Override it to leave text alone.
+//
+// It also routes through prosemirror-markdown's `state.text`, which escapes
+// every character that *could* be markup whether or not it is — turning
+// `highlights[]` into `highlights\[\]` and `{{> _shared/x }}` into
+// `{{> \_shared/x }}`. `writeText` asks the parser instead of guessing; see
+// lib/markdown-escape.ts.
 const PlainText = Text.extend({
   addStorage() {
     return {
       markdown: {
-        serialize(state: { text: (s: string) => void }, node: { text?: string }) {
-          state.text(node.text ?? '')
+        serialize(this: { editor: Editor }, state: MarkdownWriter, node: { text?: string }) {
+          writeText(state, node.text ?? '', getInlineProbe(this.editor))
         },
         parse: {}
       }
@@ -40,86 +50,14 @@ const PlainText = Text.extend({
   }
 })
 
-// The U+00A0 codepoint (non-breaking space) we use to mark empty paragraphs
-// in serialized markdown. See PreservingParagraph for why.
-const EMPTY_PARAGRAPH_MARKER = '\u00a0'
-
-// Markdown is a lossy container for empty paragraphs: prosemirror-markdown
-// serializes an empty paragraph as a blank line, and markdown-it then
-// collapses any number of consecutive blank lines into a single paragraph
-// boundary on the way back in. So pressing Enter twice in the visual editor
-// produces paragraphs that evaporate on the first visual → raw → visual
-// round-trip, stripping the user's vertical whitespace.
-//
-// Fix: override the paragraph serializer so empty paragraphs emit a single
-// U+00A0 (non-breaking space). markdown-it treats that line as non-blank,
-// so it survives as a real paragraph node, and the round-trip becomes
-// stable. The matching stripEmptyParagraphMarkers() pass (see below) turns
-// those markers back into truly empty paragraphs after parse so the user
-// never sees or has to step past the invisible char while editing.
-const PreservingParagraph = Paragraph.extend({
-  addStorage() {
-    return {
-      markdown: {
-        serialize(
-          state: {
-            write: (s: string) => void
-            renderInline: (n: unknown) => void
-            closeBlock: (n: unknown) => void
-          },
-          node: { content: { size: number } }
-        ) {
-          if (node.content.size === 0) {
-            state.write(EMPTY_PARAGRAPH_MARKER)
-          } else {
-            state.renderInline(node)
-          }
-          state.closeBlock(node)
-        },
-        parse: {}
-      }
-    }
-  }
-})
-
-/**
- * Replace any paragraph whose sole content is our empty-paragraph marker
- * (see PreservingParagraph) with a truly empty paragraph. Runs after every
- * content load so the user sees and edits plain empty paragraphs — our
- * serializer re-emits the marker on the way out, keeping the visual ↔ raw
- * round-trip stable.
- */
-const stripEmptyParagraphMarkers = (editor: Editor): void => {
-  const { state } = editor
-  const tr = state.tr
-  let modified = false
-  state.doc.descendants((node, pos) => {
-    if (
-      node.type.name === 'paragraph' &&
-      node.childCount === 1 &&
-      node.firstChild?.isText === true &&
-      node.firstChild.text === EMPTY_PARAGRAPH_MARKER
-    ) {
-      const from = tr.mapping.map(pos + 1)
-      const to = tr.mapping.map(pos + 1 + node.content.size)
-      tr.delete(from, to)
-      modified = true
-    }
-  })
-  if (modified) {
-    tr.setMeta('addToHistory', false)
-    editor.view.dispatch(tr)
-  }
-}
-
-// Applied here rather than at the call sites so every consumer — the onUpdate
-// that writes the buffer and the value effect that compares against it — sees
-// the same string. Unescaping in only one of them would make them disagree and
-// trigger a setContent loop.
-const getMarkdown = (editor: Editor): string => {
-  const storage = editor.storage as unknown as { markdown: MarkdownStorage }
-  return unescapeVariables(storage.markdown.getMarkdown())
-}
+// Empty paragraphs serialize as plain blank lines, which means several in a
+// row collapse to one the next time the file is read — markdown has no way to
+// say "two blank paragraphs". An earlier fix held onto them by writing a
+// U+00A0 on each blank line, but that puts an invisible character into files
+// that other programs read, which is exactly the kind of edit the editor is
+// not allowed to make. Blank-line runs already in a file survive either way:
+// regions the user didn't touch keep their original bytes (see
+// lib/markdown-roundtrip.ts).
 
 type Props = {
   tabId: string
@@ -130,12 +68,25 @@ type Props = {
 
 const VisualEditor = ({ value, onChange, isActive }: Props): React.JSX.Element => {
   const scrollRef = useRef<HTMLDivElement>(null)
+  /**
+   * The buffer text this editor is currently in sync with — the file's own
+   * bytes, not a rendering of them. Round-tripping edits back onto it is what
+   * keeps untouched parts of the file untouched.
+   */
   const lastEmittedMarkdown = useRef(value)
   /**
+   * What the document rendered to when `lastEmittedMarkdown` was adopted.
+   * Comparing the next render against it answers "did the document actually
+   * change?" without re-parsing, and gives the merge in
+   * lib/markdown-roundtrip.ts its common ancestor. Null until the editor has
+   * rendered once.
+   */
+  const baselineMarkdown = useRef<string | null>(null)
+  /**
    * True while *we* are the ones changing the doc — loading new content,
-   * stripping empty-paragraph markers. Transactions raised inside that window
-   * are our own bookkeeping, and re-serializing them back into `tab.content`
-   * would rewrite the file just for flipping visual ↔ raw.
+   * normalizing what came in. Transactions raised inside that window are our
+   * own bookkeeping, and re-serializing them back into `tab.content` would
+   * rewrite the file just for flipping visual ↔ raw.
    *
    * Starts true so mount-time normalization is covered, and is lowered once
    * the editor has settled. Everything outside the window is a real change to
@@ -166,9 +117,6 @@ const VisualEditor = ({ value, onChange, isActive }: Props): React.JSX.Element =
         heading: { levels: [1, 2, 3, 4] },
         // Replaced by PlainText below — see comment on PlainText for why.
         text: false,
-        // Replaced by PreservingParagraph below — see comment on
-        // PreservingParagraph for why (empty-paragraph round-trip).
-        paragraph: false,
         // TrailingNode appends an empty paragraph via appendTransaction when
         // the doc doesn't already end in one. That transaction fires without
         // the preventUpdate meta, so Tiptap's onUpdate runs, re-serializes
@@ -178,7 +126,6 @@ const VisualEditor = ({ value, onChange, isActive }: Props): React.JSX.Element =
         // add content is a minor ergonomics loss compared to that bug.
         trailingNode: false
       }),
-      PreservingParagraph,
       PlainText,
       FlatTaskItem,
       // Registered after FlatTaskItem so its Mod-Shift-L / 7 / 8 shortcuts
@@ -218,13 +165,18 @@ const VisualEditor = ({ value, onChange, isActive }: Props): React.JSX.Element =
     onUpdate: ({ editor: e }) => {
       // See applyingRef for what this drops and why.
       if (applyingRef.current) return
-      const md = getMarkdown(e)
-      // A transaction that serializes back to what we last saw isn't a change
-      // to the file — belt and braces against a stray normalization pass
-      // dirtying a buffer nobody edited.
-      if (md === lastEmittedMarkdown.current) return
-      lastEmittedMarkdown.current = md
-      onChangeRef.current(md)
+      const { text, markdown } = reconcileMarkdown(
+        e,
+        lastEmittedMarkdown.current,
+        baselineMarkdown.current
+      )
+      baselineMarkdown.current = markdown
+      // A transaction that comes back as the text we already had isn't a
+      // change to the file — belt and braces against a stray normalization
+      // pass dirtying a buffer nobody edited.
+      if (text === lastEmittedMarkdown.current) return
+      lastEmittedMarkdown.current = text
+      onChangeRef.current(text)
     },
     editorProps: {
       attributes: {
@@ -316,16 +268,18 @@ const VisualEditor = ({ value, onChange, isActive }: Props): React.JSX.Element =
     return () => dom.removeEventListener('keydown', handler, true)
   }, [editor])
 
-  // Strip our empty-paragraph markers from the initial content. `useEditor`
-  // seeds the doc from `content: value` synchronously during editor
-  // creation, so by the time this effect runs the markers are already in
-  // the doc as text nodes — we convert them back to truly empty paragraphs
-  // here. Subsequent loads (file watcher, mode-switch remount) are handled
-  // inside the value-reconciliation effect below.
+  // `useEditor` seeds the doc from `content: value` synchronously during
+  // editor creation, so by the time this effect runs the document is loaded
+  // and can be measured. Subsequent loads (file watcher, mode-switch remount)
+  // re-baseline inside the value-reconciliation effect below.
   useEffect(() => {
     if (!editor) return
-    applyExternal(() => stripEmptyParagraphMarkers(editor))
-  }, [editor, applyExternal])
+    stabilizeParser(editor)
+    baselineMarkdown.current = serializeMarkdown(editor, editor.state.doc)
+    // Mount-time normalization is over; from here every transaction is a real
+    // edit. See applyingRef.
+    applyingRef.current = false
+  }, [editor])
 
   // Set/unset this as the active editor and focus when tab becomes active.
   // The editor stays mounted (DOM + scroll preserved) so no restore is needed.
@@ -344,19 +298,21 @@ const VisualEditor = ({ value, onChange, isActive }: Props): React.JSX.Element =
   useEffect(() => {
     if (!editor) return
     if (value === lastEmittedMarkdown.current) return
-    const current = getMarkdown(editor)
-    if (current !== value) {
-      // An external reload (file watcher, mode-switch remount, an applied
-      // outline), not user input — neither the load nor the normalization
-      // pass behind it may escape back into the store.
-      applyExternal(() => {
-        editor.commands.setContent(value, { emitUpdate: false })
-        lastEmittedMarkdown.current = value
-        // Convert any empty-paragraph markers in the freshly-loaded content
-        // back to truly empty paragraphs so they aren't visible to the user.
-        stripEmptyParagraphMarkers(editor)
-      })
+    // The buffer already says exactly what this document renders to (a raw-side
+    // edit that only normalized formatting, say) — reloading would reset the
+    // caret for nothing.
+    if (value === baselineMarkdown.current) {
+      lastEmittedMarkdown.current = value
+      return
     }
+    // An external reload (file watcher, mode-switch remount, an applied
+    // outline), not user input — neither the load nor the normalization
+    // pass behind it may escape back into the store.
+    applyExternal(() => {
+      editor.commands.setContent(value, { emitUpdate: false })
+      lastEmittedMarkdown.current = value
+      baselineMarkdown.current = serializeMarkdown(editor, editor.state.doc)
+    })
   }, [value, editor, applyExternal])
 
   const visualSyntaxHighlight = useWorkspace((s) => s.visualSyntaxHighlight)

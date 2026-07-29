@@ -35,6 +35,43 @@ const files: MockFile[] = [
     mtimeMs: baseTime - 1000 * 60 * 30
   },
   {
+    // Round-trip fixture: every construct the visual editor used to rewrite on
+    // its way back out — an include marker, `[]` identifiers, a lone `~`, a
+    // five-line blank run, `*` bullets, `1)` numbering, a blockquote whose
+    // bare `>` separates two paragraphs, and a fenced block. Opening this in
+    // the visual editor and flipping back to raw has to leave it byte-identical.
+    path: '/demo/round-trip.md',
+    name: 'round-trip.md',
+    content: `# Section drafter
+
+{{> _shared/market-conventions }}
+
+Write into highlights[] and leave role_id alone.
+
+
+
+
+Five blank lines above this one, on purpose.
+
+Say "about 11 years", never ~11 years.
+
+* star bullet
+* another one
+
+1) paren numbering
+2) second
+
+> I don't see IP work on your profile.
+>
+> **Have you ever managed IP?**
+
+\`\`\`
+literal [] and _underscores_ stay put
+\`\`\`
+`,
+    mtimeMs: baseTime - 1000 * 60 * 5
+  },
+  {
     path: '/demo/archive/older-notes.md',
     name: 'older-notes.md',
     content: `# Older notes\n\nKept around so the preview has something inside a folder.\n`,
