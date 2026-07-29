@@ -23,7 +23,7 @@ const files: MockFile[] = [
     name: 'notes.md',
     // Deliberately multi-level with a leading paragraph and a partial import —
     // this is the fixture for exercising the outline dialog in the browser.
-    content: `Intro text that sits before any heading, so it can never belong to a section.\n\n# Builder prompt\n\nTop level overview.\n\n## Mid-session continuation\n\nYou are always mid-session.\n\n## Tools\n\nPick the right one.\n\n### update_resume\n\nAll resume-section mutations.\n\n### update_profile\n\nAll profile mutations. See {{> _shared/market-conventions}} for the rules.\n\n## Routing\n\nOne branch per turn.\n\n### Branch 3 — auto-draft\n\nDraft every section in one pass.\n\n### Branch 4 — clarification loop\n\nAsk the next gap question.\n\n## Polish posture\n\nReword, don't invent.\n`,
+    content: `Intro text that sits before any heading, so it can never belong to a section.\n\n# Builder prompt\n\nTop level overview.\n\n## Mid-session continuation\n\nYou are always mid-session.\n\n## Tools\n\nPick the right one.\n\n### update_resume\n\nAll resume-section mutations.\n\n### update_profile\n\nAll profile mutations. See {{> _shared/market-conventions}} for the rules, and {{ revision }} for the sibling-file case.\n\n## Routing\n\nOne branch per turn.\n\n### Branch 3 — auto-draft\n\nDraft every section in one pass.\n\n### Branch 4 — clarification loop\n\nAsk the next gap question.\n\n## Polish posture\n\nReword, don't invent.\n`,
     mtimeMs: baseTime - 1000 * 60 * 60
   },
   {
@@ -70,6 +70,14 @@ literal [] and _underscores_ stay put
 \`\`\`
 `,
     mtimeMs: baseTime - 1000 * 60 * 5
+  },
+  {
+    // Sibling of notes.md, so its `{{ revision }}` placeholder resolves as a
+    // link to a file in the same folder.
+    path: '/demo/revision.md',
+    name: 'revision.md',
+    content: `# Revision\n\nThe file a plain {{revision}} placeholder points at.\n`,
+    mtimeMs: baseTime - 1000 * 60 * 20
   },
   {
     path: '/demo/archive/older-notes.md',

@@ -345,7 +345,6 @@ const DiffView = ({ diffTab }: Props): React.JSX.Element => {
       markdown(),
       Prec.highest(syntaxHighlighting(markdownHighlight)),
       Prec.high(drawSelection({ cursorBlinkRate: 0 })),
-      placeholderHighlighter,
       partialLinkHandler,
       inlineCodeHighlighter,
       todoCommentHighlighter,
@@ -400,13 +399,23 @@ const DiffView = ({ diffTab }: Props): React.JSX.Element => {
     [saveKeymap, rawWordWrap, plainColorsOverride, diffPlainColors]
   )
 
+  // Each side resolves placeholder references against its own file, so the
+  // highlighter is added per side rather than shared through baseExtensions.
   const leftExtensions = useMemo(
-    () => [...baseExtensions, createDiffExtension({ onGutterClick: onLeftGutterClick })],
-    [baseExtensions, onLeftGutterClick]
+    () => [
+      ...baseExtensions,
+      placeholderHighlighter(() => diffTab.leftPath ?? ''),
+      createDiffExtension({ onGutterClick: onLeftGutterClick })
+    ],
+    [baseExtensions, diffTab.leftPath, onLeftGutterClick]
   )
   const rightExtensions = useMemo(
-    () => [...baseExtensions, createDiffExtension({ onGutterClick: onRightGutterClick })],
-    [baseExtensions, onRightGutterClick]
+    () => [
+      ...baseExtensions,
+      placeholderHighlighter(() => diffTab.rightPath ?? ''),
+      createDiffExtension({ onGutterClick: onRightGutterClick })
+    ],
+    [baseExtensions, diffTab.rightPath, onRightGutterClick]
   )
 
   const promoteSide = useCallback(

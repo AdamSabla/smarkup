@@ -66,8 +66,14 @@ type Props = {
   isActive: boolean
 }
 
-const VisualEditor = ({ value, onChange, isActive }: Props): React.JSX.Element => {
+const VisualEditor = ({ tabId, value, onChange, isActive }: Props): React.JSX.Element => {
   const scrollRef = useRef<HTMLDivElement>(null)
+  const path = useWorkspace((s) => s.tabs.find((t) => t.id === tabId)?.path ?? '')
+  const pathRef = useRef(path)
+  useEffect(() => {
+    pathRef.current = path
+  }, [path])
+  const getPath = useCallback(() => pathRef.current, [])
   /**
    * The buffer text this editor is currently in sync with — the file's own
    * bytes, not a rendering of them. Round-tripping edits back onto it is what
@@ -139,7 +145,10 @@ const VisualEditor = ({ value, onChange, isActive }: Props): React.JSX.Element =
       TableHeader,
       TableCell,
       HtmlPaste,
-      VariableHighlighter,
+      // Placeholder references resolve relative to the file being edited, and
+      // this editor outlives any single path (auto-rename rewrites it), so the
+      // extension reads it through a ref instead of capturing it.
+      VariableHighlighter.configure({ getPath }),
       TodoCommentHighlighter,
       SearchHighlighter,
       Markdown.configure({
@@ -155,7 +164,7 @@ const VisualEditor = ({ value, onChange, isActive }: Props): React.JSX.Element =
         transformCopiedText: false
       })
     ],
-    []
+    [getPath]
   )
 
   const editor = useEditor({

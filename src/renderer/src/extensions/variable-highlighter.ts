@@ -3,7 +3,7 @@ import { Plugin, PluginKey } from '@tiptap/pm/state'
 import { Decoration, DecorationSet } from '@tiptap/pm/view'
 import type { EditorState, Transaction } from '@tiptap/pm/state'
 import type { Node as PMNode } from '@tiptap/pm/model'
-import { openPartial, partialRefOf } from '@/lib/partials'
+import { linkTargetOf, openPartial } from '@/lib/partials'
 
 /**
  * Visual-editor counterpart to RawEditor's `placeholderHighlighter` — draws a
@@ -12,8 +12,9 @@ import { openPartial, partialRefOf } from '@/lib/partials'
  * plain ProseMirror plugin with inline decorations so it doesn't touch the
  * document model (no mark schema, no serializer changes).
  *
- * Import placeholders (`{{> _shared/x}}`) additionally become links to the
- * file they name: an open icon rides along at the end of the span, and
+ * A placeholder that names a file — an import (`{{> _shared/x}}`), or a plain
+ * `{{revision}}` with a `revision.md` sitting next to it — additionally
+ * becomes a link: an open icon rides along at the end of the span, and
  * mod-clicking anywhere in it opens that file. Both are decorations too, so
  * none of this reaches the document or the serialized markdown.
  *
@@ -26,11 +27,12 @@ const variableHighlightKey = new PluginKey('variable-highlight')
 const isMac = navigator.userAgent.toLowerCase().includes('mac')
 const MOD_LABEL = isMac ? '⌘' : 'Ctrl'
 
-/** The little "open this file" affordance drawn after an import placeholder. */
-const openIcon = (ref: string) => (): HTMLElement => {
+/** The little "open this file" affordance drawn after a linked placeholder. */
+const openIcon = (ref: string, path: string | null) => (): HTMLElement => {
   const el = document.createElement('span')
   el.className = 'smarkup-partial-open'
   el.dataset.partialRef = ref
+  if (path) el.dataset.partialPath = path
   el.setAttribute('role', 'button')
   el.setAttribute('contenteditable', 'false')
   el.title = `Open ${ref}`
@@ -41,7 +43,7 @@ const openIcon = (ref: string) => (): HTMLElement => {
   return el
 }
 
-const buildDecorations = (doc: PMNode): DecorationSet => {
+const buildDecorations = (doc: PMNode, fromPath: string): DecorationSet => {
   const decos: Decoration[] = []
   doc.descendants((node, pos) => {
     if (!node.isText || !node.text) return true
@@ -50,14 +52,20 @@ const buildDecorations = (doc: PMNode): DecorationSet => {
     while ((match = VARIABLE_RE.exec(node.text))) {
       const from = pos + match.index
       const to = from + match[0].length
-      const ref = partialRefOf(match[0])
+      const link = linkTargetOf(match[0], fromPath)
       decos.push(
         Decoration.inline(from, to, {
-          class: `smarkup-variable-highlight${ref ? ' smarkup-partial-ref' : ''}`,
-          ...(ref ? { 'data-partial-ref': ref, title: `${MOD_LABEL}-click to open ${ref}` } : {})
+          class: `smarkup-variable-highlight${link ? ' smarkup-partial-ref' : ''}`,
+          ...(link
+            ? {
+                'data-partial-ref': link.ref,
+                ...(link.path ? { 'data-partial-path': link.path } : {}),
+                title: `${MOD_LABEL}-click to open ${link.ref}`
+              }
+            : {})
         })
       )
-      if (ref) decos.push(Decoration.widget(to, openIcon(ref), { side: 1 }))
+      if (link) decos.push(Decoration.widget(to, openIcon(link.ref, link.path), { side: 1 }))
     }
     return false
   })
@@ -65,22 +73,35 @@ const buildDecorations = (doc: PMNode): DecorationSet => {
 }
 
 /** The reference under an event target, if the pointer landed on one. */
-const refAt = (target: EventTarget | null): string | null => {
+const linkAt = (target: EventTarget | null): { ref: string; path?: string } | null => {
   if (!(target instanceof HTMLElement)) return null
-  return target.closest<HTMLElement>('[data-partial-ref]')?.dataset.partialRef ?? null
+  const el = target.closest<HTMLElement>('[data-partial-ref]')
+  if (!el?.dataset.partialRef) return null
+  return { ref: el.dataset.partialRef, path: el.dataset.partialPath }
 }
 
-export const VariableHighlighter = Extension.create({
+type VariableHighlighterOptions = {
+  /** Path of the file being edited — references resolve relative to it.
+   *  A getter rather than a value so the extension list stays stable. */
+  getPath: () => string
+}
+
+export const VariableHighlighter = Extension.create<VariableHighlighterOptions>({
   name: 'variableHighlighter',
 
+  addOptions() {
+    return { getPath: () => '' }
+  },
+
   addProseMirrorPlugins() {
+    const { getPath } = this.options
     return [
       new Plugin({
         key: variableHighlightKey,
         state: {
-          init: (_cfg, state: EditorState) => buildDecorations(state.doc),
+          init: (_cfg, state: EditorState) => buildDecorations(state.doc, getPath()),
           apply: (tr: Transaction, old: DecorationSet) =>
-            tr.docChanged ? buildDecorations(tr.doc) : old.map(tr.mapping, tr.doc)
+            tr.docChanged ? buildDecorations(tr.doc, getPath()) : old.map(tr.mapping, tr.doc)
         },
         props: {
           decorations(state) {
@@ -94,10 +115,10 @@ export const VariableHighlighter = Extension.create({
               const el = event.target instanceof HTMLElement ? event.target : null
               const onIcon = !!el?.closest('.smarkup-partial-open')
               if (!onIcon && !(isMac ? event.metaKey : event.ctrlKey)) return false
-              const ref = refAt(event.target)
-              if (!ref) return false
+              const link = linkAt(event.target)
+              if (!link) return false
               event.preventDefault()
-              void openPartial(ref)
+              void openPartial(link.ref, link.path)
               return true
             }
           }

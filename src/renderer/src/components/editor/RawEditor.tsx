@@ -17,6 +17,7 @@ import { syntaxHighlighting } from '@codemirror/language'
 import { search, selectNextOccurrence } from '@codemirror/search'
 import { useWorkspace } from '@/store/workspace'
 import { getActiveRawEditor, setActiveRawEditor } from '@/lib/active-raw-editor'
+import { pathOfTab } from '@/lib/partials'
 import {
   markdownHighlight,
   placeholderHighlighter,
@@ -263,7 +264,7 @@ function useIsDark(): boolean {
   return document.documentElement.classList.contains('dark')
 }
 
-const RawEditor = ({ value, onChange, isActive }: Props): React.JSX.Element => {
+const RawEditor = ({ tabId, value, onChange, isActive }: Props): React.JSX.Element => {
   const isDark = useIsDark()
   const rawHeadingSizes = useWorkspace((s) => s.rawHeadingSizes)
   const rawWordWrap = useWorkspace((s) => s.rawWordWrap)
@@ -601,7 +602,9 @@ const RawEditor = ({ value, onChange, isActive }: Props): React.JSX.Element => {
       // drawSelection that basicSetup ships with.
       Prec.high(drawSelection({ cursorBlinkRate: 0 })),
       checklistKeymap,
-      placeholderHighlighter,
+      // Placeholder references resolve against the file being edited, read at
+      // decoration time so a rename under the open tab doesn't need a rebuild.
+      placeholderHighlighter(() => pathOfTab(tabId)),
       partialLinkHandler,
       inlineCodeHighlighter,
       todoCommentHighlighter,
@@ -659,7 +662,7 @@ const RawEditor = ({ value, onChange, isActive }: Props): React.JSX.Element => {
         '.cm-heading-4': { fontSize: '1.55em', lineHeight: '1.3', fontWeight: '600' }
       })
     ],
-    [checklistKeymap, rawHeadingSizes, rawWordWrap]
+    [checklistKeymap, tabId, rawHeadingSizes, rawWordWrap]
   )
 
   return (

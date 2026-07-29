@@ -1,18 +1,29 @@
-import { useWorkspace } from '@/store/workspace'
+import { useWorkspace, type SidebarSection, type FolderNode } from '@/store/workspace'
 
 /**
  * `{{> path/to/partial}}` — the import form of a placeholder, the one that
- * names another file. Plain `{{variable}}` substitutions don't, so they aren't
- * matched here.
+ * always names another file.
  */
 export const PARTIAL_RE = /\{\{>\s*([^}]+?)\s*\}\}/g
 
-/** The referenced path inside a placeholder span, or null if it isn't an import. */
+/** The referenced path inside an import span, or null if it isn't an import. */
 export const partialRefOf = (span: string): string | null => {
   const m = /^\{\{>\s*([^}]+?)\s*\}\}$/.exec(span)
   // The visual editor's markdown escaping can leave backslashes in the span
   // (`\_shared/…`); they're not part of the path.
   return m ? m[1].replace(/\\/g, '') : null
+}
+
+/**
+ * A plain `{{name}}` placeholder's contents, when they could plausibly be a
+ * path: word characters, dashes, dots and slashes only. Template syntax like
+ * `{{#if x}}` or `{{a b}}` names no file and is left alone.
+ */
+const plainRefOf = (span: string): string | null => {
+  const m = /^\{\{\s*([^}]+?)\s*\}\}$/.exec(span)
+  if (!m) return null
+  const ref = m[1].replace(/\\/g, '')
+  return /^[\w.-]+(?:[/\\][\w.-]+)*$/.test(ref) ? ref : null
 }
 
 const SEP_RE = /[/\\]/
@@ -25,16 +36,17 @@ const dirOf = (path: string): string => {
 const join = (base: string, rest: string): string =>
   `${base}${base.includes('\\') && !base.includes('/') ? '\\' : '/'}${rest}`
 
-/** How far up from the referencing file we'll look for the partial's root. */
+/** How far up from the referencing file we'll look for the reference's root. */
 const MAX_ASCENT = 8
 
 /**
  * Absolute paths a reference could mean, most likely first.
  *
- * A reference like `_shared/market-conventions` is written relative to the
- * *tree* it lives in, not to the file quoting it — the same string resolves
- * from any depth of the prompt folder. So we walk up from the file, then try
- * the sidebar's roots, and take the first candidate that exists on disk.
+ * The file beside you wins, then its parent, and so on: `{{revision}}` next to
+ * a `revision.md` is that file, while a reference like
+ * `_shared/market-conventions` is written relative to the *tree* it lives in
+ * and resolves from any depth. Sidebar roots come last, for files opened from
+ * outside the tree.
  */
 const candidatePaths = (ref: string, fromPath: string, roots: string[]): string[] => {
   const clean = ref
@@ -62,12 +74,82 @@ const candidatePaths = (ref: string, fromPath: string, roots: string[]): string[
   return out
 }
 
+/* ------------------------------------------------------------------ */
+/*  Synchronous file index                                             */
+/* ------------------------------------------------------------------ */
+
+let indexed: SidebarSection[] | null = null
+let index = new Set<string>()
+
+const collect = (node: FolderNode | SidebarSection, into: Set<string>): void => {
+  for (const f of node.files) into.add(f.path)
+  for (const sub of node.subfolders) collect(sub, into)
+}
+
 /**
- * Locate the file a `{{> ref}}` import points at, or null if nothing matches.
- * Candidates are probed in parallel and the most specific hit wins, so a
- * `_shared` beside the file beats one at the top of the workspace.
+ * Every markdown file the sidebar knows about, as a set of paths.
+ *
+ * Decorations are built synchronously — asking the filesystem per placeholder
+ * on every keystroke isn't an option — and the sidebar has already walked the
+ * same folders, so the answer is sitting in the store. Rebuilt only when the
+ * section list is replaced, which is what a refresh does.
  */
-export const resolvePartial = async (ref: string, fromPath: string): Promise<string | null> => {
+const fileIndex = (): Set<string> => {
+  const { sections } = useWorkspace.getState()
+  if (sections !== indexed) {
+    const next = new Set<string>()
+    for (const section of sections) collect(section, next)
+    index = next
+    indexed = sections
+  }
+  return index
+}
+
+/** The path a tab is showing — what its placeholders resolve against. */
+export const pathOfTab = (tabId: string): string =>
+  useWorkspace.getState().tabs.find((t) => t.id === tabId)?.path ?? ''
+
+/** The file a reference names, decided from the index alone. */
+export const resolveRefSync = (ref: string, fromPath: string): string | null => {
+  const { sections, draftsFolder } = useWorkspace.getState()
+  const roots = [...sections.map((s) => s.path ?? ''), draftsFolder ?? '']
+  const files = fileIndex()
+  for (const path of candidatePaths(ref, fromPath, roots)) {
+    if (files.has(path)) return path
+  }
+  return null
+}
+
+/**
+ * What a placeholder links to, if anything.
+ *
+ * An import (`{{> x}}`) is a file reference by definition, so it stays
+ * clickable even when nothing matches — clicking then says what's missing,
+ * which is more useful than a dead placeholder. A plain `{{name}}` is only a
+ * link when a file by that name actually exists next to it (or above it):
+ * every other placeholder is a substitution, and decorating those would put an
+ * open icon on half the document.
+ */
+export const linkTargetOf = (
+  span: string,
+  fromPath: string
+): { ref: string; path: string | null } | null => {
+  const importRef = partialRefOf(span)
+  if (importRef) return { ref: importRef, path: resolveRefSync(importRef, fromPath) }
+  const ref = plainRefOf(span)
+  if (!ref) return null
+  const path = resolveRefSync(ref, fromPath)
+  return path ? { ref, path } : null
+}
+
+/**
+ * Locate the file a reference points at, falling back to the filesystem when
+ * the index doesn't know it — a file created outside the app is on disk before
+ * the sidebar hears about it.
+ */
+export const resolveRef = async (ref: string, fromPath: string): Promise<string | null> => {
+  const fromIndex = resolveRefSync(ref, fromPath)
+  if (fromIndex) return fromIndex
   const { sections, draftsFolder } = useWorkspace.getState()
   const roots = [...sections.map((s) => s.path ?? ''), draftsFolder ?? '']
   const paths = candidatePaths(ref, fromPath, roots)
@@ -78,19 +160,20 @@ export const resolvePartial = async (ref: string, fromPath: string): Promise<str
 }
 
 /**
- * Open the file a partial import references, in a tab.
+ * Open the file a placeholder references, in a tab.
  *
- * Called from both editors' placeholder decorations. A reference that doesn't
- * resolve says so rather than failing silently — a typo in the path and a file
- * that hasn't been created yet look identical from here.
+ * `path` is what the decoration already resolved; it's re-resolved only when
+ * the decoration couldn't. A reference that resolves to nothing says so rather
+ * than failing silently — a typo in the path and a file that hasn't been
+ * created yet look identical from here.
  */
-export const openPartial = async (ref: string): Promise<void> => {
+export const openPartial = async (ref: string, path?: string): Promise<void> => {
   const { activeTabId, tabs, openFile, showToast } = useWorkspace.getState()
   const fromPath = (activeTabId ? tabs.find((t) => t.id === activeTabId)?.path : '') ?? ''
-  const path = await resolvePartial(ref, fromPath)
-  if (!path) {
+  const target = path || (await resolveRef(ref, fromPath))
+  if (!target) {
     showToast(`Can't find “${ref}” — no matching file in the open folders`, 'error')
     return
   }
-  await openFile(path)
+  await openFile(target)
 }

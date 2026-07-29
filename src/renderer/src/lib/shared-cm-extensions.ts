@@ -12,10 +12,10 @@ import {
   WidgetType,
   type ViewUpdate
 } from '@codemirror/view'
-import { RangeSetBuilder } from '@codemirror/state'
+import { RangeSetBuilder, type Extension } from '@codemirror/state'
 import { HighlightStyle } from '@codemirror/language'
 import { tags } from '@lezer/highlight'
-import { openPartial, partialRefOf } from '@/lib/partials'
+import { linkTargetOf, openPartial } from '@/lib/partials'
 
 /* ------------------------------------------------------------------ */
 /*  Heading syntax highlight style                                     */
@@ -52,31 +52,40 @@ const isMacUA = navigator.userAgent.toLowerCase().includes('mac')
 const MOD_LABEL = isMacUA ? '⌘' : 'Ctrl'
 
 /**
- * An import placeholder (`{{> _shared/x}}`) names another file, so it's
- * treated as a link: this mark carries the reference for the click handler,
- * and `PartialOpenWidget` puts a visible affordance next to it.
+ * A placeholder that names a file — an import (`{{> _shared/x}}`), or a plain
+ * `{{revision}}` with a `revision.md` beside it — is treated as a link: this
+ * mark carries the reference (and the file it resolved to) for the click
+ * handler, and `PartialOpenWidget` puts a visible affordance next to it.
  */
-const partialMark = (ref: string): Decoration =>
+const partialMark = (ref: string, path: string | null): Decoration =>
   Decoration.mark({
     class: 'cm-placeholder-highlight cm-partial-ref',
-    attributes: { 'data-partial-ref': ref, title: `${MOD_LABEL}-click to open ${ref}` }
+    attributes: {
+      'data-partial-ref': ref,
+      ...(path ? { 'data-partial-path': path } : {}),
+      title: `${MOD_LABEL}-click to open ${ref}`
+    }
   })
 
 class PartialOpenWidget extends WidgetType {
-  constructor(readonly ref: string) {
+  constructor(
+    readonly ref: string,
+    readonly path: string | null
+  ) {
     super()
   }
 
-  // Two widgets for the same reference are interchangeable, so CodeMirror can
+  // Two widgets for the same target are interchangeable, so CodeMirror can
   // reuse the DOM instead of rebuilding it on every viewport update.
   eq(other: PartialOpenWidget): boolean {
-    return other.ref === this.ref
+    return other.ref === this.ref && other.path === this.path
   }
 
   toDOM(): HTMLElement {
     const el = document.createElement('span')
     el.className = 'cm-partial-open'
     el.dataset.partialRef = this.ref
+    if (this.path) el.dataset.partialPath = this.path
     el.setAttribute('role', 'button')
     el.title = `Open ${this.ref}`
     el.innerHTML =
@@ -99,48 +108,62 @@ export const partialLinkHandler = EditorView.domEventHandlers({
     if (!el) return false
     const onIcon = !!el.closest('.cm-partial-open')
     if (!onIcon && !(isMacUA ? event.metaKey : event.ctrlKey)) return false
-    const ref = el.closest<HTMLElement>('[data-partial-ref]')?.dataset.partialRef
+    const link = el.closest<HTMLElement>('[data-partial-ref]')
+    const ref = link?.dataset.partialRef
     if (!ref) return false
     event.preventDefault()
-    void openPartial(ref)
+    void openPartial(ref, link?.dataset.partialPath)
     return true
   }
 })
 
-export const placeholderHighlighter = ViewPlugin.fromClass(
-  class {
-    decorations: DecorationSet
+/**
+ * Highlight every `{{placeholder}}`, and link the ones that name a file.
+ *
+ * `getPath` reports the file being edited, which is what a reference resolves
+ * against — a getter rather than a value so the extension list stays stable
+ * across renames and tab switches.
+ */
+export const placeholderHighlighter = (getPath: () => string = () => ''): Extension =>
+  ViewPlugin.fromClass(
+    class {
+      decorations: DecorationSet
 
-    constructor(view: EditorView) {
-      this.decorations = this.build(view)
-    }
-
-    update(update: ViewUpdate): void {
-      if (update.docChanged || update.viewportChanged) {
-        this.decorations = this.build(update.view)
+      constructor(view: EditorView) {
+        this.decorations = this.build(view)
       }
-    }
 
-    build(view: EditorView): DecorationSet {
-      const builder = new RangeSetBuilder<Decoration>()
-      const { from, to } = view.viewport
-      const text = view.state.doc.sliceString(from, to)
-      const re = /\{\{[^}]+\}\}/g
-      let match
-      while ((match = re.exec(text))) {
-        const start = from + match.index
-        const end = start + match[0].length
-        const ref = partialRefOf(match[0])
-        builder.add(start, end, ref ? partialMark(ref) : placeholderMark)
-        if (ref) {
-          builder.add(end, end, Decoration.widget({ widget: new PartialOpenWidget(ref), side: 1 }))
+      update(update: ViewUpdate): void {
+        if (update.docChanged || update.viewportChanged) {
+          this.decorations = this.build(update.view)
         }
       }
-      return builder.finish()
-    }
-  },
-  { decorations: (v) => v.decorations }
-)
+
+      build(view: EditorView): DecorationSet {
+        const builder = new RangeSetBuilder<Decoration>()
+        const { from, to } = view.viewport
+        const text = view.state.doc.sliceString(from, to)
+        const fromPath = getPath()
+        const re = /\{\{[^}]+\}\}/g
+        let match
+        while ((match = re.exec(text))) {
+          const start = from + match.index
+          const end = start + match[0].length
+          const link = linkTargetOf(match[0], fromPath)
+          builder.add(start, end, link ? partialMark(link.ref, link.path) : placeholderMark)
+          if (link) {
+            builder.add(
+              end,
+              end,
+              Decoration.widget({ widget: new PartialOpenWidget(link.ref, link.path), side: 1 })
+            )
+          }
+        }
+        return builder.finish()
+      }
+    },
+    { decorations: (v) => v.decorations }
+  )
 
 export const inlineCodeHighlighter = ViewPlugin.fromClass(
   class {
