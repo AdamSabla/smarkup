@@ -41,8 +41,13 @@ const PlainText = Text.extend({
   addStorage() {
     return {
       markdown: {
-        serialize(this: { editor: Editor }, state: MarkdownWriter, node: { text?: string }) {
-          writeText(state, node.text ?? '', getInlineProbe(this.editor))
+        serialize(
+          this: { editor: Editor },
+          state: MarkdownWriter,
+          node: { text?: string; marks: ReadonlyArray<{ type: { name: string } }> }
+        ) {
+          const inLink = node.marks.some((mark) => mark.type.name === 'link')
+          writeText(state, node.text ?? '', getInlineProbe(this.editor), inLink)
         },
         parse: {}
       }

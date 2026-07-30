@@ -42,21 +42,54 @@ export const rebaseOntoSource = (source: string, base: string, next: string): st
   const merged: string[] = []
   let cursor = 0
   let baseIndex = 0
+  /** The original of whatever the next addition is replacing, if it replaces one. */
+  let replaced: Block[] = []
   for (const part of edits) {
     if (part.added) {
       // The edit itself — the one place the new rendering reaches the file.
-      for (const block of part.value) merged.push(...block.lines)
+      part.value.forEach((block, i) => merged.push(...relist(replaced[i], block)))
+      replaced = []
       continue
     }
     baseIndex += part.value.length
     const stop = bounds[baseIndex - 1]
-    // Untouched by the edit: replay the original bytes. Dropped by it: skip.
-    if (!part.removed) for (let i = cursor; i < stop; i++) merged.push(...ours[i].lines)
+    // Untouched by the edit: replay the original bytes. Dropped by it: hold on
+    // to the bytes anyway, in case an addition follows and is its rewrite.
+    if (part.removed) replaced = ours.slice(cursor, stop)
+    else {
+      for (let i = cursor; i < stop; i++) merged.push(...ours[i].lines)
+      replaced = []
+    }
     cursor = stop
   }
   for (let i = cursor; i < ours.length; i++) merged.push(...ours[i].lines)
 
   return merged.join('\n')
+}
+
+/** A list item's own marker: indent, then a bullet or a delimited number. */
+const LIST_MARKER = /^(\s*)(?:([-*+])|(\d{1,9})([.)]))(\s+)/
+
+/**
+ * Give a rewritten block back the list marker the file was using.
+ *
+ * The rendering writes every bullet as `-` and every ordered item as `1.`, so
+ * an edited item comes back spelled differently from the siblings it is still
+ * sitting between. That is worse than cosmetic: `- a` next to `* b` is two
+ * lists, not one, and the caller's re-parse check will (rightly) throw the
+ * whole merge away and fall back to rewriting the file. Restoring the marker
+ * keeps the list a list. The number itself stays as rendered — renumbering is
+ * something the document model is entitled to have an opinion about.
+ */
+const relist = (source: Block | undefined, rewritten: Block): string[] => {
+  if (!source || source.lines.length !== 1 || rewritten.lines.length !== 1) return rewritten.lines
+  const from = LIST_MARKER.exec(source.lines[0])
+  const to = LIST_MARKER.exec(rewritten.lines[0])
+  // Only swap like for like: a bullet that stayed a bullet, a number that
+  // stayed a number. A list the user changed the *kind* of is a real edit.
+  if (!from || !to || !from[2] !== !to[2]) return rewritten.lines
+  const marker = from[2] ?? to[3] + from[4]
+  return [to[1] + marker + to[5] + rewritten.lines[0].slice(to[0].length)]
 }
 
 /**
