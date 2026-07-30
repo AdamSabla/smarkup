@@ -11,6 +11,7 @@ import {
 } from '@/components/ui/context-menu'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
+import { copyPath, copyPathLabel } from '@/lib/copy-path'
 import { useWorkspace, type OpenFile } from '@/store/workspace'
 
 const isMac = navigator.userAgent.toLowerCase().includes('mac')
@@ -259,6 +260,9 @@ const Tab = ({
         </ContextMenuItem>
         <ContextMenuItem onSelect={() => useWorkspace.getState().revealInSidebar(tab.path)}>
           Reveal in Sidebar
+        </ContextMenuItem>
+        <ContextMenuItem onSelect={() => void copyPath(tab.path)}>
+          {copyPathLabel(tab.path)}
         </ContextMenuItem>
         <ContextMenuSeparator />
         <ContextMenuItem

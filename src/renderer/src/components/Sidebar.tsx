@@ -16,6 +16,7 @@ import {
 } from '@dnd-kit/sortable'
 import { CSS as DndCSS } from '@dnd-kit/utilities'
 import {
+  ClipboardIcon,
   FilePlusIcon,
   FolderPlusIcon,
   FileTextIcon,
@@ -49,6 +50,7 @@ import {
   DropdownMenuTrigger
 } from '@/components/ui/dropdown-menu'
 import { cn } from '@/lib/utils'
+import { copyPath, copyPathLabel } from '@/lib/copy-path'
 import { useWorkspace, type SidebarSection, type FolderNode } from '@/store/workspace'
 import type { FileEntry } from '../../../preload'
 
@@ -401,6 +403,10 @@ const FileRow = ({
                 <FolderOpenIcon className="size-3.5" />
                 {revealLabel}
               </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => void copyPath(file.path)}>
+                <ClipboardIcon className="size-3.5" />
+                {copyPathLabel(file.path)}
+              </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem variant="destructive" onSelect={onDelete}>
                 <TrashIcon className="size-3.5" />
@@ -418,6 +424,10 @@ const FileRow = ({
         <ContextMenuItem onSelect={() => void window.api.revealInFolder(file.path)}>
           <FolderOpenIcon className="size-3.5" />
           {revealLabel}
+        </ContextMenuItem>
+        <ContextMenuItem onSelect={() => void copyPath(file.path)}>
+          <ClipboardIcon className="size-3.5" />
+          {copyPathLabel(file.path)}
         </ContextMenuItem>
         <ContextMenuSeparator />
         <ContextMenuItem variant="destructive" onSelect={onDelete}>
@@ -544,6 +554,11 @@ const SubfolderView = ({
       label: revealLabel,
       icon: FolderOpenIcon,
       run: () => void window.api.revealInFolder(folder.path)
+    },
+    {
+      label: copyPathLabel(folder.path),
+      icon: ClipboardIcon,
+      run: () => void copyPath(folder.path)
     },
     {
       label: 'Delete folder',
@@ -876,10 +891,16 @@ const SectionView = ({
               </DropdownMenuItem>
             )}
             {section.path && (
-              <DropdownMenuItem onSelect={() => void window.api.revealInFolder(section.path!)}>
-                <FolderOpenIcon className="size-3.5" />
-                {revealLabel}
-              </DropdownMenuItem>
+              <>
+                <DropdownMenuItem onSelect={() => void window.api.revealInFolder(section.path!)}>
+                  <FolderOpenIcon className="size-3.5" />
+                  {revealLabel}
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => void copyPath(section.path!)}>
+                  <ClipboardIcon className="size-3.5" />
+                  {copyPathLabel(section.path!)}
+                </DropdownMenuItem>
+              </>
             )}
             {!section.isDrafts && onRemove && (
               <>

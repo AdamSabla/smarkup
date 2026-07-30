@@ -1,4 +1,4 @@
-import { app, shell, BrowserWindow, ipcMain, Menu, nativeTheme, dialog } from 'electron'
+import { app, shell, BrowserWindow, clipboard, ipcMain, Menu, nativeTheme, dialog } from 'electron'
 import { join, dirname, basename } from 'path'
 import { promises as fs, type Dirent } from 'fs'
 import { electronApp, is } from '@electron-toolkit/utils'
@@ -362,6 +362,20 @@ const registerFileHandlers = (): void => {
   })
 }
 
+// --- Clipboard IPC -------------------------------------------------------
+
+/**
+ * Copy text via Electron's own clipboard rather than `navigator.clipboard`,
+ * which needs a focused document and a granted permission — neither of which
+ * is guaranteed when the write is triggered from a context menu.
+ */
+const registerClipboardHandlers = (): void => {
+  ipcMain.handle('clipboard:writeText', (_event, text: string) => {
+    clipboard.writeText(text)
+    return true
+  })
+}
+
 // --- Settings IPC --------------------------------------------------------
 
 const registerSettingsHandlers = (): void => {
@@ -599,6 +613,7 @@ app.whenReady().then(() => {
 
   registerFileHandlers()
   registerSettingsHandlers()
+  registerClipboardHandlers()
   registerWatcherHandlers()
   registerWindowHandlers()
   registerUpdater()

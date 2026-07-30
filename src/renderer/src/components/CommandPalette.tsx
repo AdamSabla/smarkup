@@ -48,6 +48,7 @@ import {
 import Spinner from '@/components/ui/spinner'
 import { useWorkspace, type FolderNode } from '@/store/workspace'
 import { useActiveEditor } from '@/lib/active-editor'
+import { copyPath } from '@/lib/copy-path'
 
 type FileItem = {
   path: string
@@ -400,7 +401,7 @@ const CommandPaletteBody = (): React.JSX.Element => {
                 </CommandItem>
                 <CommandItem
                   onSelect={() => {
-                    void navigator.clipboard.writeText(activeTab.path)
+                    void copyPath(activeTab.path)
                     dismiss()
                   }}
                 >
@@ -408,7 +409,7 @@ const CommandPaletteBody = (): React.JSX.Element => {
                 </CommandItem>
                 <CommandItem
                   onSelect={() => {
-                    void navigator.clipboard.writeText(activeTab.content)
+                    void window.api.copyToClipboard(activeTab.content)
                     dismiss()
                   }}
                 >

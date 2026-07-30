@@ -235,6 +235,16 @@ const mockApi: SmarkupApi = {
   },
 
   isDirectory: async (path) => dirs.includes(path),
+  copyToClipboard: async (text) => {
+    // Best effort in a plain browser tab: the Clipboard API needs a focused
+    // document and a granted permission, and headless previews have neither.
+    try {
+      await navigator.clipboard.writeText(text)
+    } catch {
+      console.info('[smarkup] clipboard write blocked in browser preview:', text)
+    }
+    return true
+  },
   pathExists: async (path) => dirs.includes(path) || files.some((f) => f.path === path),
   // Native drag-drop of OS folders — nothing to resolve in browser mode.
   getPathForFile: () => '',

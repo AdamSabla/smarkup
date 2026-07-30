@@ -142,6 +142,11 @@ const api = {
   basename: (path: string): Promise<string> => ipcRenderer.invoke('fs:basename', path),
   dirname: (path: string): Promise<string> => ipcRenderer.invoke('fs:dirname', path),
   isDirectory: (path: string): Promise<boolean> => ipcRenderer.invoke('fs:isDirectory', path),
+  /** Copy text to the system clipboard through Electron's own clipboard —
+   *  `navigator.clipboard` needs focus and a permission the renderer may not
+   *  have when a context menu triggers the copy. */
+  copyToClipboard: (text: string): Promise<boolean> =>
+    ipcRenderer.invoke('clipboard:writeText', text),
   pathExists: (path: string): Promise<boolean> => ipcRenderer.invoke('fs:pathExists', path),
   // Electron ≥ 32 no longer exposes `.path` on dropped File objects — you have
   // to resolve it through `webUtils.getPathForFile` in the preload.
