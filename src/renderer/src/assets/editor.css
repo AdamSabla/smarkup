@@ -352,6 +352,15 @@
   max-width: 100%;
   height: auto;
 }
+/* Node labels are HTML in a `<foreignObject>`, which clips to its own box —
+ * so a label mermaid measured even a pixel short loses the end of its text
+ * rather than spilling. lib/mermaid.ts waits for the faces that made those
+ * measurements wrong, and this is the backstop for whatever it didn't think
+ * of: a label that still doesn't fit overhangs its box, which looks untidy but
+ * can be read. Silently dropping the last character or two cannot. */
+.smarkup-mermaid foreignObject {
+  overflow: visible;
+}
 
 /* --- Links ------------------------------------------------------------ */
 .smarkup-editor a {

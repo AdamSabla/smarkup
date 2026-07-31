@@ -50,8 +50,17 @@ const messageOf = (error: unknown): string => {
 
 export class MermaidError extends Error {}
 
-/** The face mermaid is configured to draw labels in, below. */
-const LABEL_FONT = '16px Inter'
+/**
+ * Every face a label can be drawn in, kept in step with `fontFamily` below.
+ *
+ * A label is not necessarily one face: mermaid renders node labels as HTML, so
+ * `<i>` and `<b>` inside one pull in the italic and bold cuts alongside the
+ * roman. Each has to be waited on separately — see `fontsReady`.
+ */
+const LABEL_FACES = ['16px Inter', 'italic 16px Inter', '700 16px Inter', 'italic 700 16px Inter']
+
+/** Longest the preview waits on those faces before rendering regardless. */
+const FONT_TIMEOUT_MS = 2000
 
 /**
  * Replace mermaid's elastic sizing with the diagram's real one.
@@ -83,24 +92,39 @@ const withIntrinsicSize = (markup: string): string => {
 }
 
 /**
- * Wait for the label font before measuring anything.
+ * Wait for the label faces before measuring anything.
  *
  * Mermaid sizes every box by measuring its label first and drawing the box
- * around the result. If the font swaps in between those two steps the boxes
- * are already a few pixels too narrow, and every label in the diagram renders
- * visibly clipped — which is exactly what happens on the first preview of a
- * cold start, while Inter is still in flight and measurement falls back to
- * system metrics. `fonts.ready` alone isn't enough: it only waits for loads
- * already in flight, so ask for the face first.
+ * around the result, and a `<foreignObject>` clips whatever doesn't fit. So a
+ * face that arrives *between* those two steps costs you the end of the label:
+ * measured against fallback metrics, drawn in the real thing, a character or
+ * two short. It shows up as a whole diagram of clipped labels on the first
+ * preview of a cold start, and — more quietly, long after everything looks
+ * settled — as one truncated `<i>` run in an otherwise perfect chart, because
+ * the app itself never draws in Inter Italic and so never loads it.
+ *
+ * Two things `fonts.ready` alone won't do, hence both arguments below:
+ * it only waits for loads already in flight, so each face has to be asked for
+ * by name; and Inter arrives from @fontsource split across unicode ranges, so
+ * `load` is given the diagram's own text to pull the subsets it actually
+ * needs — an em dash lives in a different one from the ASCII around it.
  */
-const fontReady = async (): Promise<void> => {
-  try {
-    await document.fonts.load(LABEL_FONT)
-    await document.fonts.ready
-  } catch {
-    // Best-effort — a diagram measured against fallback metrics still beats
-    // no diagram at all.
-  }
+const fontsReady = async (text: string): Promise<void> => {
+  const loaded = (async (): Promise<void> => {
+    try {
+      await Promise.all(LABEL_FACES.map((face) => document.fonts.load(face, text)))
+      await document.fonts.ready
+    } catch {
+      // Ignored — see the race below. A diagram measured against fallback
+      // metrics still beats no diagram at all.
+    }
+  })()
+
+  // Neither of those promises is guaranteed to settle: a window that isn't
+  // compositing — occluded, minimised, or a pane the OS has hidden — can leave
+  // both pending for as long as it stays that way, and the dialog would sit on
+  // its spinner with no way out. Wait, but not forever.
+  await Promise.race([loaded, new Promise((resolve) => setTimeout(resolve, FONT_TIMEOUT_MS))])
 }
 
 /**
@@ -112,7 +136,7 @@ const fontReady = async (): Promise<void> => {
  * @param isDark whether the app is on the dark theme right now
  */
 export const renderMermaid = async (code: string, isDark: boolean): Promise<string> => {
-  const [mermaid] = await Promise.all([load(), fontReady()])
+  const [mermaid] = await Promise.all([load(), fontsReady(code)])
 
   // Re-initialised per render because the theme can change under an open
   // preview, and `initialize` is mermaid's only way to switch it.
@@ -126,7 +150,7 @@ export const renderMermaid = async (code: string, isDark: boolean): Promise<stri
     theme: isDark ? 'dark' : 'default',
     // Mermaid's default is Trebuchet; match the app so a diagram doesn't read
     // as a screenshot pasted in from somewhere else. Kept in step with
-    // LABEL_FONT above, which is what gets waited on.
+    // LABEL_FACES above, which is what gets waited on.
     fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif'
   })
 
