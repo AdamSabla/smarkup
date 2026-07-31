@@ -224,15 +224,18 @@ const Tab = ({
           'flex size-4 shrink-0 items-center justify-center rounded-full',
           'text-muted-foreground/70 hover:bg-muted hover:text-foreground',
           'transition-colors',
-          active ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+          // Unsaved work is the one thing a tab has to say while it is in the
+          // background, so the dot ignores the reveal-on-hover rule the close
+          // button follows. Hovering still swaps it for the ✕ — you can't close
+          // what the dot is covering otherwise.
+          dirty || active ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
         )}
-        aria-label="Close tab"
+        aria-label={dirty ? 'Unsaved changes — close tab' : 'Close tab'}
       >
-        {dirty ? (
-          <span className="size-[5px] rounded-full bg-current" />
-        ) : (
-          <XIcon className="size-3" />
+        {dirty && (
+          <span className="size-[7px] rounded-full bg-tab-dirty group-hover:hidden" aria-hidden />
         )}
+        <XIcon className={cn('size-3', dirty && 'hidden group-hover:block')} />
       </button>
       {showRightSeparator && (
         <div

@@ -12,6 +12,7 @@ import { cn } from '@/lib/utils'
 import { FlatTaskItem } from '@/extensions/flat-task-item'
 import { Tab } from '@/extensions/tab'
 import { HtmlPaste } from '@/extensions/html-paste'
+import { CodeBlockActions } from '@/extensions/code-block-actions'
 import { ListCommands } from '@/extensions/list-commands'
 import { VariableHighlighter } from '@/extensions/variable-highlighter'
 import { TodoCommentHighlighter } from '@/extensions/todo-comment-highlighter'
@@ -128,6 +129,9 @@ const VisualEditor = ({ tabId, value, onChange, isActive }: Props): React.JSX.El
         heading: { levels: [1, 2, 3, 4] },
         // Replaced by PlainText below — see comment on PlainText for why.
         text: false,
+        // Replaced by CodeBlockActions below, which is the same node with a
+        // copy (and, for mermaid, a preview) button drawn in its corner.
+        codeBlock: false,
         // TrailingNode appends an empty paragraph via appendTransaction when
         // the doc doesn't already end in one. That transaction fires without
         // the preventUpdate meta, so Tiptap's onUpdate runs, re-serializes
@@ -138,6 +142,7 @@ const VisualEditor = ({ tabId, value, onChange, isActive }: Props): React.JSX.El
         trailingNode: false
       }),
       PlainText,
+      CodeBlockActions,
       FlatTaskItem,
       // Registered after FlatTaskItem so its Mod-Shift-L / 7 / 8 shortcuts
       // take precedence over Tiptap's defaults and unify conversion across

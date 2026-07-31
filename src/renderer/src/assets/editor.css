@@ -285,6 +285,74 @@
   line-height: inherit;
 }
 
+/* Wrapper the code-block node view draws around `<pre>` so the action buttons
+ * have something to anchor to. They can't anchor to the `<pre>` itself — that
+ * box scrolls sideways, and a token too wide to wrap would drag them off with
+ * the content. See extensions/code-block-actions.ts. */
+.smarkup-code-block {
+  position: relative;
+  margin-top: 14px;
+  margin-bottom: 14px;
+}
+.smarkup-code-block > pre {
+  margin-top: 0;
+  margin-bottom: 0;
+}
+.smarkup-code-actions {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  gap: 4px;
+  /* Present but quiet until the block is under the pointer — a document full
+   * of fences shouldn't read as a column of buttons. */
+  opacity: 0.45;
+  transition: opacity 120ms ease;
+}
+.smarkup-code-block:hover .smarkup-code-actions {
+  opacity: 1;
+}
+.smarkup-code-action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  /* Opaque, because the code scrolls underneath it. */
+  background: var(--background);
+  color: var(--muted-foreground);
+  cursor: pointer;
+  transition:
+    color 120ms ease,
+    border-color 120ms ease;
+}
+.smarkup-code-action svg {
+  width: 14px;
+  height: 14px;
+}
+.smarkup-code-action:hover,
+.smarkup-code-action.is-copied {
+  color: var(--foreground);
+  border-color: var(--ring);
+}
+
+/* Mermaid's own SVG, dropped into the preview dialog at the size lib/mermaid.ts
+ * pinned it to. At natural size it is free to overflow and let the dialog
+ * scroll; `is-fit` — where every preview opens — scales it down to the width on
+ * offer, which is the whole diagram at a glance. `height: auto` keeps the
+ * aspect ratio, since the width and height attributes are both set. */
+.smarkup-mermaid svg {
+  display: block;
+  max-width: none;
+}
+.smarkup-mermaid.is-fit svg {
+  max-width: 100%;
+  height: auto;
+}
+
 /* --- Links ------------------------------------------------------------ */
 .smarkup-editor a {
   color: #1eabeb;

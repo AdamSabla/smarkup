@@ -407,6 +407,9 @@ type WorkspaceState = {
   shortcutsOpen: boolean
   /** Outline modal — reorder the active document's headings */
   outlineOpen: boolean
+  /** Source of the mermaid block being previewed, or null when the dialog is
+   *  closed. Wrapped in an object so an empty fence is still "open". */
+  mermaidPreview: { code: string } | null
   /** ⌘F find/replace bar (per-window, attached to the active pane's editor) */
   findBarOpen: boolean
   /** Tab id currently being renamed inline (⌘R) */
@@ -602,6 +605,9 @@ type WorkspaceState = {
   closeShortcuts: () => void
   openOutline: () => void
   closeOutline: () => void
+  /** Open the diagram preview over a fenced block's source. */
+  openMermaidPreview: (code: string) => void
+  closeMermaidPreview: () => void
   openFindBar: () => void
   closeFindBar: () => void
   saveScrollPosition: (tabId: string, value: number | { line: number; offsetPx: number }) => void
@@ -788,6 +794,7 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   commandPaletteOpen: false,
   shortcutsOpen: false,
   outlineOpen: false,
+  mermaidPreview: null,
   findBarOpen: false,
   renamingTabId: null,
   scrollPositions: {},
@@ -2321,6 +2328,8 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
 
   openOutline: () => set({ outlineOpen: true }),
   closeOutline: () => set({ outlineOpen: false }),
+  openMermaidPreview: (code) => set({ mermaidPreview: { code } }),
+  closeMermaidPreview: () => set({ mermaidPreview: null }),
   openFindBar: () => set({ findBarOpen: true }),
   closeFindBar: () => set({ findBarOpen: false }),
   saveScrollPosition: (tabId, value) =>
