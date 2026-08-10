@@ -15,6 +15,18 @@ const DiffTabItem = ({ active, onActivate, onClose }: DiffTabItemProps): React.J
   return (
     <div
       onClick={onActivate}
+      // Middle-click closes, matching the file tabs either side of it. A diff
+      // tab holds no edits of its own, so there is nothing here to confirm.
+      onAuxClick={(e) => {
+        if (e.button !== 1) return
+        e.preventDefault()
+        e.stopPropagation()
+        onClose()
+      }}
+      // Stops Chromium's middle-click autoscroll widget; auxclick still fires.
+      onMouseDown={(e) => {
+        if (e.button === 1) e.preventDefault()
+      }}
       className={cn(
         'group relative flex h-8 min-w-[60px] max-w-[220px] flex-1 basis-0 cursor-pointer items-center gap-1 rounded-t-[6px]',
         'pl-[10px] pr-[5px] select-none',

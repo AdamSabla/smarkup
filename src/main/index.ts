@@ -758,6 +758,31 @@ app.whenReady().then(() => {
             if (win) win.webContents.send('app:toggleVariablesPanel')
           }
         },
+        // Both outline entries carry `registerAccelerator: false`: the renderer
+        // already binds these two chords in useShortcuts, where they are gated
+        // on there being a real file open. Registering them here as well would
+        // hand the same keypress two owners — and for a toggle, two handlers
+        // means the panel flips twice and appears not to respond at all. The
+        // accelerator still shows in the menu; only the binding is the
+        // renderer's.
+        {
+          label: 'Outline…',
+          accelerator: 'CmdOrCtrl+Shift+O',
+          registerAccelerator: false,
+          click: (): void => {
+            const win = BrowserWindow.getFocusedWindow()
+            if (win) win.webContents.send('app:openOutline')
+          }
+        },
+        {
+          label: 'Show Outline Panel',
+          accelerator: 'CmdOrCtrl+Alt+O',
+          registerAccelerator: false,
+          click: (): void => {
+            const win = BrowserWindow.getFocusedWindow()
+            if (win) win.webContents.send('app:toggleOutlinePanel')
+          }
+        },
         {
           label: 'Toggle Editor Mode',
           accelerator: 'CmdOrCtrl+E',

@@ -136,6 +136,32 @@ const Tab = ({
             }
       }
       onDoubleClick={renaming ? undefined : onStartRename}
+      // Middle-click closes, the way every browser tab strip does. It routes
+      // through the same onClose as the ✕ — so a tab with unsaved work still
+      // stops to ask rather than vanishing under the cursor. Suppressed while
+      // renaming: on Linux the middle button pastes the primary selection, and
+      // the rename input is the one place in a tab where that is the intent.
+      onAuxClick={
+        renaming
+          ? undefined
+          : (e) => {
+              if (e.button !== 1) return
+              e.preventDefault()
+              e.stopPropagation()
+              onClose()
+            }
+      }
+      // Chromium opens its autoscroll widget on middle *mousedown*. Cancelling
+      // the default stops that without costing us the auxclick, which fires on
+      // mouseup regardless. dnd-kit's PointerSensor ignores non-primary buttons
+      // on its own, so this never fights the drag-to-reorder gesture.
+      onMouseDown={
+        renaming
+          ? undefined
+          : (e) => {
+              if (e.button === 1) e.preventDefault()
+            }
+      }
       className={cn(
         'group relative flex h-8 min-w-[60px] max-w-[180px] flex-1 basis-0 cursor-pointer items-center gap-1 rounded-t-[6px]',
         'pl-[10px] pr-[5px] select-none',

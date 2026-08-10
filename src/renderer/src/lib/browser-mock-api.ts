@@ -277,6 +277,8 @@ const mockApi: SmarkupApi = {
   // App menu events: no-op in browser mode
   onShowShortcuts: () => () => undefined,
   onToggleVariablesPanel: () => () => undefined,
+  onOpenOutline: () => () => undefined,
+  onToggleOutlinePanel: () => () => undefined,
   onToggleEditorMode: () => () => undefined,
   onOpenDiffPicker: () => () => undefined,
   onNewDraft: () => () => undefined,

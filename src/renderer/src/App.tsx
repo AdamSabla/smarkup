@@ -80,6 +80,25 @@ const App = (): React.JSX.Element => {
     })
   }, [])
 
+  // View → Outline… and View → Show Outline Panel. Both repeat the guard the
+  // keyboard path and the command palette apply: a diff tab has two documents
+  // and no single heading tree, and with nothing open there is nothing to
+  // outline. The menu items stay enabled either way — rebuilding the whole
+  // native menu on every tab change to grey out two rows costs more than the
+  // no-op it would save.
+  useEffect(() => {
+    return window.api.onOpenOutline(() => {
+      const s = useWorkspace.getState()
+      if (s.activeTabId && !s.activeTabId.startsWith('diff:')) s.openOutline()
+    })
+  }, [])
+  useEffect(() => {
+    return window.api.onToggleOutlinePanel(() => {
+      const s = useWorkspace.getState()
+      if (s.activeTabId && !s.activeTabId.startsWith('diff:')) void s.toggleOutlinePanel()
+    })
+  }, [])
+
   // View → Toggle Editor Mode (⌘E) — flip the active file's effective mode.
   useEffect(() => {
     return window.api.onToggleEditorMode(() => {

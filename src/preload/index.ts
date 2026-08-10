@@ -197,6 +197,20 @@ const api = {
       ipcRenderer.off('app:toggleVariablesPanel', handler)
     }
   },
+  onOpenOutline: (callback: () => void): (() => void) => {
+    const handler = (): void => callback()
+    ipcRenderer.on('app:openOutline', handler)
+    return () => {
+      ipcRenderer.off('app:openOutline', handler)
+    }
+  },
+  onToggleOutlinePanel: (callback: () => void): (() => void) => {
+    const handler = (): void => callback()
+    ipcRenderer.on('app:toggleOutlinePanel', handler)
+    return () => {
+      ipcRenderer.off('app:toggleOutlinePanel', handler)
+    }
+  },
   onToggleEditorMode: (callback: () => void): (() => void) => {
     const handler = (): void => callback()
     ipcRenderer.on('app:toggleEditorMode', handler)
