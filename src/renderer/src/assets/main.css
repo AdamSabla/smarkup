@@ -109,6 +109,19 @@
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
   --scrollbar-thumb: oklch(0.85 0 0);
+  /* --- Markdown syntax accent ------------------------------------------
+   * Headings, bold and inline code in both editors — the raw CodeMirror one
+   * always, the visual one when the "syntax colors" setting is on.
+   *
+   * The two themes need genuinely different reds, not one red at two
+   * opacities: red-400 (#f87171) is built to sit on a dark background and
+   * lands at ~2.6:1 on white, which is unreadable for body-size bold and
+   * inline code. Light mode uses red-700 instead (~6.5:1 on white) so a
+   * coloured heading is no harder to read than an uncoloured one.
+   * See the .dark block for the dark-mode pair. */
+  --syntax-accent: #b91c1c; /* tailwind red-700 */
+  --syntax-accent-bg: rgba(185, 28, 28, 0.09);
+  --syntax-accent-border: rgba(185, 28, 28, 0.22);
 }
 
 .dark {
@@ -147,6 +160,11 @@
   --sidebar-border: oklch(0.935 0.01 80 / 10%);
   --sidebar-ring: oklch(0.55 0.015 70);
   --scrollbar-thumb: oklch(0.35 0.012 70);
+  /* Dark-mode markdown syntax accent — unchanged red-400. It already carries
+   * against the 0.195 background; darkening it here would be a regression. */
+  --syntax-accent: #f87171; /* tailwind red-400 */
+  --syntax-accent-bg: rgba(248, 113, 113, 0.12);
+  --syntax-accent-border: rgba(248, 113, 113, 0.2);
 }
 
 @layer base {

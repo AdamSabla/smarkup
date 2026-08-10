@@ -465,19 +465,21 @@
 /* --- Syntax highlight mode -------------------------------------------- */
 /*
  * When `.syntax-highlight` is toggled on, headings, bold, and inline code
- * pick up the same #f87171 red used by the raw CodeMirror editor, and
- * inline code gets the matching tinted background.
+ * pick up the same --syntax-accent red used by the raw CodeMirror editor,
+ * and inline code gets the matching tinted background. The token is
+ * theme-aware (see main.css) — light mode gets a much darker red than dark
+ * mode so the coloured text stays readable on white.
  */
 .smarkup-editor.syntax-highlight :is(h1, h2, h3, h4) {
-  color: #f87171;
+  color: var(--syntax-accent);
 }
 .smarkup-editor.syntax-highlight strong {
-  color: #f87171;
+  color: var(--syntax-accent);
 }
 .smarkup-editor.syntax-highlight :not(pre) > code {
-  color: #f87171;
-  background: rgba(248, 113, 113, 0.12);
-  border-color: rgba(248, 113, 113, 0.2);
+  color: var(--syntax-accent);
+  background: var(--syntax-accent-bg);
+  border-color: var(--syntax-accent-border);
 }
 
 /* --- Heading level markers -------------------------------------------- */
@@ -624,7 +626,7 @@
   user-select: none;
 }
 .cm-sticky-line {
-  color: #f87171; /* HEADING_RED — matches the source-line heading color */
+  color: var(--syntax-accent); /* matches the source-line heading color */
   font-weight: 600;
   line-height: 1.5;
   cursor: pointer;

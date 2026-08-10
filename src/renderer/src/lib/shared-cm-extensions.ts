@@ -21,7 +21,14 @@ import { linkTargetOf, openPartial } from '@/lib/partials'
 /*  Heading syntax highlight style                                     */
 /* ------------------------------------------------------------------ */
 
-const HEADING_RED = '#f87171' // tailwind red-400
+/**
+ * Theme-aware markdown accent, defined in assets/main.css. Resolves to
+ * red-400 under `.dark` and to the much darker red-700 in light mode, where
+ * red-400 only reaches ~2.6:1 against the white background. CodeMirror emits
+ * these as plain CSS rules, so the custom property inherits from <html> and
+ * re-resolves on its own when the theme flips.
+ */
+const HEADING_RED = 'var(--syntax-accent)'
 
 export const markdownHighlight = HighlightStyle.define([
   { tag: tags.heading, color: HEADING_RED, fontWeight: '600' },
@@ -302,9 +309,9 @@ export const sharedEditorTokenTheme = EditorView.theme({
     height: '100%'
   },
   '.cm-inline-code-highlight': {
-    color: '#f87171',
+    color: HEADING_RED,
     borderRadius: '3px',
-    backgroundColor: 'rgba(248, 113, 113, 0.12)'
+    backgroundColor: 'var(--syntax-accent-bg)'
   },
   '.cm-comment-highlight': {
     color: '#9ca3af',
