@@ -339,6 +339,35 @@
   border-color: var(--ring);
 }
 
+/* The fence's language, as a real `<select>` — see extensions/code-block-actions.ts.
+ * Sized and coloured to read as one more control in the cluster rather than a
+ * form field dropped into the prose: the browser's own arrow is kept (it is
+ * what says "this opens"), `font-family: inherit` pulls it out of the block's
+ * monospace, and the width is left to Chromium, which fits it to the widest
+ * label on offer. */
+.smarkup-code-language {
+  height: 26px;
+  max-width: 150px;
+  padding: 0 2px 0 6px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  /* Opaque, for the same reason the buttons are: the code scrolls under it. */
+  background: var(--background);
+  color: var(--muted-foreground);
+  font-family: inherit;
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    color 120ms ease,
+    border-color 120ms ease;
+}
+.smarkup-code-language:hover,
+.smarkup-code-language:focus-visible {
+  color: var(--foreground);
+  border-color: var(--ring);
+}
+
 /* Mermaid's own SVG, dropped into the preview dialog at the size lib/mermaid.ts
  * pinned it to. At natural size it is free to overflow and let the dialog
  * scroll; `is-fit` — where every preview opens — scales it down to the width on

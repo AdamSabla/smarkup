@@ -3,8 +3,18 @@ import { useWorkspace } from '@/store/workspace'
 import { isMermaidLanguage } from '@/lib/mermaid'
 
 /**
- * The button cluster in the top-right corner of every fenced code block:
- * copy always, plus a diagram preview when the fence is tagged `mermaid`.
+ * The control cluster in the top-right corner of every fenced code block: a
+ * language picker and a copy button always, plus a diagram preview when the
+ * fence is tagged `mermaid`.
+ *
+ * The picker is the only way to tag a fence from the visual editor. Typing
+ * ```mermaid works while the block is being created and never again — once
+ * the fence exists, its info string lives in an attribute with nothing on
+ * screen to show it, so a block that was opened plain stays plain and the
+ * preview button it would have earned never appears. A `<select>` puts that
+ * attribute where the rest of the block's affordances already are, and being
+ * a real one means the platform supplies the popup, the keyboard handling and
+ * type-ahead rather than this file reinventing them.
  *
  * Selecting a fenced block by hand is the one thing the visual editor is worse
  * at than the raw one: the caret enters the code on mousedown, a drag from the
@@ -26,6 +36,51 @@ import { isMermaidLanguage } from '@/lib/mermaid'
 
 /** How long the tick stays up before the button offers the copy again. */
 const CONFIRM_MS = 1600
+
+/**
+ * What the picker offers, as `[fence info string, label]`.
+ *
+ * Deliberately a short list of the tags people actually write after three
+ * backticks, not every language a highlighter knows. The empty value is a
+ * fence with no info string at all, which is what most blocks are. A document
+ * tagged with something outside this list keeps its tag — see `syncLanguage`,
+ * which adds it as an option rather than quietly rewriting the file.
+ */
+const LANGUAGES: [value: string, label: string][] = [
+  ['', 'Plain text'],
+  ['bash', 'Bash'],
+  ['c', 'C'],
+  ['cpp', 'C++'],
+  ['csharp', 'C#'],
+  ['css', 'CSS'],
+  ['diff', 'Diff'],
+  ['dockerfile', 'Dockerfile'],
+  ['go', 'Go'],
+  ['graphql', 'GraphQL'],
+  ['html', 'HTML'],
+  ['java', 'Java'],
+  ['javascript', 'JavaScript'],
+  ['json', 'JSON'],
+  ['jsx', 'JSX'],
+  ['kotlin', 'Kotlin'],
+  ['lua', 'Lua'],
+  ['makefile', 'Makefile'],
+  ['markdown', 'Markdown'],
+  ['mermaid', 'Mermaid'],
+  ['php', 'PHP'],
+  ['python', 'Python'],
+  ['ruby', 'Ruby'],
+  ['rust', 'Rust'],
+  ['scss', 'SCSS'],
+  ['sh', 'Shell'],
+  ['sql', 'SQL'],
+  ['swift', 'Swift'],
+  ['toml', 'TOML'],
+  ['tsx', 'TSX'],
+  ['typescript', 'TypeScript'],
+  ['xml', 'XML'],
+  ['yaml', 'YAML']
+]
 
 /** A lucide icon node: the tag and its attributes, as lucide ships them. */
 type IconPart = [tag: string, attrs: Record<string, string>]
@@ -68,7 +123,7 @@ export const CodeBlockActions = CodeBlock.extend({
   addNodeView() {
     const { languageClassPrefix } = this.options
 
-    return ({ node: initialNode, HTMLAttributes }) => {
+    return ({ node: initialNode, HTMLAttributes, editor, getPos }) => {
       let node = initialNode
       let confirmTimer: ReturnType<typeof setTimeout> | undefined
 
@@ -106,6 +161,64 @@ export const CodeBlockActions = CodeBlock.extend({
         return button
       }
 
+      // --- Language ------------------------------------------------------
+      const language = document.createElement('select')
+      language.className = 'smarkup-code-language'
+      language.contentEditable = 'false'
+      // Out of the tab order: ⇥ inside a code block indents the code, and the
+      // cluster is a pointer affordance on a block the caret is already in.
+      language.tabIndex = -1
+      language.setAttribute('aria-label', 'Code language')
+      language.title = 'Code language'
+
+      /** The fence's info string, normalised the way the picker stores it. */
+      const currentLanguage = (): string =>
+        ((node.attrs.language as string | null) ?? '').trim().toLowerCase()
+
+      /** The out-of-list tag currently carried as an extra option, if any. */
+      let extra: string | null = null
+
+      const fillOptions = (): void => {
+        const options = LANGUAGES.map(([value, label]) => {
+          const option = document.createElement('option')
+          option.value = value
+          option.textContent = label
+          return option
+        })
+        if (extra !== null) {
+          const option = document.createElement('option')
+          option.value = extra
+          option.textContent = extra
+          options.push(option)
+        }
+        language.replaceChildren(...options)
+      }
+
+      const syncLanguage = (): void => {
+        const value = currentLanguage()
+        const unknown = value && !LANGUAGES.some(([known]) => known === value) ? value : null
+        if (unknown !== extra) {
+          extra = unknown
+          fillOptions()
+        }
+        if (language.value !== value) language.value = value
+      }
+
+      language.addEventListener('change', () => {
+        const pos = getPos()
+        if (pos == null) return
+        const { view } = editor
+        view.dispatch(
+          view.state.tr.setNodeMarkup(pos, undefined, {
+            ...node.attrs,
+            language: language.value || null
+          })
+        )
+        // The popup leaves focus on the select. Hand it back, or the next
+        // keystroke goes to the picker's type-ahead instead of the document.
+        view.focus()
+      })
+
       // --- Preview -------------------------------------------------------
       // Created up front and attached only while the fence is a mermaid one,
       // so retagging a block doesn't need a whole new node view.
@@ -119,7 +232,10 @@ export const CodeBlockActions = CodeBlock.extend({
       const syncPreview = (): void => {
         const wanted = isMermaidLanguage(node.attrs.language as string | null)
         if (wanted === actions.contains(preview)) return
-        if (wanted) actions.prepend(preview)
+        // Before the copy button, which is the cluster's constant — so the
+        // preview appearing never shifts the picker out from under the
+        // pointer that just chose `mermaid` in it.
+        if (wanted) copy.before(preview)
         else preview.remove()
       }
 
@@ -158,7 +274,9 @@ export const CodeBlockActions = CodeBlock.extend({
           })
       })
 
-      actions.append(copy)
+      actions.append(language, copy)
+      fillOptions()
+      syncLanguage()
       syncPreview()
       dom.append(pre, actions)
 
@@ -170,7 +288,8 @@ export const CodeBlockActions = CodeBlock.extend({
           node = updated
           code.className = languageClass(node.attrs)
           // A fence becomes previewable the moment someone types `mermaid`
-          // after the backticks.
+          // after the backticks, or picks it in the language menu.
+          syncLanguage()
           syncPreview()
           return true
         },

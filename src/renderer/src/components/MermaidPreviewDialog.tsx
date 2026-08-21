@@ -130,7 +130,12 @@ const MermaidPreviewDialog = (): React.JSX.Element => {
         // The diagram is the content — nothing in here wants the caret, and
         // focusing a zoom button on open would put it under the arrow keys.
         onOpenAutoFocus={(e) => e.preventDefault()}
-        className="flex h-[85vh] max-h-[85vh] w-[calc(100%-4rem)] flex-col gap-3 overflow-hidden sm:max-w-[min(1100px,92vw)]"
+        // Deliberately near-fullscreen, and wider than the usual dialog cap:
+        // every pixel of width is another node the "fit" scale doesn't have to
+        // shrink away, and a diagram is the one kind of content where reading
+        // it at all depends on how much of it fits at once. The margin left is
+        // just enough to keep the window behind it visible as context.
+        className="flex h-[calc(100vh-4rem)] max-h-[calc(100vh-4rem)] w-[calc(100vw-3rem)] flex-col gap-3 overflow-hidden sm:max-w-[calc(100vw-3rem)]"
       >
         <div className="flex shrink-0 items-start justify-between gap-4">
           <div>
