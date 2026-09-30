@@ -45,6 +45,15 @@ export type Settings = {
    * is used.
    */
   fileEditorModes: Record<string, 'visual' | 'raw'>
+  /** Global fallback for whether files open read-only (Read) or editable (Edit). */
+  readOnly: boolean
+  /**
+   * Per-file Read/Edit overrides, keyed by absolute path — the same shape and
+   * fallback rule as `fileEditorModes`.
+   */
+  fileReadOnly: Record<string, boolean>
+  /** Soft-wrap long lines in the visual editor's fenced code blocks. */
+  codeBlockWrap: boolean
   openTabs: string[]
   activeTabPath: string | null
   recentFiles: string[]
@@ -98,6 +107,9 @@ export type WatchEvent = {
 export type WatchPayload = {
   folder: string
   events: WatchEvent[]
+  /** From a single-file watch (an open file outside every watched folder):
+   *  `folder` is the file itself and there's no sidebar section to refresh. */
+  standalone?: boolean
 }
 
 export type TabTransferData = {
@@ -160,6 +172,9 @@ const api = {
   // --- Watcher ----------------------------------------------------------
   syncWatchedFolders: (folders: string[]): Promise<boolean> =>
     ipcRenderer.invoke('fs:syncWatchedFolders', folders),
+  /** Watch individual files — open tabs that no watched folder covers. */
+  syncWatchedFiles: (files: string[]): Promise<boolean> =>
+    ipcRenderer.invoke('fs:syncWatchedFiles', files),
   onWatchEvent: (callback: (payload: WatchPayload) => void): (() => void) => {
     const handler = (_event: unknown, payload: WatchPayload): void => callback(payload)
     ipcRenderer.on('fs:watchEvent', handler)
@@ -216,6 +231,13 @@ const api = {
     ipcRenderer.on('app:toggleEditorMode', handler)
     return () => {
       ipcRenderer.off('app:toggleEditorMode', handler)
+    }
+  },
+  onToggleReadOnly: (callback: () => void): (() => void) => {
+    const handler = (): void => callback()
+    ipcRenderer.on('app:toggleReadOnly', handler)
+    return () => {
+      ipcRenderer.off('app:toggleReadOnly', handler)
     }
   },
   onOpenDiffPicker: (callback: () => void): (() => void) => {

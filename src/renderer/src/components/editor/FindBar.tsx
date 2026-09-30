@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ChevronUpIcon, ChevronDownIcon, XIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { useWorkspace } from '@/store/workspace'
+import { resolveReadOnly, useWorkspace } from '@/store/workspace'
 import { useActiveEditor } from '@/lib/active-editor'
 import { useActiveRawEditor } from '@/lib/active-raw-editor'
 import {
@@ -28,6 +28,11 @@ import SearchScrollbarMarkers from './SearchScrollbarMarkers'
 const FindBar = (): React.JSX.Element | null => {
   const open = useWorkspace((s) => s.findBarOpen)
   const close = useWorkspace((s) => s.closeFindBar)
+  // Read mode keeps Find and drops the Replace row — replacing is an edit.
+  const readOnly = useWorkspace((s) => {
+    const tab = s.activeTabId ? s.tabs.find((t) => t.id === s.activeTabId) : undefined
+    return resolveReadOnly(tab?.path, s.fileReadOnly, s.readOnly)
+  })
   const rawView = useActiveRawEditor()
   const visualEditor = useActiveEditor()
 
@@ -230,7 +235,7 @@ const FindBar = (): React.JSX.Element | null => {
         </div>
 
         {/* Replace row */}
-        <div className="flex items-center gap-1">
+        <div className={cn('flex items-center gap-1', readOnly && 'hidden')}>
           <input
             type="text"
             placeholder="Replace"

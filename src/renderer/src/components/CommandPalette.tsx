@@ -46,7 +46,7 @@ import {
   CommandShortcut
 } from '@/components/ui/command'
 import Spinner from '@/components/ui/spinner'
-import { useWorkspace, type FolderNode } from '@/store/workspace'
+import { resolveReadOnly, useWorkspace, type FolderNode } from '@/store/workspace'
 import { useActiveEditor } from '@/lib/active-editor'
 import { copyPath } from '@/lib/copy-path'
 
@@ -84,6 +84,11 @@ const CommandPaletteBody = (): React.JSX.Element => {
     setEditorMode,
     editorMode,
     fileEditorModes,
+    setReadOnly,
+    readOnly,
+    fileReadOnly,
+    codeBlockWrap,
+    setCodeBlockWrap,
     toggleSidebar,
     sidebarVisible,
     deleteFile,
@@ -130,6 +135,11 @@ const CommandPaletteBody = (): React.JSX.Element => {
       setEditorMode: s.setEditorMode,
       editorMode: s.editorMode,
       fileEditorModes: s.fileEditorModes,
+      setReadOnly: s.setReadOnly,
+      readOnly: s.readOnly,
+      fileReadOnly: s.fileReadOnly,
+      codeBlockWrap: s.codeBlockWrap,
+      setCodeBlockWrap: s.setCodeBlockWrap,
       toggleSidebar: s.toggleSidebar,
       sidebarVisible: s.sidebarVisible,
       deleteFile: s.deleteFile,
@@ -165,8 +175,9 @@ const CommandPaletteBody = (): React.JSX.Element => {
   const activeTab = tabs.find((t) => t.id === activeTabId)
   const effectiveMode =
     activeTab && fileEditorModes[activeTab.path] ? fileEditorModes[activeTab.path] : editorMode
+  const isReadOnly = resolveReadOnly(activeTab?.path, fileReadOnly, readOnly)
   const visualEditor = useActiveEditor()
-  const canEditVisual = effectiveMode === 'visual' && visualEditor !== null
+  const canEditVisual = effectiveMode === 'visual' && visualEditor !== null && !isReadOnly
   const inTable = canEditVisual && visualEditor!.isActive('table')
 
   // Reset query when switching pages
@@ -504,6 +515,23 @@ const CommandPaletteBody = (): React.JSX.Element => {
             >
               <EyeIcon /> Switch to {effectiveMode === 'visual' ? 'Raw' : 'Visual'} mode
             </CommandItem>
+            {activeTab && (
+              <CommandItem
+                value={
+                  isReadOnly
+                    ? 'switch to edit mode editable writable unlock'
+                    : 'switch to read mode read-only readonly view lock'
+                }
+                onSelect={() => {
+                  void setReadOnly(!isReadOnly)
+                  dismiss()
+                }}
+              >
+                {isReadOnly ? <PencilIcon /> : <EyeIcon />} Switch to {isReadOnly ? 'Edit' : 'Read'}{' '}
+                mode
+                <CommandShortcut>{isMac ? '⌘⇧E' : 'Ctrl+Shift+E'}</CommandShortcut>
+              </CommandItem>
+            )}
             {activeTabId && !activeTabId.startsWith('diff:') && (
               <CommandItem
                 value="outline table of contents toc headings structure reorder reorganize"
@@ -566,6 +594,17 @@ const CommandPaletteBody = (): React.JSX.Element => {
             >
               <WrapTextIcon />{' '}
               {rawWordWrap ? 'Disable word wrap (raw editor)' : 'Enable word wrap (raw editor)'}
+            </CommandItem>
+            <CommandItem
+              onSelect={() => {
+                void setCodeBlockWrap(!codeBlockWrap)
+                dismiss()
+              }}
+            >
+              <WrapTextIcon />{' '}
+              {codeBlockWrap
+                ? 'Disable line wrap in code blocks'
+                : 'Enable line wrap in code blocks'}
             </CommandItem>
           </CommandGroup>
 

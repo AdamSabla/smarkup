@@ -17,7 +17,7 @@ import {
 } from '@/lib/outline'
 import { rowsOf, sameRows, type OutlineEdit, type OutlineRow } from '@/lib/outline-tree'
 import { revealHeading } from '@/lib/heading-jump'
-import { useWorkspace } from '@/store/workspace'
+import { resolveReadOnly, useWorkspace } from '@/store/workspace'
 
 const isMac = navigator.userAgent.toLowerCase().includes('mac')
 
@@ -50,6 +50,8 @@ const OutlineDialog = (): React.JSX.Element => {
   const showToast = useWorkspace((s) => s.showToast)
 
   const tab = activeTabId ? tabs.find((t) => t.id === activeTabId) : undefined
+  // In Read mode the dialog is a navigator only: no moves, so nothing to apply.
+  const readOnly = useWorkspace((s) => resolveReadOnly(tab?.path, s.fileReadOnly, s.readOnly))
 
   // Snapshot the document when the dialog opens. Editing the buffer behind an
   // open outline would invalidate every offset we're holding, so we work from
@@ -263,20 +265,36 @@ const OutlineDialog = (): React.JSX.Element => {
               onFoldedChange={setFolded}
               onAfterAction={focusTree}
             />
-            <div className="mx-1 h-4 w-px bg-border" />
-            <OutlineLevelControls
-              rows={rows}
-              sel={sel}
-              onEdit={applyEdit}
-              onAfterAction={focusTree}
-            />
-            <div className="mx-1 h-4 w-px bg-border" />
-            <Button variant="ghost" size="icon" className="size-7" aria-label="Undo" onClick={undo}>
-              <Undo2Icon className={cn('size-4', past.length === 0 && 'opacity-30')} />
-            </Button>
-            <Button variant="ghost" size="icon" className="size-7" aria-label="Redo" onClick={redo}>
-              <Redo2Icon className={cn('size-4', future.length === 0 && 'opacity-30')} />
-            </Button>
+            {!readOnly && (
+              <>
+                <div className="mx-1 h-4 w-px bg-border" />
+                <OutlineLevelControls
+                  rows={rows}
+                  sel={sel}
+                  onEdit={applyEdit}
+                  onAfterAction={focusTree}
+                />
+                <div className="mx-1 h-4 w-px bg-border" />
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-7"
+                  aria-label="Undo"
+                  onClick={undo}
+                >
+                  <Undo2Icon className={cn('size-4', past.length === 0 && 'opacity-30')} />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-7"
+                  aria-label="Redo"
+                  onClick={redo}
+                >
+                  <Redo2Icon className={cn('size-4', future.length === 0 && 'opacity-30')} />
+                </Button>
+              </>
+            )}
           </div>
         </div>
 
@@ -293,7 +311,7 @@ const OutlineDialog = (): React.JSX.Element => {
               onSelChange={setSel}
               folded={folded}
               onFoldedChange={setFolded}
-              onEdit={applyEdit}
+              onEdit={readOnly ? undefined : applyEdit}
               onActivate={requestJump}
               activateTitle={dirty ? 'Apply changes and go to heading' : 'Go to heading'}
               intro={introOf(outline)}
@@ -304,25 +322,35 @@ const OutlineDialog = (): React.JSX.Element => {
               <span>
                 <Kbd>↑↓</Kbd> select
               </span>
-              <span>
-                <Kbd>⌥↑↓</Kbd> move
-              </span>
+              {!readOnly && (
+                <span>
+                  <Kbd>⌥↑↓</Kbd> move
+                </span>
+              )}
               <span>
                 <Kbd>←→</Kbd> fold
               </span>
-              <span>
-                <Kbd>{isMac ? '⌘Z' : 'Ctrl+Z'}</Kbd> undo
-              </span>
+              {!readOnly && (
+                <span>
+                  <Kbd>{isMac ? '⌘Z' : 'Ctrl+Z'}</Kbd> undo
+                </span>
+              )}
               <span>
                 <Kbd>↩</Kbd> go to heading
               </span>
-              <span>
-                <Kbd>{isMac ? '⌘↩' : 'Ctrl+Enter'}</Kbd> apply
-              </span>
+              {!readOnly && (
+                <span>
+                  <Kbd>{isMac ? '⌘↩' : 'Ctrl+Enter'}</Kbd> apply
+                </span>
+              )}
             </div>
 
             <div className="flex shrink-0 items-center justify-between gap-3 border-t pt-3">
-              {pendingJump != null ? (
+              {readOnly ? (
+                <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+                  Read mode — switch to Edit to rearrange sections
+                </span>
+              ) : pendingJump != null ? (
                 <>
                   <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
                     Apply {past.length} {past.length === 1 ? 'change' : 'changes'} and go to “

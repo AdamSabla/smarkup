@@ -4,8 +4,8 @@ import { isMermaidLanguage } from '@/lib/mermaid'
 
 /**
  * The control cluster in the top-right corner of every fenced code block: a
- * language picker and a copy button always, plus a diagram preview when the
- * fence is tagged `mermaid`.
+ * language picker, a line-wrap toggle and a copy button always, plus a diagram
+ * preview when the fence is tagged `mermaid`.
  *
  * The picker is the only way to tag a fence from the visual editor. Typing
  * ```mermaid works while the block is being created and never again — once
@@ -112,6 +112,14 @@ const copyIcon = (): SVGSVGElement =>
     ['path', { d: 'M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2' }]
   ])
 const checkIcon = (): SVGSVGElement => svg([['path', { d: 'M20 6 9 17l-5-5' }]])
+// lucide `text-wrap`.
+const wrapIcon = (): SVGSVGElement =>
+  svg([
+    ['path', { d: 'm16 16-3 3 3 3' }],
+    ['path', { d: 'M3 12h14.5a1 1 0 0 1 0 7H13' }],
+    ['path', { d: 'M3 19h6' }],
+    ['path', { d: 'M3 5h18' }]
+  ])
 const diagramIcon = (): SVGSVGElement =>
   svg([
     ['rect', { width: '8', height: '8', x: '3', y: '3', rx: '2' }],
@@ -206,7 +214,12 @@ export const CodeBlockActions = CodeBlock.extend({
 
       language.addEventListener('change', () => {
         const pos = getPos()
-        if (pos == null) return
+        // In Read mode the picker is styled as a plain label (editor.css);
+        // this is the backstop should it still be reached from the keyboard.
+        if (pos == null || !editor.isEditable) {
+          syncLanguage()
+          return
+        }
         const { view } = editor
         view.dispatch(
           view.state.tr.setNodeMarkup(pos, undefined, {
@@ -238,6 +251,32 @@ export const CodeBlockActions = CodeBlock.extend({
         if (wanted) copy.before(preview)
         else preview.remove()
       }
+
+      // --- Wrap ----------------------------------------------------------
+      // One preference for every fence rather than one per block: a per-block
+      // choice would have to live in the file to survive a reload, and the
+      // fence's info string is not ours to write to. The button sits on each
+      // block anyway because that's where a line that shouldn't wrap is
+      // noticed. The class that does the work is on the editor root — see
+      // `code-nowrap` in VisualEditor.tsx and editor.css.
+      const wrap = makeButton('Wrap long lines', wrapIcon())
+      const syncWrap = (wrapping: boolean): void => {
+        const label = wrapping ? 'Stop wrapping long lines' : 'Wrap long lines'
+        wrap.setAttribute('aria-label', label)
+        wrap.title = label
+        wrap.setAttribute('aria-pressed', String(wrapping))
+        wrap.classList.toggle('is-active', wrapping)
+      }
+      wrap.addEventListener('click', (event) => {
+        event.preventDefault()
+        event.stopPropagation()
+        const { codeBlockWrap, setCodeBlockWrap } = useWorkspace.getState()
+        void setCodeBlockWrap(!codeBlockWrap)
+      })
+      syncWrap(useWorkspace.getState().codeBlockWrap)
+      const unsubscribeWrap = useWorkspace.subscribe((state, prev) => {
+        if (state.codeBlockWrap !== prev.codeBlockWrap) syncWrap(state.codeBlockWrap)
+      })
 
       // --- Copy ----------------------------------------------------------
       const copy = makeButton('Copy code', copyIcon())
@@ -274,7 +313,7 @@ export const CodeBlockActions = CodeBlock.extend({
           })
       })
 
-      actions.append(language, copy)
+      actions.append(language, wrap, copy)
       fillOptions()
       syncLanguage()
       syncPreview()
@@ -297,7 +336,10 @@ export const CodeBlockActions = CodeBlock.extend({
         // reading an icon swap as an edit, or a click as a selection.
         ignoreMutation: (mutation) => actions.contains(mutation.target),
         stopEvent: (event) => event.target instanceof Node && actions.contains(event.target),
-        destroy: () => clearTimeout(confirmTimer)
+        destroy: () => {
+          clearTimeout(confirmTimer)
+          unsubscribeWrap()
+        }
       }
     }
   }

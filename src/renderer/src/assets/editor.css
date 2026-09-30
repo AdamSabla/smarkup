@@ -338,6 +338,20 @@
   color: var(--foreground);
   border-color: var(--ring);
 }
+/* A pressed toggle (the wrap button while wrapping is on). */
+.smarkup-code-action.is-active {
+  color: var(--foreground);
+  background: var(--muted);
+}
+
+/* Wrapping off: long lines run on and the block scrolls sideways instead
+ * (`pre` already has `overflow-x: auto`). Overrides ProseMirror's own
+ * `pre { white-space: pre-wrap }` and the editor-wide `word-wrap: break-word`. */
+.smarkup-editor.code-nowrap pre {
+  white-space: pre;
+  overflow-wrap: normal;
+  word-wrap: normal;
+}
 
 /* The fence's language, as a real `<select>` — see extensions/code-block-actions.ts.
  * Sized and coloured to read as one more control in the cluster rather than a
@@ -366,6 +380,31 @@
 .smarkup-code-language:focus-visible {
   color: var(--foreground);
   border-color: var(--ring);
+}
+
+/* --- Read mode --------------------------------------------------------- */
+/* ProseMirror marks a non-editable view `contenteditable="false"`. The text
+ * stays selectable; the controls that would change the document stop looking
+ * like controls. The language picker keeps its place as a plain label — which
+ * language a fence is still worth knowing when you can't change it. */
+.smarkup-editor[contenteditable='false'] .smarkup-code-language {
+  appearance: none;
+  -webkit-appearance: none;
+  padding: 0 6px;
+  pointer-events: none;
+}
+.smarkup-editor[contenteditable='false'] div[data-type='flatTaskItem'] > label,
+.smarkup-editor[contenteditable='false'] div[data-type='flatTaskItem'] > label > input {
+  cursor: default;
+}
+.smarkup-editor[contenteditable='false']
+  div[data-type='flatTaskItem']
+  > label
+  > input:not(:checked):hover {
+  border-color: color-mix(in oklch, var(--border), var(--foreground) 30%);
+}
+.smarkup-editor[contenteditable='false'] .column-resize-handle {
+  display: none;
 }
 
 /* Mermaid's own SVG, dropped into the preview dialog at the size lib/mermaid.ts

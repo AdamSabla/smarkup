@@ -22,7 +22,7 @@ import { useFileWatcher } from '@/hooks/useFileWatcher'
 import { usePersistOpenTabs } from '@/hooks/usePersistOpenTabs'
 import { useAutoSave } from '@/hooks/useAutoSave'
 import { useAutoFilename } from '@/hooks/useAutoFilename'
-import { resolveEditorMode, useWorkspace } from '@/store/workspace'
+import { resolveEditorMode, resolveReadOnly, useWorkspace } from '@/store/workspace'
 
 const SIDEBAR_DEFAULT = 240
 const SIDEBAR_MIN = 180
@@ -106,6 +106,16 @@ const App = (): React.JSX.Element => {
       const tab = s.activeTabId ? s.tabs.find((t) => t.id === s.activeTabId) : undefined
       const current = resolveEditorMode(tab?.path, s.fileEditorModes, s.editorMode)
       void s.setEditorMode(current === 'visual' ? 'raw' : 'visual')
+    })
+  }, [])
+
+  // View → Toggle Read Mode (⌘⇧E) — flip the active file between Read and Edit.
+  useEffect(() => {
+    return window.api.onToggleReadOnly(() => {
+      const s = useWorkspace.getState()
+      const tab = s.activeTabId ? s.tabs.find((t) => t.id === s.activeTabId) : undefined
+      if (!tab) return
+      void s.setReadOnly(!resolveReadOnly(tab.path, s.fileReadOnly, s.readOnly))
     })
   }, [])
 

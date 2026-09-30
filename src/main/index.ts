@@ -4,7 +4,12 @@ import { promises as fs, type Dirent } from 'fs'
 import { electronApp, is } from '@electron-toolkit/utils'
 import { autoUpdater } from 'electron-updater'
 import { loadSettings, saveSettings, type Settings } from './settings'
-import { syncWatchedFolders, stopAllWatchers } from './watcher'
+import {
+  syncWatchedFolders,
+  syncWatchedFiles,
+  releaseWindowWatches,
+  stopAllWatchers
+} from './watcher'
 import icon from '../../resources/icon.png?asset'
 
 const isMac = process.platform === 'darwin'
@@ -162,6 +167,8 @@ const createWindow = (init?: WindowInit): BrowserWindow => {
   mainWindow.on('closed', () => {
     windowIdMap.delete(mainWindow)
     windowInitStore.delete(windowId)
+    // Otherwise a closed window's folders and files stay watched until quit.
+    releaseWindowWatches(windowId)
   })
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
@@ -390,6 +397,12 @@ const registerWatcherHandlers = (): void => {
     const win = BrowserWindow.fromWebContents(event.sender)
     const windowId = win ? (windowIdMap.get(win) ?? 'unknown') : 'unknown'
     syncWatchedFolders(folders, windowId)
+    return true
+  })
+  ipcMain.handle('fs:syncWatchedFiles', (event, files: string[]) => {
+    const win = BrowserWindow.fromWebContents(event.sender)
+    const windowId = win ? (windowIdMap.get(win) ?? 'unknown') : 'unknown'
+    syncWatchedFiles(files, windowId)
     return true
   })
 }
@@ -789,6 +802,17 @@ app.whenReady().then(() => {
           click: (): void => {
             const win = BrowserWindow.getFocusedWindow()
             if (win) win.webContents.send('app:toggleEditorMode')
+          }
+        },
+        // Renderer-owned chord, like the outline entries above: useShortcuts
+        // binds ⌘⇧E, and a second owner here would flip the file back.
+        {
+          label: 'Toggle Read Mode',
+          accelerator: 'CmdOrCtrl+Shift+E',
+          registerAccelerator: false,
+          click: (): void => {
+            const win = BrowserWindow.getFocusedWindow()
+            if (win) win.webContents.send('app:toggleReadOnly')
           }
         },
         {

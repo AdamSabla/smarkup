@@ -10,9 +10,9 @@ import {
   closestCenter
 } from '@dnd-kit/core'
 import { SortableContext, horizontalListSortingStrategy } from '@dnd-kit/sortable'
-import { PlusIcon, PanelLeftOpenIcon, EyeIcon, CodeIcon } from 'lucide-react'
+import { PlusIcon, PanelLeftOpenIcon, EyeIcon, CodeIcon, PencilIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { resolveEditorMode, useWorkspace, type LeafPane } from '@/store/workspace'
+import { resolveEditorMode, resolveReadOnly, useWorkspace, type LeafPane } from '@/store/workspace'
 import Tab from '@/components/Tab'
 import DiffTabItem from '@/components/DiffTabItem'
 
@@ -59,6 +59,9 @@ const PaneTabBar = ({
   const fileEditorModes = useWorkspace((s) => s.fileEditorModes)
   const activeTabId = useWorkspace((s) => s.activeTabId)
   const setEditorMode = useWorkspace((s) => s.setEditorMode)
+  const globalReadOnly = useWorkspace((s) => s.readOnly)
+  const fileReadOnly = useWorkspace((s) => s.fileReadOnly)
+  const setReadOnly = useWorkspace((s) => s.setReadOnly)
   const openDiff = useWorkspace((s) => s.openDiff)
 
   const leaf = findLeaf(paneRoot, paneId)
@@ -94,6 +97,7 @@ const PaneTabBar = ({
   const activeTab = activeTabId ? tabs.find((t) => t.id === activeTabId) : undefined
   const effectiveMode = resolveEditorMode(activeTab?.path, fileEditorModes, editorMode)
   const isVisual = effectiveMode === 'visual'
+  const isReadOnly = resolveReadOnly(activeTab?.path, fileReadOnly, globalReadOnly)
 
   const handleDragStart = (event: DragStartEvent): void => {
     draggingTabIdRef.current = event.active.id as string
@@ -292,39 +296,80 @@ const PaneTabBar = ({
         </div>
       )}
 
-      {/* Mode switcher — only in the last (rightmost) pane */}
+      {/* Mode switchers — only in the last (rightmost) pane */}
       {isLast && (
-        <button
-          onClick={() => void setEditorMode(isVisual ? 'raw' : 'visual')}
-          style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+        <div
           className={cn(
-            'group ml-auto flex items-center gap-0.5 self-center rounded-[6px] p-0.5',
-            'hover:bg-foreground/[0.04] transition-colors',
+            'ml-auto flex items-center gap-1 self-center',
             isMac ? 'mr-2' : 'mr-[140px]'
           )}
-          aria-label={`Switch to ${isVisual ? 'raw' : 'visual'} mode`}
         >
-          <span
+          {/* Read ↔ Edit. Same shape and per-file memory as the editor switch
+              beside it; only offered when a file (not a diff) is showing. */}
+          {activeTab && (
+            <button
+              onClick={() => void setReadOnly(!isReadOnly)}
+              style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+              className={cn(
+                'group flex items-center gap-0.5 rounded-[6px] p-0.5',
+                'hover:bg-foreground/[0.04] transition-colors'
+              )}
+              aria-label={isReadOnly ? 'Switch to edit mode' : 'Switch to read mode'}
+              title={`${isReadOnly ? 'Read mode — click to edit' : 'Edit mode — click for read-only'} (${isMac ? '⌘⇧E' : 'Ctrl+Shift+E'})`}
+            >
+              <span
+                className={cn(
+                  'flex size-[22px] items-center justify-center rounded-[4px] transition-colors',
+                  isReadOnly
+                    ? 'bg-foreground/10 text-foreground'
+                    : 'text-muted-foreground group-hover:text-foreground'
+                )}
+              >
+                <EyeIcon className="size-3" />
+              </span>
+              <span
+                className={cn(
+                  'flex size-[22px] items-center justify-center rounded-[4px] transition-colors',
+                  !isReadOnly
+                    ? 'bg-foreground/10 text-foreground'
+                    : 'text-muted-foreground group-hover:text-foreground'
+                )}
+              >
+                <PencilIcon className="size-3" />
+              </span>
+            </button>
+          )}
+          <button
+            onClick={() => void setEditorMode(isVisual ? 'raw' : 'visual')}
+            style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
             className={cn(
-              'flex size-[22px] items-center justify-center rounded-[4px] transition-colors',
-              isVisual
-                ? 'bg-foreground/10 text-foreground'
-                : 'text-muted-foreground group-hover:text-foreground'
+              'group flex items-center gap-0.5 rounded-[6px] p-0.5',
+              'hover:bg-foreground/[0.04] transition-colors'
             )}
+            aria-label={`Switch to ${isVisual ? 'raw' : 'visual'} mode`}
           >
-            <EyeIcon className="size-3" />
-          </span>
-          <span
-            className={cn(
-              'flex size-[22px] items-center justify-center rounded-[4px] transition-colors',
-              !isVisual
-                ? 'bg-foreground/10 text-foreground'
-                : 'text-muted-foreground group-hover:text-foreground'
-            )}
-          >
-            <CodeIcon className="size-3" />
-          </span>
-        </button>
+            <span
+              className={cn(
+                'flex size-[22px] items-center justify-center rounded-[4px] transition-colors',
+                isVisual
+                  ? 'bg-foreground/10 text-foreground'
+                  : 'text-muted-foreground group-hover:text-foreground'
+              )}
+            >
+              <EyeIcon className="size-3" />
+            </span>
+            <span
+              className={cn(
+                'flex size-[22px] items-center justify-center rounded-[4px] transition-colors',
+                !isVisual
+                  ? 'bg-foreground/10 text-foreground'
+                  : 'text-muted-foreground group-hover:text-foreground'
+              )}
+            >
+              <CodeIcon className="size-3" />
+            </span>
+          </button>
+        </div>
       )}
     </div>
   )

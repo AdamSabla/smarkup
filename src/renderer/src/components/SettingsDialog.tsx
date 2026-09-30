@@ -1,4 +1,12 @@
-import { EyeIcon, FileCodeIcon, FolderOpenIcon, MonitorIcon, MoonIcon, SunIcon } from 'lucide-react'
+import {
+  EyeIcon,
+  FileCodeIcon,
+  FolderOpenIcon,
+  MonitorIcon,
+  MoonIcon,
+  PencilIcon,
+  SunIcon
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -26,6 +34,13 @@ const EDITOR_MODE_OPTIONS: EditorModeOption[] = [
   { value: 'raw', label: 'Raw', icon: FileCodeIcon }
 ]
 
+type ReadModeOption = { value: boolean; label: string; icon: React.ElementType }
+
+const READ_MODE_OPTIONS: ReadModeOption[] = [
+  { value: false, label: 'Editing', icon: PencilIcon },
+  { value: true, label: 'Reading', icon: EyeIcon }
+]
+
 const SettingsDialog = (): React.JSX.Element => {
   const {
     settingsOpen,
@@ -36,6 +51,10 @@ const SettingsDialog = (): React.JSX.Element => {
     setTheme,
     editorMode,
     setDefaultEditorMode,
+    readOnly,
+    setDefaultReadOnly,
+    codeBlockWrap,
+    setCodeBlockWrap,
     autoSave,
     setAutoSave,
     showWordCount,
@@ -130,6 +149,30 @@ const SettingsDialog = (): React.JSX.Element => {
                     size="sm"
                     className="flex-1"
                     onClick={() => void setDefaultEditorMode(value)}
+                  >
+                    <Icon className="size-3.5" />
+                    {label}
+                  </Button>
+                ))}
+              </div>
+            </div>
+
+            {/* Default Read / Edit */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Open files for</label>
+              <p className="text-xs text-muted-foreground">
+                Read mode lets you select and copy text but not change it. Like the editor,
+                switching a file with ⌘⇧E remembers that choice for the file. New files always open
+                for editing.
+              </p>
+              <div className="flex gap-2">
+                {READ_MODE_OPTIONS.map(({ value, label, icon: Icon }) => (
+                  <Button
+                    key={label}
+                    variant={readOnly === value ? 'default' : 'outline'}
+                    size="sm"
+                    className="flex-1"
+                    onClick={() => void setDefaultReadOnly(value)}
                   >
                     <Icon className="size-3.5" />
                     {label}
@@ -306,6 +349,36 @@ const SettingsDialog = (): React.JSX.Element => {
                     className={cn(
                       'inline-block size-3.5 rounded-full bg-background shadow transition-transform',
                       visualHeadingMarkers ? 'translate-x-[18px]' : 'translate-x-[2px]'
+                    )}
+                  />
+                </button>
+              </div>
+            </div>
+
+            {/* Code block wrapping */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <label className="text-sm font-medium">Wrap long lines in code blocks</label>
+                  <p className="text-xs text-muted-foreground">
+                    When off, code keeps its lines intact and scrolls sideways. Also toggled from
+                    the wrap button on any code block.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={codeBlockWrap}
+                  onClick={() => void setCodeBlockWrap(!codeBlockWrap)}
+                  className={cn(
+                    'relative inline-flex h-5 w-9 shrink-0 items-center rounded-full border transition-colors',
+                    codeBlockWrap ? 'bg-primary border-primary' : 'bg-muted border-border'
+                  )}
+                >
+                  <span
+                    className={cn(
+                      'inline-block size-3.5 rounded-full bg-background shadow transition-transform',
+                      codeBlockWrap ? 'translate-x-[18px]' : 'translate-x-[2px]'
                     )}
                   />
                 </button>

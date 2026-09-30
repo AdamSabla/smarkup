@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react'
-import { useEditor, EditorContent, type Editor } from '@tiptap/react'
-import { TextSelection } from '@tiptap/pm/state'
+import { useEditor, EditorContent, Extension, type Editor } from '@tiptap/react'
+import { Plugin, TextSelection } from '@tiptap/pm/state'
 import StarterKit from '@tiptap/starter-kit'
 import { Text } from '@tiptap/extension-text'
 import { Table } from '@tiptap/extension-table'
@@ -65,14 +65,17 @@ const PlainText = Text.extend({
 // regions the user didn't touch keep their original bytes (see
 // lib/markdown-roundtrip.ts).
 
+const isMac = navigator.userAgent.toLowerCase().includes('mac')
+
 type Props = {
   tabId: string
   value: string
   onChange: (markdown: string) => void
   isActive: boolean
+  readOnly: boolean
 }
 
-const VisualEditor = ({ tabId, value, onChange, isActive }: Props): React.JSX.Element => {
+const VisualEditor = ({ tabId, value, onChange, isActive, readOnly }: Props): React.JSX.Element => {
   const scrollRef = useRef<HTMLDivElement>(null)
   const path = useWorkspace((s) => s.tabs.find((t) => t.id === tabId)?.path ?? '')
   const pathRef = useRef(path)
@@ -122,6 +125,10 @@ const VisualEditor = ({ tabId, value, onChange, isActive }: Props): React.JSX.El
   useEffect(() => {
     onChangeRef.current = onChange
   }, [onChange])
+  const readOnlyRef = useRef(readOnly)
+  useEffect(() => {
+    readOnlyRef.current = readOnly
+  }, [readOnly])
 
   const extensions = useMemo(
     () => [
@@ -161,6 +168,19 @@ const VisualEditor = ({ tabId, value, onChange, isActive }: Props): React.JSX.El
       VariableHighlighter.configure({ getPath }),
       TodoCommentHighlighter,
       SearchHighlighter,
+      // Read mode. Turning `editable` off (see the effect below) stops typing,
+      // paste and drop, but commands still dispatch: a table-menu button, a
+      // column-resize drag, find-and-replace. Holding back every document
+      // change that isn't our own load (applyingRef) covers those and anything
+      // added later. Selection changes still pass, so text stays selectable.
+      Extension.create({
+        name: 'readOnlyGuard',
+        addProseMirrorPlugins: () => [
+          new Plugin({
+            filterTransaction: (tr) => !tr.docChanged || !readOnlyRef.current || applyingRef.current
+          })
+        ]
+      }),
       Markdown.configure({
         html: false,
         tightLists: true,
@@ -197,9 +217,27 @@ const VisualEditor = ({ tabId, value, onChange, isActive }: Props): React.JSX.El
       lastEmittedMarkdown.current = text
       onChangeRef.current(text)
     },
+    editable: !readOnly,
     editorProps: {
       attributes: {
-        class: cn('smarkup-editor focus:outline-none')
+        class: cn('smarkup-editor focus:outline-none'),
+        // Keeps the document focusable once `contenteditable` is off in Read
+        // mode, so keyboard scrolling, ⌘A and ⌘C still land on it.
+        tabindex: '0'
+      },
+      handleDOMEvents: {
+        // A non-editable view never sees ProseMirror's own keymap, so ⌘A
+        // would fall through to the browser and select the whole window —
+        // sidebar, tabs and all. Keep it to the document.
+        keydown: (view, event) => {
+          if (view.editable) return false
+          const mod = isMac ? event.metaKey : event.ctrlKey
+          if (!mod || event.shiftKey || event.altKey || event.key.toLowerCase() !== 'a')
+            return false
+          event.preventDefault()
+          window.getSelection()?.selectAllChildren(view.dom)
+          return true
+        }
       },
       // Override ProseMirror's default text serializer (which uses "\n\n"
       // between blocks and stacks blank lines around empty paragraphs) with
@@ -334,6 +372,19 @@ const VisualEditor = ({ tabId, value, onChange, isActive }: Props): React.JSX.El
     })
   }, [value, editor, applyExternal])
 
+  // Flip Read ↔ Edit in place: same editor, same scroll position, same undo
+  // history. No update event — nothing about the document changed.
+  useEffect(() => {
+    if (!editor || editor.isEditable === !readOnly) return
+    editor.setEditable(!readOnly, false)
+  }, [editor, readOnly])
+
+  const codeBlockWrap = useWorkspace((s) => s.codeBlockWrap)
+  useEffect(() => {
+    if (!editor) return
+    editor.view.dom.classList.toggle('code-nowrap', !codeBlockWrap)
+  }, [editor, codeBlockWrap])
+
   const visualSyntaxHighlight = useWorkspace((s) => s.visualSyntaxHighlight)
   useEffect(() => {
     if (!editor) return
@@ -351,7 +402,7 @@ const VisualEditor = ({ tabId, value, onChange, isActive }: Props): React.JSX.El
   return (
     <div ref={scrollRef} className="relative h-full overflow-auto">
       <EditorContent editor={editor} className="h-full" />
-      {editor && <TableMenu editor={editor} containerRef={scrollRef} />}
+      {editor && !readOnly && <TableMenu editor={editor} containerRef={scrollRef} />}
     </div>
   )
 }

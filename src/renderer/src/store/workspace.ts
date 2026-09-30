@@ -197,20 +197,20 @@ const remapAutoNamedPaths = (paths: Set<string>, oldPath: string, newPath: strin
   return changed ? next : paths
 }
 
-/** Same prefix-rewrite logic as remapPathPrefix, but for the fileEditorModes
- *  map. Used after a folder rename/move so per-file mode preferences follow
- *  their files. */
-const remapFileEditorModes = (
-  modes: Record<string, EditorMode>,
+/** Same prefix-rewrite logic as remapPathPrefix, but for a per-file preference
+ *  map (fileEditorModes, fileReadOnly). Used after a folder rename/move so
+ *  per-file preferences follow their files. */
+const remapFileEditorModes = <T>(
+  modes: Record<string, T>,
   oldPath: string,
   newPath: string
-): Record<string, EditorMode> => {
+): Record<string, T> => {
   if (oldPath === newPath) return modes
   const keys = Object.keys(modes)
   if (keys.length === 0) return modes
   const prefix = oldPath + '/'
   let changed = false
-  const next: Record<string, EditorMode> = {}
+  const next: Record<string, T> = {}
   for (const p of keys) {
     if (p === oldPath) {
       next[newPath] = modes[p]
@@ -223,6 +223,26 @@ const remapFileEditorModes = (
     }
   }
   return changed ? next : modes
+}
+
+/** Move one file's entry in a per-file preference map to its new path. */
+const movePathKey = <T>(
+  prefs: Record<string, T>,
+  oldPath: string,
+  newPath: string
+): Record<string, T> => {
+  if (oldPath === newPath || !(oldPath in prefs)) return prefs
+  const next = { ...prefs, [newPath]: prefs[oldPath] }
+  delete next[oldPath]
+  return next
+}
+
+/** Drop one file's entry from a per-file preference map. */
+const dropPathKey = <T>(prefs: Record<string, T>, path: string): Record<string, T> => {
+  if (!(path in prefs)) return prefs
+  const next = { ...prefs }
+  delete next[path]
+  return next
 }
 
 /** Rewrite any leaf whose `tabIds` contain `oldTabId` to reference `newTabId`.
@@ -365,6 +385,17 @@ type WorkspaceState = {
    * over the global `editorMode`. Persisted so preferences survive restarts.
    */
   fileEditorModes: Record<string, EditorMode>
+  /** Global fallback: whether files without a per-file override open in Read
+   *  mode (selectable, not editable) rather than Edit mode. */
+  readOnly: boolean
+  /**
+   * Per-file Read/Edit overrides, keyed by absolute path. Same rules as
+   * `fileEditorModes` — the switch records against the file, the global
+   * `readOnly` covers files that have never been switched. Persisted.
+   */
+  fileReadOnly: Record<string, boolean>
+  /** Soft-wrap long lines in the visual editor's fenced code blocks. */
+  codeBlockWrap: boolean
   recentFiles: string[]
   autoSave: boolean
   autoSaveDelayMs: number
@@ -579,6 +610,15 @@ type WorkspaceState = {
    * "Default editor" control in Settings.
    */
   setDefaultEditorMode: (mode: EditorMode) => Promise<void>
+  /**
+   * Put the active file into Read (true) or Edit (false) mode, remembered for
+   * that file. With no tab open it sets the global default instead — the same
+   * contract as `setEditorMode`.
+   */
+  setReadOnly: (readOnly: boolean) => Promise<void>
+  /** Set the global Read/Edit default for files with no per-file choice yet. */
+  setDefaultReadOnly: (readOnly: boolean) => Promise<void>
+  setCodeBlockWrap: (enabled: boolean) => Promise<void>
   setTheme: (theme: Theme) => Promise<void>
   setAutoSave: (enabled: boolean) => Promise<void>
   setShowWordCount: (enabled: boolean) => Promise<void>
@@ -749,6 +789,14 @@ export const resolveEditorMode = (
   globalMode: EditorMode
 ): EditorMode => (path && fileEditorModes[path] ? fileEditorModes[path] : globalMode)
 
+/** Resolve whether a file is in Read mode — the `resolveEditorMode` rule for
+ *  the Read/Edit switch. */
+export const resolveReadOnly = (
+  path: string | null | undefined,
+  fileReadOnly: Record<string, boolean>,
+  globalReadOnly: boolean
+): boolean => (path && path in fileReadOnly ? fileReadOnly[path] : globalReadOnly)
+
 const collectWatchedFolders = (
   draftsFolder: string | null,
   additionalFolders: string[]
@@ -766,6 +814,9 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
   sidebarVisible: true,
   editorMode: 'visual',
   fileEditorModes: {},
+  readOnly: false,
+  fileReadOnly: {},
+  codeBlockWrap: true,
   recentFiles: [],
   autoSave: false,
   autoSaveDelayMs: 1500,
@@ -826,6 +877,9 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       sidebarVisible: settings.sidebarVisible,
       editorMode: settings.editorMode,
       fileEditorModes: settings.fileEditorModes ?? {},
+      readOnly: settings.readOnly ?? false,
+      fileReadOnly: settings.fileReadOnly ?? {},
+      codeBlockWrap: settings.codeBlockWrap ?? true,
       recentFiles: settings.recentFiles ?? [],
       autoSave: settings.autoSave ?? false,
       autoSaveDelayMs: settings.autoSaveDelayMs ?? 1500,
@@ -985,14 +1039,18 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     // matches (e.g. the folder was removed from settings mid-flight, or
     // paths diverged for any reason), fall back to a full rebuild so the
     // add/change isn't silently dropped from the search index.
-    const parent = sections.find(
-      (sec) =>
-        sec.path !== null &&
-        (payload.folder === sec.path || payload.folder.startsWith(sec.path + '/'))
-    )
+    // A single-file watch (an open file outside every section) has no section
+    // to refresh — the rebuild below would just re-read every folder.
+    const parent = payload.standalone
+      ? undefined
+      : sections.find(
+          (sec) =>
+            sec.path !== null &&
+            (payload.folder === sec.path || payload.folder.startsWith(sec.path + '/'))
+        )
     if (parent) {
       await get().refreshSection(parent.id)
-    } else {
+    } else if (!payload.standalone) {
       await get().refreshAllSections()
     }
 
@@ -1057,13 +1115,15 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
             recentFiles: nextRecent,
             autoNamedPaths: nextAutoNamed,
             fileEditorModes: nextModes,
+            fileReadOnly: movePathKey(s.fileReadOnly, oldPath, newPath),
             orphanedPaths: nextOrphans
           }
         })
         void persistSettings({
           autoNamedPaths: Array.from(get().autoNamedPaths),
           recentFiles: get().recentFiles,
-          fileEditorModes: get().fileEditorModes
+          fileEditorModes: get().fileEditorModes,
+          fileReadOnly: get().fileReadOnly
         })
 
         // Move any module-level bookkeeping keyed by tab id.
@@ -1226,12 +1286,14 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         ...remapped,
         autoNamedPaths: nextAutoNamed,
         fileEditorModes: nextModes,
+        fileReadOnly: remapFileEditorModes(s.fileReadOnly, oldPath, newPath),
         diffTabs: nextDiffs
       }
     })
     void persistSettings({
       autoNamedPaths: Array.from(get().autoNamedPaths),
-      fileEditorModes: get().fileEditorModes
+      fileEditorModes: get().fileEditorModes,
+      fileReadOnly: get().fileReadOnly
     })
     await get().refreshAllSections()
     void get().refreshMoveTargets()
@@ -1344,10 +1406,17 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
       ...get().fileEditorModes,
       [newPath]: inheritedMode
     }
-    set({ autoNamedPaths: nextAutoNamed, fileEditorModes: nextModes })
+    // Unlike the editor mode, Read mode is not inherited: a blank file you
+    // can't type into is no use to anyone, so a new draft always opens for
+    // editing — recorded only when the default would say otherwise.
+    const nextReadOnly = get().readOnly
+      ? { ...get().fileReadOnly, [newPath]: false }
+      : get().fileReadOnly
+    set({ autoNamedPaths: nextAutoNamed, fileEditorModes: nextModes, fileReadOnly: nextReadOnly })
     void persistSettings({
       autoNamedPaths: Array.from(nextAutoNamed),
-      fileEditorModes: nextModes
+      fileEditorModes: nextModes,
+      fileReadOnly: nextReadOnly
     })
     await get().refreshSection(DRAFTS_ID)
     await get().openFile(newPath)
@@ -1443,14 +1512,16 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         cursorPositions: nextCursor,
         recentFiles: nextRecent,
         autoNamedPaths: nextAutoNamed,
-        fileEditorModes: nextModes
+        fileEditorModes: nextModes,
+        fileReadOnly: movePathKey(s.fileReadOnly, oldPath, renamedPath)
       }
     })
 
     void persistSettings({
       autoNamedPaths: Array.from(get().autoNamedPaths),
       recentFiles: get().recentFiles,
-      fileEditorModes: get().fileEditorModes
+      fileEditorModes: get().fileEditorModes,
+      fileReadOnly: get().fileReadOnly
     })
 
     // Refresh the parent section so the sidebar shows the new name.
@@ -1493,12 +1564,14 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         renamingTabId: s.renamingTabId === oldPath ? null : s.renamingTabId,
         autoNamedPaths: nextAutoNamed,
         fileEditorModes: nextModes,
+        fileReadOnly: movePathKey(s.fileReadOnly, oldPath, newPath),
         diffTabs: remapDiffTabs(s.diffTabs, oldPath, newPath)
       }
     })
     void persistSettings({
       autoNamedPaths: Array.from(get().autoNamedPaths),
-      fileEditorModes: get().fileEditorModes
+      fileEditorModes: get().fileEditorModes,
+      fileReadOnly: get().fileReadOnly
     })
     await get().refreshAllSections()
     return newPath
@@ -1514,7 +1587,13 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         path in s.fileEditorModes
           ? Object.fromEntries(Object.entries(s.fileEditorModes).filter(([k]) => k !== path))
           : s.fileEditorModes
-      if (idx === -1) return { autoNamedPaths: nextAutoNamed, fileEditorModes: nextModes }
+      const nextReadOnly = dropPathKey(s.fileReadOnly, path)
+      if (idx === -1)
+        return {
+          autoNamedPaths: nextAutoNamed,
+          fileEditorModes: nextModes,
+          fileReadOnly: nextReadOnly
+        }
       const nextTabs = s.tabs.filter((t) => t.path !== path)
       // Remove from all panes
       const removeFromPanes = (node: PaneNode): PaneNode => {
@@ -1543,12 +1622,14 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         activeTabId: deriveActiveTabId(nextPane, s.activePaneId),
         paneRoot: nextPane,
         autoNamedPaths: nextAutoNamed,
-        fileEditorModes: nextModes
+        fileEditorModes: nextModes,
+        fileReadOnly: nextReadOnly
       }
     })
     void persistSettings({
       autoNamedPaths: Array.from(get().autoNamedPaths),
-      fileEditorModes: get().fileEditorModes
+      fileEditorModes: get().fileEditorModes,
+      fileReadOnly: get().fileReadOnly
     })
     await get().refreshAllSections()
   },
@@ -1578,12 +1659,14 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         activeTabId: deriveActiveTabId(nextPane, s.activePaneId),
         paneRoot: nextPane,
         autoNamedPaths: nextAutoNamed,
-        fileEditorModes: nextModes
+        fileEditorModes: nextModes,
+        fileReadOnly: movePathKey(s.fileReadOnly, path, newPath)
       }
     })
     void persistSettings({
       autoNamedPaths: Array.from(get().autoNamedPaths),
-      fileEditorModes: get().fileEditorModes
+      fileEditorModes: get().fileEditorModes,
+      fileReadOnly: get().fileReadOnly
     })
     await get().refreshAllSections()
   },
@@ -1605,12 +1688,14 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
         ...remapped,
         autoNamedPaths: nextAutoNamed,
         fileEditorModes: nextModes,
+        fileReadOnly: remapFileEditorModes(s.fileReadOnly, path, newPath),
         diffTabs: nextDiffs
       }
     })
     void persistSettings({
       autoNamedPaths: Array.from(get().autoNamedPaths),
-      fileEditorModes: get().fileEditorModes
+      fileEditorModes: get().fileEditorModes,
+      fileReadOnly: get().fileReadOnly
     })
     await get().refreshAllSections()
     void get().refreshMoveTargets()
@@ -2228,6 +2313,31 @@ export const useWorkspace = create<WorkspaceState>((set, get) => ({
     if (get().editorMode === mode) return
     set({ editorMode: mode })
     await persistSettings({ editorMode: mode })
+  },
+
+  setReadOnly: async (readOnly) => {
+    // Same per-file contract as setEditorMode above.
+    const { activeTabId, tabs, fileReadOnly } = get()
+    const activeTab = activeTabId ? tabs.find((t) => t.id === activeTabId) : undefined
+    if (activeTab) {
+      if (fileReadOnly[activeTab.path] === readOnly) return
+      const next = { ...fileReadOnly, [activeTab.path]: readOnly }
+      set({ fileReadOnly: next })
+      await persistSettings({ fileReadOnly: next })
+      return
+    }
+    await get().setDefaultReadOnly(readOnly)
+  },
+
+  setDefaultReadOnly: async (readOnly) => {
+    if (get().readOnly === readOnly) return
+    set({ readOnly })
+    await persistSettings({ readOnly })
+  },
+
+  setCodeBlockWrap: async (enabled) => {
+    set({ codeBlockWrap: enabled })
+    await persistSettings({ codeBlockWrap: enabled })
   },
 
   setTheme: async (theme) => {

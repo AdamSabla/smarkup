@@ -52,8 +52,9 @@ type OutlineTreeProps = {
   onSelChange: (index: number) => void
   folded: Set<number>
   onFoldedChange: (next: Set<number>) => void
-  /** A drag, an ⌥↑↓ move, or a level shift. Never called with a no-op edit. */
-  onEdit: (edit: NonNullable<OutlineEdit>) => void
+  /** A drag, an ⌥↑↓ move, or a level shift. Never called with a no-op edit.
+   *  Left out for a file in Read mode, which makes the list navigation-only. */
+  onEdit?: (edit: NonNullable<OutlineEdit>) => void
   /** Enter, double-click, or the go-to button on a row. */
   onActivate: (index: number) => void
   /** Tooltip for the go-to button — the dialog warns that it applies first. */
@@ -200,7 +201,7 @@ const OutlineTree = forwardRef<OutlineTreeHandle, OutlineTreeProps>(
       endDrag()
       if (from < 0 || to < 0) return
       const edit = dropEdit(rows, from, to)
-      if (edit) onEdit(edit)
+      if (edit) onEdit?.(edit)
     }
 
     const drop = dragIndex >= 0 && gap >= 0 ? planDrop(rows, dragIndex, gap) : null
@@ -217,6 +218,7 @@ const OutlineTree = forwardRef<OutlineTreeHandle, OutlineTreeProps>(
       if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
         e.preventDefault()
         if (e.altKey) {
+          if (!onEdit) return
           const edit = moveSiblingEdit(rows, sel, e.key === 'ArrowUp' ? -1 : 1)
           if (edit) onEdit(edit)
           return
@@ -300,9 +302,9 @@ const OutlineTree = forwardRef<OutlineTreeHandle, OutlineTreeProps>(
                 {drop && gap === index && dropMarker(drop.level, drop.parent)}
                 <div
                   data-row-index={index}
-                  draggable
-                  onDragStart={onDragStart(index)}
-                  onDragEnd={endDrag}
+                  draggable={!!onEdit}
+                  onDragStart={onEdit ? onDragStart(index) : undefined}
+                  onDragEnd={onEdit ? endDrag : undefined}
                   onClick={() => {
                     onSelChange(index)
                     listRef.current?.focus()
@@ -310,8 +312,8 @@ const OutlineTree = forwardRef<OutlineTreeHandle, OutlineTreeProps>(
                   style={{ marginLeft: (row.level - 1) * INDENT }}
                   onDoubleClick={() => onActivate(index)}
                   className={cn(
-                    'group/row flex cursor-grab items-center rounded-md border border-transparent',
-                    'select-none active:cursor-grabbing',
+                    'group/row flex items-center rounded-md border border-transparent select-none',
+                    onEdit ? 'cursor-grab active:cursor-grabbing' : 'cursor-default',
                     dense ? 'gap-1.5 px-1.5 py-1' : 'gap-2 px-2 py-1.5',
                     inDrag && 'opacity-40',
                     index === sel

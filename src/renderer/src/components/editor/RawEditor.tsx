@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import CodeMirror from '@uiw/react-codemirror'
+import CodeMirror, { ExternalChange } from '@uiw/react-codemirror'
 import { markdown } from '@codemirror/lang-markdown'
 import {
   EditorView,
@@ -12,7 +12,7 @@ import {
   ViewUpdate,
   showPanel
 } from '@codemirror/view'
-import { Prec, RangeSetBuilder } from '@codemirror/state'
+import { EditorState, Prec, RangeSetBuilder } from '@codemirror/state'
 import { syntaxHighlighting } from '@codemirror/language'
 import { search, selectNextOccurrence } from '@codemirror/search'
 import { useWorkspace } from '@/store/workspace'
@@ -250,11 +250,25 @@ const stickyHeadingPanel = (view: EditorView): Panel => {
 
 const stickyHeadingBreadcrumb = showPanel.of(stickyHeadingPanel)
 
+/**
+ * Read mode. `EditorState.readOnly` (the `readOnly` prop below) already stops
+ * typing, paste, drop and CodeMirror's own commands, but the keymaps in this
+ * file — ⌘B, the checklist toggles — dispatch their changes directly and never
+ * ask. Dropping every document change that isn't the wrapper syncing a new
+ * `value` in (a reload from disk, an edit made in the other editor) covers
+ * those and anything added later. Selection and scrolling are untouched: the
+ * caret stays, so text can still be selected from the keyboard.
+ */
+const blockEdits = EditorState.transactionFilter.of((tr) =>
+  tr.docChanged && !tr.annotation(ExternalChange) ? [] : tr
+)
+
 type Props = {
   tabId: string
   value: string
   onChange: (value: string) => void
   isActive: boolean
+  readOnly: boolean
 }
 
 function useIsDark(): boolean {
@@ -264,7 +278,7 @@ function useIsDark(): boolean {
   return document.documentElement.classList.contains('dark')
 }
 
-const RawEditor = ({ tabId, value, onChange, isActive }: Props): React.JSX.Element => {
+const RawEditor = ({ tabId, value, onChange, isActive, readOnly }: Props): React.JSX.Element => {
   const isDark = useIsDark()
   const rawHeadingSizes = useWorkspace((s) => s.rawHeadingSizes)
   const rawWordWrap = useWorkspace((s) => s.rawWordWrap)
@@ -621,6 +635,7 @@ const RawEditor = ({ tabId, value, onChange, isActive }: Props): React.JSX.Eleme
       Prec.highest(keymap.of([{ key: 'Mod-d', run: selectNextOccurrence, preventDefault: true }])),
       ...(rawHeadingSizes ? [headingHighlighter, caretHeadingScaler] : [stickyHeadingBreadcrumb]),
       ...(rawWordWrap ? [EditorView.lineWrapping] : []),
+      ...(readOnly ? [blockEdits] : []),
       sharedEditorTokenTheme,
       EditorView.theme({
         '&': {
@@ -662,7 +677,7 @@ const RawEditor = ({ tabId, value, onChange, isActive }: Props): React.JSX.Eleme
         '.cm-heading-4': { fontSize: '1.55em', lineHeight: '1.3', fontWeight: '600' }
       })
     ],
-    [checklistKeymap, tabId, rawHeadingSizes, rawWordWrap]
+    [checklistKeymap, tabId, rawHeadingSizes, rawWordWrap, readOnly]
   )
 
   return (
@@ -670,6 +685,7 @@ const RawEditor = ({ tabId, value, onChange, isActive }: Props): React.JSX.Eleme
       value={value}
       onChange={onChange}
       onCreateEditor={onCreateEditor}
+      readOnly={readOnly}
       theme={isDark ? 'dark' : 'light'}
       extensions={extensions}
       basicSetup={{

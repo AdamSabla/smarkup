@@ -15,7 +15,7 @@ import { revealHeading } from '@/lib/heading-jump'
 import { getActiveEditor } from '@/lib/active-editor'
 import { getActiveRawEditor } from '@/lib/active-raw-editor'
 import { useActiveHeading } from '@/hooks/useActiveHeading'
-import { useWorkspace } from '@/store/workspace'
+import { resolveReadOnly, useWorkspace } from '@/store/workspace'
 
 const isMac = navigator.userAgent.toLowerCase().includes('mac')
 
@@ -74,6 +74,9 @@ const OutlinePanel = ({ tabId, paneId }: OutlinePanelProps): React.JSX.Element |
 
   const tab = tabId && !tabId.startsWith('diff:') ? tabs.find((t) => t.id === tabId) : undefined
   const content = tab?.content ?? ''
+  // A file in Read mode keeps its outline for navigation, but not for moving
+  // sections around — that rewrites the file.
+  const readOnly = useWorkspace((s) => resolveReadOnly(tab?.path, s.fileReadOnly, s.readOnly))
 
   const outline = useMemo(() => parseOutline(content), [content])
   const rows = useMemo(() => rowsOf(outline), [outline])
@@ -193,12 +196,14 @@ const OutlinePanel = ({ tabId, paneId }: OutlinePanelProps): React.JSX.Element |
           </span>
         )}
         <div className={cn('flex items-center gap-0.5', width < LABEL_WIDTH && 'flex-1')}>
-          <OutlineLevelControls
-            rows={rows}
-            sel={sel}
-            onEdit={onEdit}
-            onAfterAction={() => treeRef.current?.focus()}
-          />
+          {!readOnly && (
+            <OutlineLevelControls
+              rows={rows}
+              sel={sel}
+              onEdit={onEdit}
+              onAfterAction={() => treeRef.current?.focus()}
+            />
+          )}
         </div>
         <OutlineFoldControls
           rows={rows}
@@ -242,7 +247,7 @@ const OutlinePanel = ({ tabId, paneId }: OutlinePanelProps): React.JSX.Element |
           onSelChange={setSel}
           folded={folded}
           onFoldedChange={onFoldedChange}
-          onEdit={onEdit}
+          onEdit={readOnly ? undefined : onEdit}
           onActivate={onActivate}
           currentIndex={currentIndex}
           intro={intro}

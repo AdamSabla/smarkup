@@ -22,6 +22,15 @@ export type Settings = {
    * back to the global `editorMode` default.
    */
   fileEditorModes: Record<string, 'visual' | 'raw'>
+  /** Global fallback for whether files open read-only (Read) or editable (Edit). */
+  readOnly: boolean
+  /**
+   * Per-file Read/Edit overrides, keyed by absolute path — the same shape and
+   * fallback rule as `fileEditorModes`.
+   */
+  fileReadOnly: Record<string, boolean>
+  /** Soft-wrap long lines in the visual editor's fenced code blocks. */
+  codeBlockWrap: boolean
   openTabs: string[]
   activeTabPath: string | null
   recentFiles: string[]
@@ -75,6 +84,9 @@ const DEFAULT_SETTINGS: Settings = {
   sidebarVisible: true,
   editorMode: 'visual',
   fileEditorModes: {},
+  readOnly: false,
+  fileReadOnly: {},
+  codeBlockWrap: true,
   openTabs: [],
   activeTabPath: null,
   recentFiles: [],

@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { FilePlusIcon, FileTextIcon } from 'lucide-react'
-import { resolveEditorMode, useWorkspace } from '@/store/workspace'
+import { resolveEditorMode, resolveReadOnly, useWorkspace } from '@/store/workspace'
 import { countWords } from '@/lib/text-stats'
 import TodoChip from '@/components/TodoChip'
 import VisualEditor from './VisualEditor'
@@ -87,6 +87,8 @@ const EditorPane = ({ tabId, paneId }: EditorPaneProps): React.JSX.Element => {
   const diffTabs = useWorkspace((s) => s.diffTabs)
   const editorMode = useWorkspace((s) => s.editorMode)
   const fileEditorModes = useWorkspace((s) => s.fileEditorModes)
+  const globalReadOnly = useWorkspace((s) => s.readOnly)
+  const fileReadOnly = useWorkspace((s) => s.fileReadOnly)
   const showWordCount = useWorkspace((s) => s.showWordCount)
   const updateTabContent = useWorkspace((s) => s.updateTabContent)
   const setActivePane = useWorkspace((s) => s.setActivePane)
@@ -190,6 +192,9 @@ const EditorPane = ({ tabId, paneId }: EditorPaneProps): React.JSX.Element => {
                 value={tab.content}
                 onChange={(content: string): void => updateTabContent(tab.id, content)}
                 isActive={isActive}
+                // Read mode is a prop, not part of the mount key: flipping it
+                // keeps the same editor, its scroll position and its undo history.
+                readOnly={resolveReadOnly(tab.path, fileReadOnly, globalReadOnly)}
               />
             </div>
           )

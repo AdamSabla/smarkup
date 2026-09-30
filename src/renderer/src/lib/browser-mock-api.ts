@@ -68,6 +68,10 @@ Say "about 11 years", never ~11 years.
 \`\`\`
 literal [] and _underscores_ stay put
 \`\`\`
+
+\`\`\`bash
+curl -sS https://api.example.com/v1/projects/1234/deployments?include=logs,artifacts,environment -H "Authorization: Bearer $TOKEN" | jq '.data[] | {id, status, created_at}'
+\`\`\`
 `,
     mtimeMs: baseTime - 1000 * 60 * 5
   },
@@ -104,6 +108,9 @@ let mockSettings: Settings = {
   sidebarVisible: true,
   editorMode: 'visual',
   fileEditorModes: {},
+  readOnly: false,
+  fileReadOnly: {},
+  codeBlockWrap: true,
   openTabs: [],
   activeTabPath: null,
   recentFiles: [],
@@ -258,6 +265,7 @@ const mockApi: SmarkupApi = {
 
   // Watcher: no-op in browser mode
   syncWatchedFolders: async () => true,
+  syncWatchedFiles: async () => true,
   onWatchEvent: () => () => undefined,
 
   // Updater: no-op in browser mode
@@ -280,6 +288,7 @@ const mockApi: SmarkupApi = {
   onOpenOutline: () => () => undefined,
   onToggleOutlinePanel: () => () => undefined,
   onToggleEditorMode: () => () => undefined,
+  onToggleReadOnly: () => () => undefined,
   onOpenDiffPicker: () => () => undefined,
   onNewDraft: () => () => undefined,
   onSave: () => () => undefined,

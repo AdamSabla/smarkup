@@ -225,7 +225,101 @@ export const syncWatchedFolders = (folders: string[], windowId: string = 'defaul
   }
 }
 
+// --- Single files ----------------------------------------------------------
+//
+// A tab can hold a file from outside every watched folder — opened from
+// Finder, File → Open…, or a link. Nothing above would ever report a change
+// to it, so an agent rewriting that file would leave the tab showing a stale
+// copy. Each such file gets a watcher of its own, feeding the same
+// `fs:watchEvent` channel. `standalone` tells the renderer there's no sidebar
+// section behind the event to refresh.
+
+const fileWatchers = new Map<string, FSWatcher>()
+const windowFileWatches = new Map<string, Set<string>>()
+const pendingFileUnlinks = new Map<string, NodeJS.Timeout>()
+
+const sendFileEvent = (file: string, type: 'change' | 'unlink'): void => {
+  for (const win of BrowserWindow.getAllWindows()) {
+    win.webContents.send('fs:watchEvent', {
+      folder: file,
+      standalone: true,
+      events: [{ folder: file, path: file, type }]
+    })
+  }
+}
+
+const startWatchingFile = (file: string): void => {
+  if (fileWatchers.has(file)) return
+  const watcher = chokidar.watch(file, {
+    ignoreInitial: true,
+    awaitWriteFinish: { stabilityThreshold: 120, pollInterval: 60 }
+  })
+  watcher
+    .on('change', () => sendFileEvent(file, 'change'))
+    // A save that replaces the file (write a temp copy, rename it over) can
+    // surface as an unlink and an add. Hold the unlink briefly and look
+    // again, so a rewrite doesn't read as a deletion — which would close a
+    // clean tab.
+    .on('unlink', () => {
+      clearTimeout(pendingFileUnlinks.get(file))
+      pendingFileUnlinks.set(
+        file,
+        setTimeout(() => {
+          pendingFileUnlinks.delete(file)
+          fs.access(file).then(
+            () => sendFileEvent(file, 'change'),
+            () => sendFileEvent(file, 'unlink')
+          )
+        }, RENAME_CORRELATION_MS)
+      )
+    })
+    .on('add', () => {
+      const pending = pendingFileUnlinks.get(file)
+      if (pending) {
+        clearTimeout(pending)
+        pendingFileUnlinks.delete(file)
+      }
+      sendFileEvent(file, 'change')
+    })
+  fileWatchers.set(file, watcher)
+}
+
+const stopWatchingFile = (file: string): void => {
+  const watcher = fileWatchers.get(file)
+  if (!watcher) return
+  void watcher.close()
+  fileWatchers.delete(file)
+  clearTimeout(pendingFileUnlinks.get(file))
+  pendingFileUnlinks.delete(file)
+}
+
+/**
+ * Sync the individually watched files for a window — the open tabs that no
+ * watched folder covers. Ref-counted across windows like the folders.
+ */
+export const syncWatchedFiles = (files: string[], windowId: string = 'default'): void => {
+  const desired = new Set(files.filter(Boolean))
+  if (desired.size === 0) windowFileWatches.delete(windowId)
+  else windowFileWatches.set(windowId, desired)
+
+  const union = new Set<string>()
+  for (const set of windowFileWatches.values()) for (const f of set) union.add(f)
+
+  for (const existing of Array.from(fileWatchers.keys())) {
+    if (!union.has(existing)) stopWatchingFile(existing)
+  }
+  for (const file of union) startWatchingFile(file)
+}
+
+/** Drop everything a closed window asked to watch. */
+export const releaseWindowWatches = (windowId: string): void => {
+  syncWatchedFolders([], windowId)
+  syncWatchedFiles([], windowId)
+}
+
 export const stopAllWatchers = (): void => {
   for (const folder of Array.from(watchers.keys())) stopWatching(folder)
   windowWatches.clear()
+  for (const file of Array.from(fileWatchers.keys())) stopWatchingFile(file)
+  windowFileWatches.clear()
 }
