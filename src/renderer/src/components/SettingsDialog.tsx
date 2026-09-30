@@ -5,7 +5,8 @@ import {
   MonitorIcon,
   MoonIcon,
   PencilIcon,
-  SunIcon
+  SunIcon,
+  TypeIcon
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -30,7 +31,7 @@ const THEME_OPTIONS: ThemeOption[] = [
 type EditorModeOption = { value: EditorMode; label: string; icon: React.ElementType }
 
 const EDITOR_MODE_OPTIONS: EditorModeOption[] = [
-  { value: 'visual', label: 'Visual', icon: EyeIcon },
+  { value: 'visual', label: 'Visual', icon: TypeIcon },
   { value: 'raw', label: 'Raw', icon: FileCodeIcon }
 ]
 

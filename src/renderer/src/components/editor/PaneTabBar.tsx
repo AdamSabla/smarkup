@@ -10,7 +10,7 @@ import {
   closestCenter
 } from '@dnd-kit/core'
 import { SortableContext, horizontalListSortingStrategy } from '@dnd-kit/sortable'
-import { PlusIcon, PanelLeftOpenIcon, EyeIcon, CodeIcon, PencilIcon } from 'lucide-react'
+import { PlusIcon, PanelLeftOpenIcon, EyeIcon, CodeIcon, PencilIcon, TypeIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { resolveEditorMode, resolveReadOnly, useWorkspace, type LeafPane } from '@/store/workspace'
 import Tab from '@/components/Tab'
@@ -22,6 +22,54 @@ const isMac = navigator.userAgent.toLowerCase().includes('mac')
 const findLeaf = (node: import('@/store/workspace').PaneNode, id: string): LeafPane | null => {
   if (node.type === 'leaf') return node.id === id ? node : null
   return findLeaf(node.children[0], id) ?? findLeaf(node.children[1], id)
+}
+
+/**
+ * A two-way switch in the tab bar: one click flips it. Drawn as a track with
+ * the active side raised as the thumb, so two of these side by side read as
+ * two switches rather than a row of four buttons.
+ */
+const ModeSwitch = ({
+  left: Left,
+  right: Right,
+  leftActive,
+  onToggle,
+  label,
+  title
+}: {
+  left: React.ElementType
+  right: React.ElementType
+  leftActive: boolean
+  onToggle: () => void
+  label: string
+  title: string
+}): React.JSX.Element => {
+  const segment = (active: boolean): string =>
+    cn(
+      'flex size-[22px] items-center justify-center rounded-[4px] transition-colors',
+      active
+        ? 'bg-background text-foreground shadow-sm dark:bg-foreground/[0.16]'
+        : 'text-muted-foreground group-hover:text-foreground'
+    )
+  return (
+    <button
+      onClick={onToggle}
+      style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+      className={cn(
+        'group flex items-center gap-0.5 rounded-[6px] p-0.5',
+        'bg-foreground/[0.06] hover:bg-foreground/[0.09] transition-colors'
+      )}
+      aria-label={label}
+      title={title}
+    >
+      <span className={segment(leftActive)}>
+        <Left className="size-3" />
+      </span>
+      <span className={segment(!leftActive)}>
+        <Right className="size-3" />
+      </span>
+    </button>
+  )
 }
 
 type PaneTabBarProps = {
@@ -300,75 +348,33 @@ const PaneTabBar = ({
       {isLast && (
         <div
           className={cn(
-            'ml-auto flex items-center gap-1 self-center',
+            'ml-auto flex items-center gap-2 self-center',
             isMac ? 'mr-2' : 'mr-[140px]'
           )}
         >
           {/* Read ↔ Edit. Same shape and per-file memory as the editor switch
               beside it; only offered when a file (not a diff) is showing. */}
           {activeTab && (
-            <button
-              onClick={() => void setReadOnly(!isReadOnly)}
-              style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
-              className={cn(
-                'group flex items-center gap-0.5 rounded-[6px] p-0.5',
-                'hover:bg-foreground/[0.04] transition-colors'
-              )}
-              aria-label={isReadOnly ? 'Switch to edit mode' : 'Switch to read mode'}
-              title={`${isReadOnly ? 'Read mode — click to edit' : 'Edit mode — click for read-only'} (${isMac ? '⌘⇧E' : 'Ctrl+Shift+E'})`}
-            >
-              <span
-                className={cn(
-                  'flex size-[22px] items-center justify-center rounded-[4px] transition-colors',
-                  isReadOnly
-                    ? 'bg-foreground/10 text-foreground'
-                    : 'text-muted-foreground group-hover:text-foreground'
-                )}
-              >
-                <EyeIcon className="size-3" />
-              </span>
-              <span
-                className={cn(
-                  'flex size-[22px] items-center justify-center rounded-[4px] transition-colors',
-                  !isReadOnly
-                    ? 'bg-foreground/10 text-foreground'
-                    : 'text-muted-foreground group-hover:text-foreground'
-                )}
-              >
-                <PencilIcon className="size-3" />
-              </span>
-            </button>
+            <>
+              <ModeSwitch
+                left={EyeIcon}
+                right={PencilIcon}
+                leftActive={isReadOnly}
+                onToggle={() => void setReadOnly(!isReadOnly)}
+                label={isReadOnly ? 'Switch to edit mode' : 'Switch to read mode'}
+                title={`${isReadOnly ? 'Read mode — click to edit' : 'Edit mode — click for read-only'} (${isMac ? '⌘⇧E' : 'Ctrl+Shift+E'})`}
+              />
+              <div className="h-4 w-px bg-foreground/15" aria-hidden />
+            </>
           )}
-          <button
-            onClick={() => void setEditorMode(isVisual ? 'raw' : 'visual')}
-            style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
-            className={cn(
-              'group flex items-center gap-0.5 rounded-[6px] p-0.5',
-              'hover:bg-foreground/[0.04] transition-colors'
-            )}
-            aria-label={`Switch to ${isVisual ? 'raw' : 'visual'} mode`}
-          >
-            <span
-              className={cn(
-                'flex size-[22px] items-center justify-center rounded-[4px] transition-colors',
-                isVisual
-                  ? 'bg-foreground/10 text-foreground'
-                  : 'text-muted-foreground group-hover:text-foreground'
-              )}
-            >
-              <EyeIcon className="size-3" />
-            </span>
-            <span
-              className={cn(
-                'flex size-[22px] items-center justify-center rounded-[4px] transition-colors',
-                !isVisual
-                  ? 'bg-foreground/10 text-foreground'
-                  : 'text-muted-foreground group-hover:text-foreground'
-              )}
-            >
-              <CodeIcon className="size-3" />
-            </span>
-          </button>
+          <ModeSwitch
+            left={TypeIcon}
+            right={CodeIcon}
+            leftActive={isVisual}
+            onToggle={() => void setEditorMode(isVisual ? 'raw' : 'visual')}
+            label={`Switch to ${isVisual ? 'raw' : 'visual'} mode`}
+            title={`${isVisual ? 'Visual editor — click for raw markdown' : 'Raw markdown — click for the visual editor'} (${isMac ? '⌘E' : 'Ctrl+E'})`}
+          />
         </div>
       )}
     </div>

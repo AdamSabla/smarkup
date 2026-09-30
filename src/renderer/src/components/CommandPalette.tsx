@@ -3,6 +3,7 @@ import Fuse from 'fuse.js'
 import {
   ArrowLeftIcon,
   ClipboardIcon,
+  CodeIcon,
   ColumnsIcon,
   CopyIcon,
   CopyPlusIcon,
@@ -23,6 +24,7 @@ import {
   SettingsIcon,
   SidebarIcon,
   SunIcon,
+  TypeIcon,
   TableIcon,
   WrapTextIcon,
   Trash2Icon,
@@ -513,7 +515,8 @@ const CommandPaletteBody = (): React.JSX.Element => {
                 dismiss()
               }}
             >
-              <EyeIcon /> Switch to {effectiveMode === 'visual' ? 'Raw' : 'Visual'} mode
+              {effectiveMode === 'visual' ? <CodeIcon /> : <TypeIcon />} Switch to{' '}
+              {effectiveMode === 'visual' ? 'Raw' : 'Visual'} mode
             </CommandItem>
             {activeTab && (
               <CommandItem
