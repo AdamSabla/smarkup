@@ -38,7 +38,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, windows-latest, ubuntu-latest]
+        os: [macos-15, windows-latest, ubuntu-latest]
 
     steps:
       - uses: actions/checkout@v4
@@ -53,7 +53,7 @@ jobs:
         run: npm ci
 
       - name: Build & publish (macOS)
-        if: matrix.os == 'macos-latest'
+        if: matrix.os == 'macos-15'
         run: npx electron-vite build && npx electron-builder --mac --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
